@@ -20,10 +20,41 @@
 @source "../templates/**/*.html";
 @source "../src/harmonist/web/main.py";
 
-/* The title example follows the current control, including unsaved changes. */
+/* A Settings example: a small table headed by what it compares (#678), so it
+   reads as an example rather than stray text. The written-as column is what the
+   setting produces, so it carries the emphasis. */
+.settings-example { margin-top: .4rem; border-collapse: collapse; font-size: var(--text-xs); color: var(--color-muted); }
+.settings-example th {
+  padding: 0 1rem .15rem 0; text-align: left;
+  font-size: var(--text-2xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+.settings-example td { padding: .05rem 1rem .05rem 0; }
+.settings-example td + td { color: var(--color-ink); font-weight: 500; }
+
+/* The title example follows the current control, including unsaved changes:
+   each written-as cell holds both spellings, and the control picks one. */
 .settings-title-preview { display: none; }
 .settings-title:has(option[value="album_disambiguation"]:checked) .settings-title-preview { display: inline; }
+.settings-title:has(option[value="album_disambiguation"]:checked) .settings-title-plain,
 .settings-title:has(option[value="album_disambiguation"]:checked) .transform-off-warning { display: none; }
+
+/* The artist examples follow the current controls the same way (#678): a
+   variation is standardized by either standardizing choice, a former name only
+   by "variations and name changes", and the artists list by that choice or by
+   the checkbox beside it. Each standardized spelling replaces its credited one. */
+.settings-artists-variation,
+.settings-artists-former,
+.settings-artists-list { display: none; }
+.settings-artists:has(option[value="variations"]:checked) .settings-artists-variation,
+.settings-artists:has(option[value="all"]:checked) .settings-artists-variation,
+.settings-artists:has(option[value="all"]:checked) .settings-artists-former,
+.settings-artists:has(option[value="all"]:checked) .settings-artists-list,
+.settings-artists:has(input[name="always_standardize_multivalue_artist"]:checked) .settings-artists-list { display: inline; }
+.settings-artists:has(option[value="variations"]:checked) .settings-artists-variation-credited,
+.settings-artists:has(option[value="all"]:checked) .settings-artists-variation-credited,
+.settings-artists:has(option[value="all"]:checked) .settings-artists-former-credited,
+.settings-artists:has(option[value="all"]:checked) .settings-artists-list-credited,
+.settings-artists:has(input[name="always_standardize_multivalue_artist"]:checked) .settings-artists-list-credited { display: none; }
 
 /* An identity review replaces the contribution choices and findings about the
  * current release. Empty swap targets leave no card or gap on the album page. */

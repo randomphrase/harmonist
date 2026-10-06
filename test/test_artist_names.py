@@ -224,7 +224,7 @@ def _verdict(album_dir: Path, release: dict[str, Any], tagging: TaggingChoices):
 
 
 def test_a_credited_variation_converges_on_the_default(tmp_path):
-    """The bvdub case (#678): an album tagged with the credited name has a
+    """A credited variation (#678): an album tagged with the credited name has a
     Settings update under "variations" — the display credit, the sort credit
     and the lists all move, and each is a spelling this release has."""
     release = _release(_credit("MouseRat"))

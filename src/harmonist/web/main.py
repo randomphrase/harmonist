@@ -4869,6 +4869,9 @@ def _register_routes(app: FastAPI) -> None:
         folder_cover: str = Form(...),
         # Empty dropdown values and an omitted field both clear the list.
         transforms: list[str] = Form(default=[]),
+        standardize_artist_names: str = Form(...),
+        # A checkbox, so an unticked one sends nothing and the default is "off".
+        always_standardize_multivalue_artist: bool = Form(default=False),
         log_level: str = Form(...),
     ) -> Response:
         cfg: config_mod.Config = request.app.state.cfg
@@ -4889,13 +4892,10 @@ def _register_routes(app: FastAPI) -> None:
             )
             new_tagging = config_mod.TaggingConfig.model_validate(
                 {
-                    # Carried over first: the artist-name settings (#678) have
-                    # no control on this form yet, and a model built from the
-                    # form alone would reset them to their defaults on every
-                    # save of anything else.
-                    **cfg.tagging.model_dump(),
                     "folder_cover": folder_cover.strip(),
                     "transforms": [t.strip() for t in transforms if t.strip()],
+                    "standardize_artist_names": standardize_artist_names.strip(),
+                    "always_standardize_multivalue_artist": always_standardize_multivalue_artist,
                 }
             )
             new_cfg = cfg.model_copy(
@@ -4927,6 +4927,13 @@ def _register_routes(app: FastAPI) -> None:
                 # turning the last transform off REWRITES the key rather than
                 # leaving the old one in the file to be read back at startup.
                 "tagging.transforms": [t.value for t in new_tagging.transforms],
+                # Picard's own option names and values (#678), `.value` for the
+                # reason above; the bool always written, so unticking the box
+                # rewrites the key rather than leaving `true` to be read back.
+                "tagging.standardize_artist_names": new_tagging.standardize_artist_names.value,
+                "tagging.always_standardize_multivalue_artist": (
+                    new_tagging.always_standardize_multivalue_artist
+                ),
                 "log_level": new_cfg.log_level,
             },
         )

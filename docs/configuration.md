@@ -62,11 +62,10 @@ so you can undo the change.
 |---|---|---|---|
 | `folder_cover` | `HARMONIST_TAGGING_FOLDER_COVER` | `"never"` | `"if_missing"` creates a `cover.jpg` for albums without one. An existing cover is still offered a better image either way, and you can always choose an image for a missing one on the album's page. |
 | `transforms` | `HARMONIST_TAGGING_TRANSFORMS` | `[]` | Optional changes to what's written. The only one is `"album_disambiguation"`, which adds MusicBrainz's edition note to the album title, as Picard can: *Selected Ambient Works Volume II (expanded edition)*. |
-| `standardize_artist_names` | `HARMONIST_TAGGING_STANDARDIZE_ARTIST_NAMES` | `"variations"` | Picard's option of the same name. `"none"` writes each artist as credited on the release (*bvdub . Brock Van Wey*); `"variations"` writes the artist's own name (*bvdub*) unless the credit is a name they used to go by; `"all"` writes the artist's own name always. |
+| `standardize_artist_names` | `HARMONIST_TAGGING_STANDARDIZE_ARTIST_NAMES` | `"variations"` | Picard's option of the same name. `"none"` writes each artist as credited on the release (*Florence and the Machine* on *Dog Days Are Over*); `"variations"` writes the artist's own name (*Florence + the Machine*) unless the credit is a name they used to go by (*Mos Def* stays *Mos Def*); `"all"` writes the artist's own name always (*Yasiin Bey*). |
 | `always_standardize_multivalue_artist` | `HARMONIST_TAGGING_ALWAYS_STANDARDIZE_MULTIVALUE_ARTIST` | `false` | Picard's option of the same name: the `artists` and `albumartists` lists, which players group by, carry each artist's own name whatever `standardize_artist_names` does to the displayed credit. |
 
-`folder_cover` and `transforms` are on the Settings page under **Tagging**; the
-artist settings are configured here for now. Each spelling setting applies to
+All four are on the Settings page under **Tagging**. Each spelling setting applies to
 albums already in the library as well as new ones: an album whose tags don't
 follow it, whichever way it's set, shows as having an update available, and
 nothing is written until it's applied.

@@ -225,7 +225,7 @@ exactly from the release in hand, never from a pattern, which would be a guess.
   accepted. A looser rule accepting any bracketed suffix would guess at an
   identity the release states outright.
 - **Artist names as credited or standardized** (see [artist names](#artist-names)):
-  *bvdub . Brock Van Wey* or *bvdub*, in the display credit, the sort credit and
+  *Florence and the Machine* or *Florence + the Machine*, in the display credit, the sort credit and
   the artist lists.
 - **Any country the release was issued in.** MusicBrainz reduces a release's
   events to one country; Picard lets the user prefer another of the release's own
@@ -305,10 +305,15 @@ derived exactly from the release will ever become transforms (#284).
 Picard 3.0's **Standardize artist names** (#678) is copied as Picard has it:
 the same three choices, the same multi-value checkbox, under Picard's own option
 names and values so a user can match the two tools by name. A credit names an
-artist twice: the name printed on this release (*bvdub . Brock Van Wey*) and the
-artist's own (*bvdub*). "Do not standardize" writes the first; "variations and
-name changes" writes the second; "variations only" writes the second unless the
-credit is a **former name**, a name the artist used to go by. "Always standardize
+artist twice: the name printed on this release (*Florence and the Machine* on
+*Dog Days Are Over*) and the artist's own (*Florence + the Machine*). "Do not
+standardize" writes the first; "variations and name changes" writes the second;
+"variations only" writes the second unless the credit is a **former name**, a
+name the artist used to go by (*Mos Def*, now *Yasiin Bey*). What counts as a
+former name is MusicBrainz's alias typing, not how famous the change was:
+Prince's releases as *The Artist (Formerly Known as Prince)* use a name
+MusicBrainz records as a search hint, so both standardizing choices write
+*Prince*, as Picard does. "Always standardize
 multi-valued artist tags" applies the artist's own name to the lists players
 group by, whatever the display credit says. A kept name sorts under its own
 alias's sort name where it is one, as in Picard; Harmonist used to sort it under

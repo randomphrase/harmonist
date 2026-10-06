@@ -27,7 +27,7 @@ from harmonist import activity_store, gardener, mb_cache, mb_lookup, scanner, ta
 from harmonist import sidecar as sc
 from harmonist.formats import owned
 from harmonist.models import Album, Sidecar
-from harmonist.transforms import TaggingChoices, TagTransform
+from harmonist.transforms import ArtistNames, TaggingChoices, TagTransform
 from harmonist.web.scan_runner import ScanRunner
 
 SINE_M4A = Path(__file__).parent / "fixtures" / "sine.m4a"
@@ -387,7 +387,7 @@ def _join_recheck() -> None:
             thread.join(timeout=10)
 
 
-def _save_transforms(client, transforms: list[str]):
+def _save_transforms(client, transforms: list[str], artist_names: str = "variations"):
     return client.post(
         "/settings",
         data={
@@ -397,9 +397,31 @@ def _save_transforms(client, transforms: list[str]):
             "gardener_level": "off",
             "folder_cover": "never",
             "transforms": transforms,
+            "standardize_artist_names": artist_names,
             "log_level": "info",
         },
     )
+
+
+def test_saving_an_artist_names_choice_re_checks_the_albums_it_moves(engaged, monkeypatch):
+    """#678 through the page: an album credited under a variation and tagged as
+    credited gains a Settings update when the user picks "variations", without
+    being opened and without a request."""
+    cfg, engage = engaged
+    release = _release()
+    release["artist-credit"][0]["name"] = "Test Artiste"  # a variation
+    cfg.tagging.standardize_artist_names = ArtistNames.NONE
+    _tagged(cfg.paths.music_dir, release)  # as credited
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda *a, **k: pytest.fail("re-check went to MusicBrainz")
+    )
+    client, runner = engage()
+    activity_store.store_release("rel-aaa", "+".join(sorted(mb_lookup.RELEASE_INCLUDES)), release)
+
+    assert _save_transforms(client, [], artist_names="variations").status_code == 200
+    _join_recheck()
+
+    assert runner.albums()[0].update_significance == owned.Significance.SETTINGS
 
 
 def test_saving_a_transform_re_checks_the_albums_it_moves(engaged, monkeypatch):

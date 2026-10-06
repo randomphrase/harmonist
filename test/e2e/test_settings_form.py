@@ -53,6 +53,43 @@ def test_settings_save_round_trips_both_tagging_dropdowns(demo_server: str) -> N
         browser.close()
 
 
+def test_the_artist_name_examples_follow_the_controls_and_save(demo_server: str) -> None:
+    """#678. The written-as column is CSS following the select and the checkbox,
+    unsaved changes included — which no route test can see — and the choice
+    must survive a save and reload."""
+    expected = {
+        # choice, list box ticked -> what the written-as cells show
+        ("none", False): ["Florence and the Machine", "Mos Def", "Mos Def"],
+        ("variations", False): ["Florence + the Machine", "Mos Def", "Mos Def"],
+        ("variations", True): ["Florence + the Machine", "Mos Def", "Yasiin Bey"],
+        ("all", False): ["Florence + the Machine", "Yasiin Bey", "Yasiin Bey"],
+    }
+    with playwright_sync.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.set_default_timeout(5000)
+        page.goto(f"{demo_server}/settings")
+        names = page.get_by_label("Standardize artist names", exact=True)
+        lists = page.get_by_label("Always standardize multi-valued artist tags")
+        written = page.locator(".settings-artists .settings-example td + td span:visible")
+        for (choice, ticked), cells in expected.items():
+            names.select_option(choice)
+            lists.set_checked(ticked)
+            playwright_sync.expect(written).to_have_text(cells)
+
+        names.select_option("all")
+        lists.set_checked(True)
+        with page.expect_response(
+            lambda r: r.url.endswith("/settings") and r.request.method == "POST"
+        ) as saved:
+            page.get_by_role("button", name="Save settings", exact=True).click()
+        assert saved.value.ok
+        page.reload()
+        playwright_sync.expect(names).to_have_value("all")
+        playwright_sync.expect(lists).to_be_checked()
+        browser.close()
+
+
 def test_settings_setup_and_restore_preserve_unsaved_preferences(
     public_demo_server: tuple[str, Path], htmx_ready
 ) -> None:

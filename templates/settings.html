@@ -32,9 +32,12 @@
         <div role="alert" class="my-4 px-4 py-2 rounded-md bg-red-50 border border-red-300 text-red-700 text-sm">Couldn't save: {{ error }}</div>
         {% endif %}
 
-        <section id="tagging" aria-labelledby="tagging-heading" class="border-b border-line py-5 space-y-4 scroll-mt-20">
+        <section id="tagging" aria-labelledby="tagging-heading" class="border-b border-line py-5 scroll-mt-20">
             <h2 id="tagging-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Tagging</h2>
-            <div>
+            {# A rule between settings, so each example reads with the control
+               above it rather than the one below (#678). #}
+            <div class="mt-4 divide-y divide-line">
+            <div class="pb-4">
                 <label for="folder-cover" class="block text-xs font-bold text-ink mb-1">Create cover.jpg in album folders</label>
                 <select id="folder-cover" name="folder_cover" class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink focus:border-accent">
                     {% for value, label in [('never', 'Never'), ('if_missing', 'Only when missing')] %}
@@ -42,7 +45,7 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="settings-title">
+            <div class="settings-title py-4">
                 <div>
                     <label for="album-title" class="block text-xs font-bold text-ink mb-1">Album title</label>
                     {# The handler discards the empty option, clearing the list. #}
@@ -51,16 +54,75 @@
                         <option value="album_disambiguation" {{ 'selected' if 'album_disambiguation' in cfg.tagging.transforms }}>Title + release disambiguation</option>
                     </select>
                 </div>
-                <p class="mt-1 text-xs text-muted">Fever Dog
-                    <span class="settings-title-preview"><span aria-hidden="true">→</span><span class="sr-only"> becomes </span>
-                        <span class="font-medium text-ink">Fever Dog (Live at the Riot House)</span>
-                    </span>
-                </p>
+                {# Examples are tables headed by what they compare, so they read
+                   as examples rather than stray text (#678). Each "written as"
+                   cell holds both spellings; CSS shows the one the control now
+                   selects. #}
+                <table class="settings-example">
+                    <caption class="sr-only">Example</caption>
+                    <thead><tr><th scope="col">On the release</th><th scope="col">Written as</th></tr></thead>
+                    <tbody><tr>
+                        <td>Fever Dog</td>
+                        <td><span class="settings-title-plain">Fever Dog</span><span class="settings-title-preview">Fever Dog (Live at the Riot House)</span></td>
+                    </tr></tbody>
+                </table>
                 {% if 'album_disambiguation' in cfg.tagging.transforms %}
                 <p role="note" class="transform-off-warning mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     Turning this off gives every album with the disambiguation in its title a pending update to remove it.
                 </p>
                 {% endif %}
+            </div>
+            {# Picard 3.0's controls, with Picard's labels (#678). The examples
+               are REAL MusicBrainz credits, because credited-versus-standardized
+               is hard to grasp from a fictional band: "Dog Days Are Over" (2008)
+               credits "Florence and the Machine", a variation of no alias at
+               all, and "Mos Def" is an Artist name alias of Yasiin Bey that
+               ended in 2011, a former name. Both checked against MusicBrainz
+               when written. Famous name changes are not all former names there:
+               Prince's "The Artist (Formerly Known as Prince)" is a search hint,
+               and JAŸ-Z's older spellings are mostly dated aliases, so neither
+               illustrates the difference cleanly. No warning, unlike the title
+               above: standardizing changes how a credit reads, not what is
+               known. #}
+            <div class="settings-artists pt-4">
+                <div>
+                    <label for="artist-names" class="block text-xs font-bold text-ink mb-1">Standardize artist names</label>
+                    <select id="artist-names" name="standardize_artist_names" class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink focus:border-accent">
+                        {% for value, label in [('none', 'Do not standardize artist names'),
+                                                ('variations', 'Standardize artist name variations only'),
+                                                ('all', 'Standardize artist name variations and name changes')] %}
+                        <option value="{{ value }}"{{ ' selected' if value == cfg.tagging.standardize_artist_names }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <table class="settings-example">
+                    <caption class="sr-only">Examples</caption>
+                    <thead><tr><th scope="col">Credited as</th><th scope="col">Written as</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td>Florence and the Machine</td>
+                            <td><span class="settings-artists-variation-credited">Florence and the Machine</span><span class="settings-artists-variation">Florence + the Machine</span></td>
+                        </tr>
+                        <tr>
+                            <td>Mos Def</td>
+                            <td><span class="settings-artists-former-credited">Mos Def</span><span class="settings-artists-former">Yasiin Bey</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <label class="mt-3 flex items-center gap-2 cursor-pointer w-fit">
+                    <input type="checkbox" name="always_standardize_multivalue_artist" value="true" class="cursor-pointer"
+                           {{ 'checked' if cfg.tagging.always_standardize_multivalue_artist }}>
+                    <span class="text-sm text-ink">Always standardize multi-valued artist tags</span>
+                </label>
+                <table class="settings-example ml-6">
+                    <caption class="sr-only">Example</caption>
+                    <thead><tr><th scope="col">Credited as</th><th scope="col">In the artists list</th></tr></thead>
+                    <tbody><tr>
+                        <td>Mos Def</td>
+                        <td><span class="settings-artists-list-credited">Mos Def</span><span class="settings-artists-list">Yasiin Bey</span></td>
+                    </tr></tbody>
+                </table>
+            </div>
             </div>
         </section>
 

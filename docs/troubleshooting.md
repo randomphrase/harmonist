@@ -254,13 +254,12 @@ Meanwhile, tick **Ignore until MusicBrainz changes** to take the album off the
 when your edit is accepted. Nothing is written either way.
 
 An update labelled **Settings** didn't come from MusicBrainz: it brings the album
-into line with a tagging setting. For example, with **Add the release
-disambiguation to the album title** off, an album titled
-*Obreel (expanded edition)* is offered *Obreel*; and with artist names
-standardized (the default), an album credited to *bvdub . Brock Van Wey* is
-offered *bvdub*. To keep the other spelling, change the setting (see
-[configuration](configuration.md#tagging)); the update disappears from every
-album it affects.
+into line with a setting under **Settings → Tagging**. For example, with
+**Album title** set to **Title only**, an album titled
+*Obreel (expanded edition)* is offered *Obreel*; and with **Standardize artist
+names** at its default, a single credited to *Florence and the Machine* is
+offered *Florence + the Machine*. To keep the other spelling, change the setting; the update disappears
+from every album it affects.
 
 ### An artist's former name is replaced although the setting keeps former names
 

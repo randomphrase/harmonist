@@ -5850,6 +5850,7 @@ def test_settings_save_persists_and_applies_live(client, cfg):
             "user_agent": "Harmonist/9.9 ( me@example.com )",
             "gardener_level": "review",
             "folder_cover": "if_missing",
+            "standardize_artist_names": "variations",
             "log_level": "warning",
         },
     )
@@ -5882,6 +5883,7 @@ def test_settings_save_persists_the_enabled_tag_transforms(client, cfg):
             "gardener_level": "off",
             "folder_cover": "never",
             "transforms": ["album_disambiguation"],
+            "standardize_artist_names": "variations",
             "log_level": "info",
         },
     )
@@ -5906,6 +5908,7 @@ def test_saving_with_transforms_off_clears_the_saved_list(client, cfg, off_field
             "user_agent": "Harmonist/0.1 ( x@y.z )",
             "gardener_level": "off",
             "folder_cover": "never",
+            "standardize_artist_names": "variations",
             "log_level": "info",
             **off_fields,
         },
@@ -5918,16 +5921,9 @@ def test_saving_with_transforms_off_clears_the_saved_list(client, cfg, off_field
     assert "transforms = []" in (cfg.paths.config_dir / "harmonist.toml").read_text()
 
 
-def test_settings_save_keeps_the_artist_name_settings(client, cfg):
-    """#678's settings have no control on the page yet (it follows #687's
-    reorganisation), so a save from the form must leave them as configured
-    rather than resetting them to their defaults behind the user's back."""
-    from harmonist.transforms import ArtistNames
-
-    client.app.state.cfg.tagging.standardize_artist_names = ArtistNames.ALL
-    client.app.state.cfg.tagging.always_standardize_multivalue_artist = True
-
-    r = client.post(
+def _post_settings(client, **fields):
+    """The Settings form as a browser posts it, with `fields` overriding."""
+    return client.post(
         "/settings",
         data={
             "download_format": "flac",
@@ -5935,14 +5931,74 @@ def test_settings_save_keeps_the_artist_name_settings(client, cfg):
             "user_agent": "Harmonist/0.1 ( x@y.z )",
             "gardener_level": "off",
             "folder_cover": "never",
+            "standardize_artist_names": "variations",
             "log_level": "info",
+            **fields,
         },
+    )
+
+
+def test_settings_save_persists_the_artist_name_settings(client, cfg):
+    """#678, under Picard's own keys and values in the file, so the two tools
+    can be matched by name."""
+    from harmonist.transforms import ArtistNames
+
+    r = _post_settings(
+        client, standardize_artist_names="all", always_standardize_multivalue_artist="true"
     )
 
     assert r.status_code == 200
     live = client.app.state.cfg.tagging
     assert live.standardize_artist_names is ArtistNames.ALL
     assert live.always_standardize_multivalue_artist is True
+    toml = (cfg.paths.config_dir / "harmonist.toml").read_text()
+    assert 'standardize_artist_names = "all"' in toml
+    assert "always_standardize_multivalue_artist = true" in toml
+
+
+def test_unticking_the_list_checkbox_turns_it_off(client, cfg):
+    """An unticked checkbox sends nothing, so the field's absence is "off" — and
+    is written back, or a restart would read the old value."""
+    client.app.state.cfg.tagging.always_standardize_multivalue_artist = True
+
+    assert _post_settings(client).status_code == 200
+
+    assert client.app.state.cfg.tagging.always_standardize_multivalue_artist is False
+    toml = (cfg.paths.config_dir / "harmonist.toml").read_text()
+    assert "always_standardize_multivalue_artist = false" in toml
+
+
+def test_settings_save_rejects_an_unknown_artist_names_value(client, cfg):
+    """A hand-made POST naming a choice Picard doesn't have is refused, and
+    nothing is saved."""
+    from harmonist.transforms import ArtistNames
+
+    r = _post_settings(client, standardize_artist_names="variation")
+
+    assert "Couldn't save" in r.text
+    assert client.app.state.cfg.tagging.standardize_artist_names is ArtistNames.VARIATIONS
+
+
+def test_the_settings_page_offers_picards_artist_name_choices(client):
+    """Picard's labels for Picard's three values, the saved one selected, and
+    Picard's checkbox ticked to match the config."""
+    from harmonist.transforms import ArtistNames
+
+    client.app.state.cfg.tagging.standardize_artist_names = ArtistNames.ALL
+    client.app.state.cfg.tagging.always_standardize_multivalue_artist = True
+
+    html = client.get("/settings").text
+
+    select = re.search(r'<select[^>]*name="standardize_artist_names".*?</select>', html, re.DOTALL)
+    assert select
+    options = re.findall(r'<option value="(\w+)"( selected)?>([^<]*)</option>', select.group(0))
+    assert options == [
+        ("none", "", "Do not standardize artist names"),
+        ("variations", "", "Standardize artist name variations only"),
+        ("all", " selected", "Standardize artist name variations and name changes"),
+    ]
+    checkbox = re.search(r'<input[^>]*name="always_standardize_multivalue_artist"[^>]*>', html)
+    assert checkbox and " checked" in re.sub(r'"[^"]*"', '""', checkbox.group(0))
 
 
 def test_settings_save_rejects_an_unknown_transform(client, cfg):
@@ -5958,6 +6014,7 @@ def test_settings_save_rejects_an_unknown_transform(client, cfg):
             "gardener_level": "off",
             "folder_cover": "never",
             "transforms": ["feat_artists_in_title"],  # not a thing
+            "standardize_artist_names": "variations",
             "log_level": "info",
         },
     )
@@ -6023,6 +6080,7 @@ def test_settings_save_accepts_a_zero_download_cap(client, cfg):
             "user_agent": "Harmonist/0.1 ( x@y.z )",
             "gardener_level": "off",
             "folder_cover": "never",
+            "standardize_artist_names": "variations",
             "log_level": "info",
         },
     )
@@ -6045,6 +6103,7 @@ def test_settings_save_rejects_an_unknown_gardener_level(client, cfg):
             "user_agent": "Harmonist/0.1 ( x@y.z )",
             "gardener_level": "enrich",  # #273's level, not implemented yet
             "folder_cover": "never",
+            "standardize_artist_names": "variations",
             "log_level": "info",
         },
     )
