@@ -36,6 +36,7 @@ from harmonist.compare import (
 )
 from harmonist.formats.owned import ALBUM_FIELDS, LABELS, Owned
 from harmonist.formats.types import TagSet, TrackTags
+from harmonist.transforms import TaggingChoices
 
 
 def _text(runs) -> str:
@@ -443,7 +444,7 @@ def test_a_tagged_album_compares_clean_against_the_release_it_was_tagged_from(tm
     assert tag_album(d, release) == 1
 
     tracks = [(f.name, formats.read_tags(f)) for f in sorted(d.glob("*.m4a"))]
-    fields = album_fields(tracks, tagsets_for(release, frozenset())[0])
+    fields = album_fields(tracks, tagsets_for(release, TaggingChoices())[0])
 
     differing = [f.label for f in fields if f.differs]
     assert differing == [], f"tagging then comparing reported a difference: {differing}"
@@ -464,7 +465,9 @@ def test_an_untagged_album_shows_musicbrainz_values_as_additions(tmp_path):
     shutil.copy(Path(__file__).parent / "fixtures" / "sine.m4a", d / "01 Track.m4a")
 
     tracks = [(f.name, formats.read_tags(f)) for f in sorted(d.glob("*.m4a"))]
-    by_label = {f.label: f for f in album_fields(tracks, tagsets_for(_release(), frozenset())[0])}
+    by_label = {
+        f.label: f for f in album_fields(tracks, tagsets_for(_release(), TaggingChoices())[0])
+    }
 
     assert by_label["Label"].agreement is Agreement.ONLY_MB
     assert by_label["Label"].mb == "Dial Records"
@@ -483,7 +486,7 @@ def test_an_unreadable_track_does_not_report_its_tags_as_missing(tmp_path):
     (d / "01 Track.m4a").write_bytes(b"not audio at all")
 
     tracks = [(f.name, formats.read_tags(f)) for f in sorted(d.glob("*.m4a"))]
-    fields = album_fields(tracks, tagsets_for(_release(), frozenset())[0])
+    fields = album_fields(tracks, tagsets_for(_release(), TaggingChoices())[0])
 
     assert all(f.agreement is Agreement.UNREADABLE for f in fields)
     assert not any(f.agreement is Agreement.ONLY_MB for f in fields)

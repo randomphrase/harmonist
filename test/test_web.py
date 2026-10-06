@@ -9549,7 +9549,7 @@ def test_the_album_page_offers_the_title_a_transform_would_write(client, cfg, mo
     assert (
         gardener.verdict_for(
             tagger_mod.plan_album(
-                d, release, artwork=False, transforms=frozenset({TagTransform.ALBUM_DISAMBIGUATION})
+                d, release, artwork=False, tagging=client.app.state.cfg.tagging.choices()
             )
         )
         == owned.Significance.SETTINGS

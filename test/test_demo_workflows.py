@@ -12,7 +12,7 @@ from harmonist import activity, activity_store, cover_art, demo, formats, garden
 from harmonist.config import BandcampConfig, Config, PathsConfig
 from harmonist.formats.owned import Significance
 from harmonist.models import AlbumState
-from harmonist.transforms import TagTransform
+from harmonist.transforms import TaggingChoices, TagTransform
 from harmonist.web.main import create_app
 
 
@@ -67,7 +67,9 @@ def test_the_demo_shows_a_settings_update_when_the_title_transform_is_on(library
     release = demo.fetch_release(album.sidecar.mb_release_id)
     assert gardener.verdict_for(gardener.plan_for(album, release)) is None
 
-    gardener.configure(lambda: frozenset({TagTransform.ALBUM_DISAMBIGUATION}))
+    gardener.configure(
+        lambda: TaggingChoices(transforms=frozenset({TagTransform.ALBUM_DISAMBIGUATION}))
+    )
 
     assert gardener.verdict_for(gardener.plan_for(album, release)) == Significance.SETTINGS
 
@@ -387,6 +389,8 @@ def test_pacing_only_delays_demo_writes(library, monkeypatch, tmp_path):
     monkeypatch.setattr(demo.time, "sleep", sleeps.append)
     path = audio_files(library / "Sex Bob-omb")[0]
     formats.write_tags(
-        path, tagger.tagsets_for(demo.fetch_release("demo-rel-sex-bob-omb"), frozenset())[0], None
+        path,
+        tagger.tagsets_for(demo.fetch_release("demo-rel-sex-bob-omb"), TaggingChoices())[0],
+        None,
     )
     assert sleeps == [0.1]

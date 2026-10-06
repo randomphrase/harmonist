@@ -95,7 +95,7 @@ from harmonist.models import (
     titles_match,
 )
 from harmonist.tagger import PicardCompatibleTagger, Tagger, tagsets_for
-from harmonist.transforms import TagTransform
+from harmonist.transforms import NO_CHOICES, TaggingChoices, TagTransform
 from harmonist.web import dir_watcher, periodic
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
 from harmonist.web.scan_runner import ScanRunner
@@ -840,9 +840,10 @@ def create_app(
     app.state.cfg = cfg
     sync_runner.app = app  # lets runner_fn read app.state.cfg fresh each sync
     # The update check plans what a re-tag would write, so it judges each album
-    # under the transforms the write would apply (#685) — read off the live
-    # config at the moment it looks, since Settings applies without a restart.
-    gardener.configure(lambda: frozenset(app.state.cfg.tagging.transforms))
+    # under the spelling settings the write would apply (#685) — read off the
+    # live config at the moment it looks, since Settings applies without a
+    # restart.
+    gardener.configure(lambda: app.state.cfg.tagging.choices())
     app.state.templates = templates
     app.state.sync_runner = sync_runner
     app.state.reconcile_runner = reconcile_runner
@@ -996,7 +997,7 @@ def _album_comparison(
     paths: Sequence[Path] | None = None,
     *,
     reads: tuple[_FileTags, _FileTags] | None = None,
-    enabled_transforms: frozenset[TagTransform] = frozenset(),
+    tagging: TaggingChoices = NO_CHOICES,
 ) -> tuple[compare.AlbumComparison, compare.TracklistComparison]:
     """Read the album's files and compare their tags to `release` (#106, #135).
 
@@ -1019,7 +1020,7 @@ def _album_comparison(
     again.
     """
     audio, video = _album_tracks(album_dir, paths, reads)
-    tagsets = tagsets_for(release, enabled_transforms)
+    tagsets = tagsets_for(release, tagging)
     mb_tracks = [
         compare.MBTrack(tags=ts, length_ms=length)
         for ts, length in zip(tagsets, match.mb_track_lengths(release), strict=True)
@@ -2817,19 +2818,15 @@ def _folder_cover_policy(request: Request) -> artwork.FolderCoverPolicy:
     return cfg.tagging.folder_cover
 
 
-def _transforms(request: Request) -> frozenset[TagTransform]:
-    """The user's enabled `[tagging] transforms` as they stand right now (#544).
+def _tagging(request: Request) -> TaggingChoices:
+    """The user's spelling settings as they stand right now (#544).
 
     Read per request off `app.state.cfg` for the reason the folder-cover policy
     above is: Settings replaces that object live, and the setting says it needs
     no restart.
-
-    A frozenset, because order is not a fact the tagger should be able to read
-    off it while every transform owns a different field (`config.TaggingConfig`
-    keeps the list shape for the day one does not).
     """
     cfg: config_mod.Config = request.app.state.cfg
-    return frozenset(cfg.tagging.transforms)
+    return cfg.tagging.choices()
 
 
 def _in_hand(mbid: str | None, listing: cover_art.Candidate) -> cover_art.Front | None:
@@ -4293,9 +4290,9 @@ def _tag_with_release(
         # The album page built its preview under this same policy, so the plan
         # rebuilt at write time is the one the fingerprint was taken of (#516).
         folder_cover=cfg.tagging.folder_cover,
-        # …and under these transforms, so the album title this writes is the one
-        # the page's MusicBrainz column showed (#544).
-        transforms=frozenset(cfg.tagging.transforms),
+        # …and under these spelling settings, so what this writes is what the
+        # page's MusicBrainz column showed (#544).
+        tagging=cfg.tagging.choices(),
     )
 
     sc = sidecar_mod.read(album_path)
@@ -5652,7 +5649,7 @@ def _register_routes(app: FastAPI) -> None:
             release,
             album.folders,
             reads=reads,
-            enabled_transforms=_transforms(request),
+            tagging=_tagging(request),
         )
         # Opening an album is a look at exactly the question the Library filter
         # asks, against a release already in hand — so answer it here too and
@@ -7204,8 +7201,8 @@ def _register_routes(app: FastAPI) -> None:
                     artwork=False,
                     assignment=panel.mapping(),
                     # The preview is of what the apply will write, so it plans
-                    # under the same transforms the apply uses (#544).
-                    transforms=_transforms(request),
+                    # under the same spelling settings the apply uses (#544).
+                    tagging=_tagging(request),
                 ).changes
             except (ValueError, OSError, tagger_mod.TagMismatchError) as e:
                 log.warning("could not preview assignment tags: %s", e, extra=_LOG_ONLY)

@@ -12,7 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from .artwork import FolderCoverPolicy
-from .transforms import TagTransform
+from .transforms import TaggingChoices, TagTransform
 
 log = logging.getLogger(__name__)
 
@@ -201,6 +201,10 @@ class TaggingConfig(BaseModel):
     #: real question the first time two of them touch one field, and this is a
     #: list so that it can be answered then without breaking a config file.
     transforms: list[TagTransform] = Field(default_factory=list)
+
+    def choices(self) -> TaggingChoices:
+        """These settings as the one value the tagger and the update check take."""
+        return TaggingChoices(transforms=frozenset(self.transforms))
 
 
 class TestConfig(BaseModel):

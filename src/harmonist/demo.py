@@ -64,6 +64,7 @@ from .models import (
     TrackComparison,
 )
 from .pending_downloads import PendingPurchase
+from .transforms import TaggingChoices
 
 log = logging.getLogger(__name__)
 
@@ -1212,7 +1213,7 @@ def _materialise(music_dir: Path, spec: dict[str, Any]) -> None:
 
     album_dir = music_dir / _safe(spec["artist"]) / _safe(spec["album"])
     release = MB_RELEASES[spec["mbid"]]
-    baseline = tagger.tagsets_for(release, frozenset())
+    baseline = tagger.tagsets_for(release, TaggingChoices())
     fixture = ASSETS_DIR / AUDIO_ASSETS[spec.get("fmt", "alac")]
     folders: set[Path] = set()
     for i, tags in enumerate(baseline, 1):

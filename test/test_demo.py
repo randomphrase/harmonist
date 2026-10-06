@@ -10,6 +10,7 @@ from harmonist import sidecar as sc
 from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
 from harmonist.models import AlbumState
 from harmonist.tagger import ATOM_COMMENT, ATOM_MB_ALBUM_ID
+from harmonist.transforms import TaggingChoices
 from harmonist.web.main import create_app
 
 
@@ -66,7 +67,7 @@ def test_demo_has_an_album_whose_tags_differ_from_musicbrainz(music_dir):
 
     tracks = [(f.name, formats.read_tags(f)) for f in sorted(album.path.glob("*.m4a"))]
     release = demo.MB_RELEASES["demo-rel-rural-juror"]
-    by_label = {f.label: f for f in album_fields(tracks, tagsets_for(release, frozenset())[0])}
+    by_label = {f.label: f for f in album_fields(tracks, tagsets_for(release, TaggingChoices())[0])}
 
     # A genuine two-sided difference, not merely a MusicBrainz-only addition.
     artist = by_label["Album artist"]

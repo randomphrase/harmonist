@@ -27,7 +27,7 @@ from harmonist import activity_store, gardener, mb_cache, mb_lookup, scanner, ta
 from harmonist import sidecar as sc
 from harmonist.formats import owned
 from harmonist.models import Album, Sidecar
-from harmonist.transforms import TagTransform
+from harmonist.transforms import TaggingChoices, TagTransform
 from harmonist.web.scan_runner import ScanRunner
 
 SINE_M4A = Path(__file__).parent / "fixtures" / "sine.m4a"
@@ -128,17 +128,17 @@ def test_the_flag_is_judged_under_the_users_transforms(tmp_path):
     who turned the transform on.
     """
     disambiguated = {**_release(), "disambiguation": "expanded edition"}
-    transforms = frozenset({TagTransform.ALBUM_DISAMBIGUATION})
+    chosen = TaggingChoices(transforms=frozenset({TagTransform.ALBUM_DISAMBIGUATION}))
     d = _album_dir(tmp_path)
-    tagger.tag_album(d, disambiguated, transforms=transforms)
+    tagger.tag_album(d, disambiguated, tagging=chosen)
     sc.write(d, Sidecar(mb_release_id="rel-aaa", tagged_at=datetime.now(UTC)))
     album = next(a for a in scanner.scan(tmp_path) if a.path == d)
 
-    gardener.configure(lambda: transforms)
+    gardener.configure(lambda: chosen)
 
     assert _flag(album, disambiguated) is False
 
-    gardener.configure(lambda: frozenset())
+    gardener.configure(lambda: TaggingChoices())
 
     assert _flag(album, disambiguated) is True
     assert album.update_significance == owned.Significance.SETTINGS
@@ -365,7 +365,7 @@ def test_the_app_judges_flags_under_its_own_transforms(engaged, monkeypatch):
     transforms = [TagTransform.ALBUM_DISAMBIGUATION]
     disambiguated = {**_release(), "disambiguation": "expanded edition"}
     d = _album_dir(cfg.paths.music_dir)
-    tagger.tag_album(d, disambiguated, transforms=frozenset(transforms))
+    tagger.tag_album(d, disambiguated, tagging=TaggingChoices(transforms=frozenset(transforms)))
     sc.write(d, Sidecar(mb_release_id="rel-aaa", tagged_at=datetime.now(UTC)))
     monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: disambiguated)
     cfg.tagging.transforms = transforms
@@ -1054,6 +1054,11 @@ def _serving(monkeypatch, *releases: dict) -> list[str]:
     return asked
 
 
+def _disambiguating() -> TaggingChoices:
+    """The user's settings with the album-title disambiguation transform on."""
+    return TaggingChoices(transforms=frozenset({TagTransform.ALBUM_DISAMBIGUATION}))
+
+
 def _stale() -> timedelta:
     """Old enough that the pass considers an album due."""
     return gardener.RECHECK_AFTER + timedelta(days=1)
@@ -1233,7 +1238,7 @@ def test_a_settings_only_update_is_never_announced(tmp_path, monkeypatch):
     album = _tagged(tmp_path, _release())
     _store(_release(), age=_stale())
     _serving(monkeypatch, {**_release(), "disambiguation": "expanded edition"})
-    gardener.configure(lambda: frozenset({TagTransform.ALBUM_DISAMBIGUATION}))
+    gardener.configure(_disambiguating)
 
     result = gardener.sweep([album])
 
@@ -1252,7 +1257,7 @@ def test_a_waiting_settings_change_does_not_hide_news_from_musicbrainz(tmp_path,
     release = {**_release(), "disambiguation": "expanded edition"}
     album = _tagged(tmp_path, release)
     _store(release, age=_stale())
-    gardener.configure(lambda: frozenset({TagTransform.ALBUM_DISAMBIGUATION}))
+    gardener.configure(_disambiguating)
     gardener.refresh_flag(album, release)
     assert album.update_significance == owned.Significance.SETTINGS
     retitled = copy.deepcopy(release)

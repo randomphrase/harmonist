@@ -80,7 +80,7 @@ from . import (
 from . import transforms as transforms_mod
 from .formats import owned
 from .models import Album, AlbumState, Release
-from .transforms import TagTransform
+from .transforms import TaggingChoices, TagTransform
 
 log = logging.getLogger(__name__)
 
@@ -109,26 +109,26 @@ _PROGRESS_EVERY = timedelta(seconds=30)
 _MAX_REST = timedelta(seconds=2)
 
 
-SettingsReader = Callable[[], frozenset[TagTransform]]
+SettingsReader = Callable[[], TaggingChoices]
 
 _settings: SettingsReader | None = None
 
 
 def configure(settings: SettingsReader | None) -> None:
-    """Hand the check a reader of the user's enabled transforms (#685).
+    """Hand the check a reader of the user's spelling settings (#685).
 
     A reader rather than a value, so the check judges each album under the
-    setting as it stands at that moment: Settings applies without a restart,
+    settings as they stand at that moment: Settings applies without a restart,
     and a copy taken at startup would have the Library flagging albums against
     a choice the user has since changed. `create_app` installs one over its
-    live config; `None` means no transforms, the config's own default.
+    live config; `None` means `TaggingChoices()`, MusicBrainz's own spelling.
     """
     global _settings
     _settings = settings
 
 
-def _transforms() -> frozenset[TagTransform]:
-    return _settings() if _settings is not None else frozenset()
+def _choices() -> TaggingChoices:
+    return _settings() if _settings is not None else TaggingChoices()
 
 
 # Held from reading the setting to recording the verdict, so a look that began
@@ -197,7 +197,7 @@ def plan_for(album: Album, release: Release) -> tagger.AlbumPlan:
         # An album can span several directories (#197); planning over the
         # primary one alone would miss whatever the other discs need.
         files=album_files.for_paths(album.folders),
-        transforms=_transforms(),
+        tagging=_choices(),
     )
 
 

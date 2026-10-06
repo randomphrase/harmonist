@@ -6,6 +6,7 @@ import pytest
 
 from harmonist import album_files, formats, tagger, track_assignment
 from harmonist.formats import owned
+from harmonist.transforms import TaggingChoices
 from test import test_web
 from test.helpers import write_track_totals
 from test.test_tagger import _release_2_tracks
@@ -114,7 +115,7 @@ def test_proposals_leave_ambiguity_and_conflicting_ids_unpaired():
     from harmonist import track_structure
     from harmonist.formats import TrackTags
 
-    targets = tagger.tagsets_for(_release_2_tracks(), frozenset())
+    targets = tagger.tagsets_for(_release_2_tracks(), TaggingChoices())
     eligible = {0, 1}
     assert track_structure.pairs([TrackTags()], targets[:1], {0}, propose=True).slots == (0,)
     ambiguous = [TrackTags(disc_num=1, track_num=1), TrackTags(disc_num=1, track_num=1)]
@@ -255,5 +256,5 @@ def test_recording_ids_do_not_override_duplicate_release_track_ids():
         for i in (1, 2)
     ]
     assert tagger.assignment_review(release, tags).required
-    targets = tagger.tagsets_for(release, frozenset())
+    targets = tagger.tagsets_for(release, TaggingChoices())
     assert track_structure.pairs(tags, targets, {0, 1}, propose=True).slots == (None, None)

@@ -51,6 +51,7 @@ in different places.
 from __future__ import annotations
 
 from collections.abc import Collection
+from dataclasses import dataclass
 from enum import StrEnum
 
 from .models import Release, title_with_disambiguation
@@ -69,6 +70,28 @@ class TagTransform(StrEnum):
     #: Volume II (expanded edition)`. Picard's "use release disambiguation
     #: comment in album title", and the tagger script users write for it.
     ALBUM_DISAMBIGUATION = "album_disambiguation"
+
+
+@dataclass(frozen=True)
+class TaggingChoices:
+    """Every user setting that decides which spelling a tagging writes.
+
+    One value rather than a parameter per setting, because each of them has to
+    reach the same places — the write, the dry run the update check plans, the
+    album page's MusicBrainz column — and a setting threaded through only some
+    of them is how the page and the tagger come to disagree about "the same
+    album" (#283). Built from the config by `TaggingConfig.choices`.
+
+    Default-constructed, it is MusicBrainz's own spelling of everything: what a
+    tagging wrote before any of these settings existed.
+    """
+
+    transforms: frozenset[TagTransform] = frozenset()
+
+
+#: `TaggingChoices()`, once: the default for callers that write MusicBrainz's own
+#: spelling. Safe to share because the dataclass is frozen.
+NO_CHOICES = TaggingChoices()
 
 
 def album_title(release: Release, enabled: Collection[TagTransform]) -> str:

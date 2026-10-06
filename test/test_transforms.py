@@ -19,13 +19,14 @@ from harmonist import formats as formats_mod
 from harmonist import gardener, tagger, transforms
 from harmonist.formats import owned
 from harmonist.tagger import ATOM_ALBUM
-from harmonist.transforms import TagTransform
+from harmonist.transforms import TaggingChoices, TagTransform
 
 from .test_tagger import _release_2_tracks
 
 SINE_M4A = Path(__file__).parent / "fixtures" / "sine.m4a"
 
 DISAMBIG = frozenset({TagTransform.ALBUM_DISAMBIGUATION})
+CHOSEN = TaggingChoices(transforms=DISAMBIG)
 
 
 def _release(disambiguation: str | None = None) -> dict:
@@ -116,8 +117,8 @@ def test_only_the_disambiguation_is_accepted_never_a_parenthetical():
 def test_the_tagset_carries_the_spelling_the_transform_chose():
     """Through `tagsets_for`, which is what the album page's MusicBrainz column
     is built from — so the page shows what a tagging would really write."""
-    plain = tagger.tagsets_for(_release("expanded edition"), frozenset())
-    transformed = tagger.tagsets_for(_release("expanded edition"), DISAMBIG)
+    plain = tagger.tagsets_for(_release("expanded edition"), TaggingChoices())
+    transformed = tagger.tagsets_for(_release("expanded edition"), CHOSEN)
 
     assert {t.album for t in plain} == {"Test Album"}
     assert {t.album for t in transformed} == {"Test Album (expanded edition)"}
@@ -145,7 +146,7 @@ def test_a_tagging_writes_the_transformed_title_to_every_file(tmp_path):
     """
     album_dir = _album(tmp_path)
 
-    tagger.tag_album(album_dir, _release("expanded edition"), transforms=DISAMBIG)
+    tagger.tag_album(album_dir, _release("expanded edition"), tagging=CHOSEN)
 
     assert _album_tags(album_dir) == {"Test Album (expanded edition)"}
 
@@ -178,7 +179,7 @@ def test_turning_the_transform_on_is_a_settings_update(tmp_path):
     release = _release("expanded edition")
     tagger.tag_album(album_dir, release)  # the plain title, as before
 
-    plan = tagger.plan_album(album_dir, release, artwork=False, transforms=DISAMBIG)
+    plan = tagger.plan_album(album_dir, release, artwork=False, tagging=CHOSEN)
 
     assert gardener.verdict_for(plan) == owned.Significance.SETTINGS
 
@@ -190,7 +191,7 @@ def test_and_so_is_turning_it_off(tmp_path):
     warns before it happens."""
     album_dir = _album(tmp_path)
     release = _release("expanded edition")
-    tagger.tag_album(album_dir, release, transforms=DISAMBIG)
+    tagger.tag_album(album_dir, release, tagging=CHOSEN)
 
     plan = tagger.plan_album(album_dir, release, artwork=False)
 
@@ -208,7 +209,7 @@ def test_a_title_that_is_neither_accepted_spelling_keeps_its_own_significance(tm
     tagger.tag_album(album_dir, release)
     _overwrite(album_dir, owned.Owned.ALBUM, "Something Else")
 
-    plan = tagger.plan_album(album_dir, release, artwork=False, transforms=DISAMBIG)
+    plan = tagger.plan_album(album_dir, release, artwork=False, tagging=CHOSEN)
 
     assert gardener.verdict_for(plan) == owned.Significance.IDENTITY
 
@@ -220,7 +221,7 @@ def test_a_retitle_on_musicbrainz_is_not_lowered_by_the_setting(tmp_path):
     explain it away."""
     album_dir = _album(tmp_path)
     release = _release("expanded edition")
-    tagger.tag_album(album_dir, release, transforms=DISAMBIG)
+    tagger.tag_album(album_dir, release, tagging=CHOSEN)
     retitled = {**release, "title": "Renamed Album"}
 
     plan = tagger.plan_album(album_dir, retitled, artwork=False)
@@ -236,7 +237,7 @@ def test_a_settings_change_beside_an_enrichment_is_an_enrichment(tmp_path):
     tagger.tag_album(album_dir, release)
     _overwrite(album_dir, owned.Owned.DATE, "2021")
 
-    plan = tagger.plan_album(album_dir, release, artwork=False, transforms=DISAMBIG)
+    plan = tagger.plan_album(album_dir, release, artwork=False, tagging=CHOSEN)
 
     assert gardener.verdict_for(plan) == owned.Significance.ENRICHMENT
     assert gardener.follows_settings(plan)
@@ -247,22 +248,22 @@ def test_an_album_already_on_the_setting_has_nothing_to_take(tmp_path):
     true of every plan with an album title in it."""
     album_dir = _album(tmp_path)
     release = _release("expanded edition")
-    tagger.tag_album(album_dir, release, transforms=DISAMBIG)
+    tagger.tag_album(album_dir, release, tagging=CHOSEN)
     _overwrite(album_dir, owned.Owned.DATE, "2021")
 
-    plan = tagger.plan_album(album_dir, release, artwork=False, transforms=DISAMBIG)
+    plan = tagger.plan_album(album_dir, release, artwork=False, tagging=CHOSEN)
 
     assert gardener.verdict_for(plan) == owned.Significance.ENRICHMENT
     assert not gardener.follows_settings(plan)
 
 
-@pytest.mark.parametrize("enabled", [frozenset(), DISAMBIG])
+@pytest.mark.parametrize("enabled", [TaggingChoices(), CHOSEN])
 def test_a_release_with_no_disambiguation_is_untouched_either_way(tmp_path, enabled):
     """The transform is opt-in AND inert where the release says nothing, so the
     overwhelming majority of a library is unaffected by ticking the box."""
     album_dir = _album(tmp_path)
 
-    tagger.tag_album(album_dir, _release(), transforms=enabled)
+    tagger.tag_album(album_dir, _release(), tagging=enabled)
 
     assert _album_tags(album_dir) == {"Test Album"}
 
@@ -279,10 +280,10 @@ def test_tagging_twice_under_a_transform_is_a_no_op_the_second_time(tmp_path):
     """
     album_dir = _album(tmp_path)
     release = _release("expanded edition")
-    tagger.tag_album(album_dir, release, transforms=DISAMBIG)
+    tagger.tag_album(album_dir, release, tagging=CHOSEN)
     before = {f: f.stat().st_mtime_ns for f in sorted(album_dir.iterdir())}
 
-    tagger.tag_album(album_dir, release, transforms=DISAMBIG)
+    tagger.tag_album(album_dir, release, tagging=CHOSEN)
 
     assert {f: f.stat().st_mtime_ns for f in sorted(album_dir.iterdir())} == before
     assert _album_tags(album_dir) == {"Test Album (expanded edition)"}

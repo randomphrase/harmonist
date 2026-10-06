@@ -73,7 +73,7 @@ from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     LEGACY_RELEASE_ID,
 )
 from .models import Release, Track, norm_title
-from .transforms import TagTransform
+from .transforms import NO_CHOICES, TaggingChoices
 
 log = logging.getLogger(__name__)
 
@@ -123,7 +123,7 @@ def assignment_review(
     release: Release, tags: Sequence[formats.TrackTags]
 ) -> track_structure.Review:
     """The shared structural guard, using only the release and tags already read."""
-    targets = tagsets_for(release, frozenset())
+    targets = tagsets_for(release, TaggingChoices())
     video = set(mb_lookup.video_media_of(release))
     eligible = {i for i, t in enumerate(targets) if t.disc_num not in video}
     return track_structure.review(tags, targets, eligible, release["id"])
@@ -173,7 +173,7 @@ class Tagger(Protocol):
         picks: Mapping[str, cover_art.Front] | None = None,
         assignment: dict[Path, int] | None = None,
         folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
-        transforms: frozenset[TagTransform] = frozenset(),
+        tagging: TaggingChoices = NO_CHOICES,
     ) -> TaggingOutcome: ...
 
 
@@ -200,7 +200,7 @@ class PicardCompatibleTagger:
         picks: Mapping[str, cover_art.Front] | None = None,
         assignment: dict[Path, int] | None = None,
         folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
-        transforms: frozenset[TagTransform] = frozenset(),
+        tagging: TaggingChoices = NO_CHOICES,
     ) -> TaggingOutcome:
         return tag_and_artwork(
             album_dir,
@@ -218,7 +218,7 @@ class PicardCompatibleTagger:
             picks=picks,
             assignment=assignment,
             folder_cover=folder_cover,
-            transforms=transforms,
+            tagging=tagging,
         )
 
 
@@ -228,7 +228,7 @@ def tag_album(
     *,
     incomplete: bool = False,
     files: list[Path] | None = None,
-    transforms: frozenset[TagTransform] = frozenset(),
+    tagging: TaggingChoices = NO_CHOICES,
 ) -> int:
     """Write tags to every supported audio file in `album_dir`. TAGS ONLY.
 
@@ -262,9 +262,7 @@ def tag_album(
 
     Returns the number of files tagged.
     """
-    return _tag_files(
-        album_dir, release, incomplete=incomplete, files=files, transforms=transforms
-    )[0]
+    return _tag_files(album_dir, release, incomplete=incomplete, files=files, tagging=tagging)[0]
 
 
 def _tag_files(
@@ -274,7 +272,7 @@ def _tag_files(
     incomplete: bool = False,
     files: list[Path] | None = None,
     assignment: dict[Path, int] | None = None,
-    transforms: frozenset[TagTransform] = frozenset(),
+    tagging: TaggingChoices = NO_CHOICES,
 ) -> tuple[int, bool]:
     """`tag_album`, reporting both halves a composed tagging needs: how many
     files the release covers, and whether any file was actually WRITTEN.
@@ -327,7 +325,7 @@ def _tag_files(
     wrote_something = False
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
         tagset = _build_tagset(
-            release, medium, track_pos_in_medium, track, prep.media_total, transforms
+            release, medium, track_pos_in_medium, track, prep.media_total, tagging
         )
         before = formats.read_owned(file_path)
         # `cover=None` throughout: this writes tags, and leaves every file's
@@ -398,7 +396,7 @@ def plan_album(
     files: list[Path] | None = None,
     artwork: bool = True,
     assignment: dict[Path, int] | None = None,
-    transforms: frozenset[TagTransform] = frozenset(),
+    tagging: TaggingChoices = NO_CHOICES,
 ) -> AlbumPlan:
     """What `tag_album` would change here, computed without writing anything.
 
@@ -432,7 +430,7 @@ def plan_album(
     changes: dict[Path, dict[str, list[Any]]] = {}
     for file_path, (medium, track_pos_in_medium, track) in prep.pairs:
         tagset = _build_tagset(
-            release, medium, track_pos_in_medium, track, prep.media_total, transforms
+            release, medium, track_pos_in_medium, track, prep.media_total, tagging
         )
         if file_changes := _changes_for(
             tagset,
@@ -1768,7 +1766,7 @@ def tag_and_artwork(
     picks: Mapping[str, cover_art.Front] | None = None,
     assignment: dict[Path, int] | None = None,
     folder_cover: artwork.FolderCoverPolicy = artwork.FolderCoverPolicy.IF_MISSING,
-    transforms: frozenset[TagTransform] = frozenset(),
+    tagging: TaggingChoices = NO_CHOICES,
 ) -> TaggingOutcome:
     """Tag the album, then write the artwork its plan calls for (#481).
 
@@ -1820,7 +1818,7 @@ def tag_and_artwork(
         incomplete=incomplete,
         files=paths,
         assignment=assignment,
-        transforms=transforms,
+        tagging=tagging,
     )
 
     # EXCLUDED means there is no artwork half at all (#482) — not an empty
@@ -2101,7 +2099,7 @@ def _write_image_at(path: Path, data: bytes) -> None:
     os.replace(tmp, path)
 
 
-def tagsets_for(release: Release, transforms: frozenset[TagTransform]) -> list[TagSet]:
+def tagsets_for(release: Release, tagging: TaggingChoices) -> list[TagSet]:
     """Every track's TagSet for `release`, in track order — what tagging WOULD
     write, without writing it.
 
@@ -2117,7 +2115,7 @@ def tagsets_for(release: Release, transforms: frozenset[TagTransform]) -> list[T
     """
     media_total = len(release.get("medium-list", [])) or 1
     return [
-        _build_tagset(release, medium, pos, track, media_total, transforms)
+        _build_tagset(release, medium, pos, track, media_total, tagging)
         for medium, pos, track in _flatten_tracks(release)
     ]
 
@@ -2128,16 +2126,16 @@ def _build_tagset(
     track_pos: int,
     track: Track,
     media_total: int,
-    transforms: frozenset[TagTransform],
+    tagging: TaggingChoices,
 ) -> TagSet:
     """Translate one MB track within a release to a TagSet.
 
-    `transforms` is the user's enabled set (#544) and has NO DEFAULT on purpose,
-    for the reason `web/main.py`'s folder-cover seam has none: a call site that
-    forgot it would write MusicBrainz's spelling while the album page showed the
-    user's, and nothing in the suite would look wrong. Callers with no business
-    knowing the setting — `track_assignment`, which reads these tagsets for
-    track titles alone — pass `frozenset()` and say so.
+    `tagging` is the user's spelling settings (#544) and has NO DEFAULT on
+    purpose, for the reason `web/main.py`'s folder-cover seam has none: a call
+    site that forgot it would write MusicBrainz's spelling while the album page
+    showed the user's, and nothing in the suite would look wrong. Callers with
+    no business knowing the settings — `track_assignment`, which reads these
+    tagsets for track titles alone — pass `TaggingChoices()` and say so.
     """
     track_artist_credit = track.get("artist-credit") or release.get("artist-credit")
     labels, catalog_numbers = _label_info(release.get("label-info-list") or [])
@@ -2148,7 +2146,7 @@ def _build_tagset(
 
     return TagSet(
         mb_album_id=release["id"],
-        album=transforms_mod.album_title(release, transforms),
+        album=transforms_mod.album_title(release, tagging.transforms),
         album_artist=_artist_phrase(release.get("artist-credit")),
         title=_track_title(track),
         artist=_artist_phrase(track_artist_credit),

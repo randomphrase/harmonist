@@ -48,6 +48,7 @@ from harmonist.tagger import (
     LEGACY_RELEASE_ID,
     TagMismatchError,
 )
+from harmonist.transforms import TaggingChoices
 from test.helpers import keep_one
 
 
@@ -595,7 +596,7 @@ def test_a_collaboration_names_both_album_artists_on_every_track():
         {"artist": {"id": "art-r", "name": "rhubiqs", "sort-name": "rhubiqs"}, "name": "rhubiqs"},
     ]
 
-    tagsets = tagger.tagsets_for(release, frozenset())
+    tagsets = tagger.tagsets_for(release, TaggingChoices())
 
     assert [t.album_artists for t in tagsets] == [["zakè", "rhubiqs"], ["zakè", "rhubiqs"]]
     # The joined phrase is unchanged — the list is an addition, not a substitute.
@@ -633,7 +634,7 @@ def test_a_various_artists_release_carries_the_compilation_flag():
     Album-scoped, so the flag is on EVERY track however the tracks are credited
     — which is the whole point: a player groups by what the files agree on.
     """
-    tagsets = tagger.tagsets_for(_various_artists_release(), frozenset())
+    tagsets = tagger.tagsets_for(_various_artists_release(), TaggingChoices())
 
     assert [t.compilation for t in tagsets] == [True, True]
 
@@ -643,7 +644,7 @@ def test_an_ordinary_release_carries_no_compilation_flag():
     that stops being a compilation has it removed by the owned-set clear (#149)
     with no extra code — and `owned.as_flag` never produces a False that would
     read as a value and differ from MusicBrainz forever."""
-    assert [t.compilation for t in tagger.tagsets_for(_release_2_tracks(), frozenset())] == [
+    assert [t.compilation for t in tagger.tagsets_for(_release_2_tracks(), TaggingChoices())] == [
         None,
         None,
     ]
@@ -661,7 +662,7 @@ def test_every_label_and_catalogue_number_is_written(tmp_path):
         {"label": {"name": "Studio !K7"}, "catalog-number": "K7 999"},
     ]
 
-    tags = tagger.tagsets_for(release, frozenset())[0]
+    tags = tagger.tagsets_for(release, TaggingChoices())[0]
 
     assert tags.label == ["Kompakt", "Studio !K7"]
     assert tags.catalog_number == ["KOM 001", "K7 999"]
@@ -682,7 +683,7 @@ def test_a_catalogue_number_on_a_later_label_is_not_lost(tmp_path):
         {"label": {"name": "Kompakt"}, "catalog-number": "KOM 001"},
     ]
 
-    tags = tagger.tagsets_for(release, frozenset())[0]
+    tags = tagger.tagsets_for(release, TaggingChoices())[0]
 
     assert tags.catalog_number == ["KOM 001"]
     # Deduped, like Picard's — the same label named twice is one label.
@@ -700,7 +701,7 @@ def test_a_greatest_hits_release_by_one_artist_is_not_a_compilation():
     release = _release_2_tracks()
     release["release-group"]["secondary-type-list"] = ["Compilation"]
 
-    assert tagger.tagsets_for(release, frozenset())[0].compilation is None
+    assert tagger.tagsets_for(release, TaggingChoices())[0].compilation is None
 
 
 def test_a_band_merely_named_various_artists_is_not_flagged():
@@ -718,7 +719,7 @@ def test_a_band_merely_named_various_artists_is_not_flagged():
         },
     ]
 
-    assert tagger.tagsets_for(release, frozenset())[0].compilation is None
+    assert tagger.tagsets_for(release, TaggingChoices())[0].compilation is None
 
 
 def test_tag_album_track_artist_credit_overrides_release(album_with_tracks):
@@ -2161,7 +2162,7 @@ def test_a_credit_is_keyed_by_the_phrase_the_tagger_writes():
     """
     release = _featured_release()
     credits = tagger.artist_credits(release)
-    written = {t.artist for t in tagger.tagsets_for(release, frozenset())}
+    written = {t.artist for t in tagger.tagsets_for(release, TaggingChoices())}
 
     assert written <= set(credits), "every artist phrase tagging writes is a key"
     parts = credits["Rafael Anton Irisarri feat. Julia Kent"]
