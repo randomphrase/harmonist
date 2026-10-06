@@ -212,8 +212,9 @@
                Each transform brings the albums already on disk into line too
                (#685), whichever way it is set — so the intro says so, in the
                words the folder-cover control above uses for the same thing.
-               Turning one OFF takes data out of titles, which is why a saved-on
-               box carries a warning: rendered only when the transform is saved
+               Turning one OFF offers to take data out of titles, which is why a
+               saved-on box carries a warning — saying what will be OFFERED, since
+               saving the setting writes nothing: rendered only when the transform is saved
                on, and shown by the same `group-has-[:checked]` CSS only while the
                box is unticked, so it describes the save the user is about to
                make. Turning one on only adds, and warns of nothing. #}
@@ -230,7 +231,7 @@
                     ('album_disambiguation',
                      'Add the release disambiguation to the album title',
                      'Fever Dog', 'Fever Dog (Live at the Riot House)',
-                     'Turning this off removes the disambiguation from every album title that has one.')
+                     'Turning this off gives every album with the disambiguation in its title a pending update to remove it.')
                 ] %}
                 <div class="group">
                     <label class="flex items-center gap-2 cursor-pointer w-fit">

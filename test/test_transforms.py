@@ -186,7 +186,7 @@ def test_turning_the_transform_on_is_a_settings_update(tmp_path):
 def test_and_so_is_turning_it_off(tmp_path):
     """The other direction, symmetric on purpose: off is a choice like any other,
     so a library carrying Picard's disambiguated title converges on the plain one
-    — which removes the disambiguation from files, and is why the Settings page
+    — an update that would remove the disambiguation from files, and is why the Settings page
     warns before it happens."""
     album_dir = _album(tmp_path)
     release = _release("expanded edition")

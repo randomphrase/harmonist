@@ -274,8 +274,9 @@ rather than by hiding the change:
 
 - **Off is a choice like any other.** A tolerant "leave existing titles alone"
   option was considered and not taken: a user who turns disambiguations off wants
-  them off everywhere. Turning one off removes data from titles, so the Settings
-  page warns before it's saved.
+  them off everywhere. Turning one off offers updates that remove data from
+  titles, so the Settings page warns before it's saved that the updates will be
+  pending.
 - **It's a flood the user caused**, so it isn't news. An album with only a
   Settings change is never announced. The same goes for one an upgrade produces.
 - **Ignore doesn't apply.** Ignore waits for MusicBrainz to change, and nothing

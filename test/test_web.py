@@ -5908,16 +5908,20 @@ def _transform_warning(html: str) -> str | None:
     return " ".join(found.group(1).split()) if found else None
 
 
-def test_a_transform_that_is_on_warns_what_turning_it_off_removes(client):
+def test_a_transform_that_is_on_warns_what_turning_it_off_offers(client):
     """#685. Off is a setting like any other, so unticking a saved transform
     offers to take the disambiguation out of every album title that has one —
     data the user may have wanted. The page says so beside the box; CSS shows
-    it only while the box is unticked, which only a browser can see."""
+    it only while the box is unticked, which only a browser can see.
+
+    And says it accurately: saving the setting writes nothing, it gives those
+    albums an update. A warning that the save itself removes the titles would
+    scare someone off a setting that is free to try and free to take back."""
     client.app.state.cfg.tagging.transforms = [TagTransform.ALBUM_DISAMBIGUATION]
 
     warning = _transform_warning(client.get("/settings").text)
 
-    assert warning is not None and "removes" in warning
+    assert warning is not None and "a pending update to remove it" in warning
 
 
 def test_a_transform_that_is_off_has_nothing_to_warn_about(client):
