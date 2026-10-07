@@ -6096,8 +6096,11 @@ def _register_routes(app: FastAPI) -> None:
             # this album names, so re-tagging from it is impossible now and will
             # stay impossible. "Re-tag failed: HTTP Error 404" reads as something
             # to retry; this says what is actually true and names the way out
-            # (#194).
-            log.warning("retag: MusicBrainz no longer has release %s", sc.mb_release_id)
+            # (#194). The flash is the feed entry; `_LOG_ONLY` keeps the log
+            # line out of it (#466).
+            log.warning(
+                "retag: MusicBrainz no longer has release %s", sc.mb_release_id, extra=_LOG_ONLY
+            )
             return _flash_response(
                 "That release is gone from MusicBrainz",
                 "use Wrong MusicBrainz match to pick the current one",

@@ -8935,6 +8935,13 @@ def test_retag_reports_a_deleted_release_as_gone_not_as_a_failure(client, cfg, m
     assert "gone from MusicBrainz" in r.text
     assert "Re-tag failed" not in r.text
     assert "Wrong MusicBrainz match" in r.text
+    # One press, one entry (#466). The route logs the deleted MBID as well as
+    # flashing, and `_ActivityLogHandler` mirrors WARNING+ log records into the
+    # feed — so the log line arrived beside the flash, unattributed and in
+    # developer shorthand. The flash is the entry; the log line is for the log.
+    feed = [e for e in activity.recent(20) if "rel-gone" in e.message or "gone" in e.message]
+    assert len(feed) == 1, [e.message for e in feed]
+    assert feed[0].album_id, "the one that stays is attributed to the album"
 
 
 def test_retag_still_reports_a_real_failure_as_a_failure(client, cfg, monkeypatch):
