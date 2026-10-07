@@ -1,4 +1,4 @@
-"""Where an album's files came from, judged by their own tags (#632, #634).
+"""Where an album's files came from: the owner's choice, otherwise evidence.
 
 Only positive evidence counts. A store's own tags establish a download and
 AccurateRip's establish a CD rip; a UPC on its own establishes neither (CD
@@ -70,9 +70,12 @@ def _harmonist_download(album: Album) -> bool:
 
 
 def origin(album: Album) -> Origin:
-    """The one origin the evidence points to, or Unknown when it points to none
-    or to more than one — conflicting evidence proves nothing. Harmonist's own
-    Bandcamp download settles it outright."""
+    """The owner's choice, otherwise Harmonist's download record or tag evidence.
+
+    Without a choice or download record, conflicting or absent tag evidence
+    means Unknown."""
+    if album.sidecar is not None and album.sidecar.origin_override is not None:
+        return album.sidecar.origin_override
     if _harmonist_download(album):
         return Origin.BANDCAMP
     found = _evidence(album)
@@ -81,6 +84,10 @@ def origin(album: Album) -> Origin:
 
 def _why(album: Album, found: Origin) -> str:
     """What `found` rests on, for its tooltip."""
+    if album.origin_override_conflict:
+        return "Your origin choices differ between this album's folders."
+    if album.sidecar is not None and album.sidecar.origin_override is not None:
+        return "You selected this origin."
     if found is Origin.BANDCAMP and _harmonist_download(album):
         return "Harmonist downloaded it from Bandcamp."
     if found is Origin.UNKNOWN:
@@ -156,6 +163,10 @@ def info(album: Album) -> Info | None:
         )
     shown = tuple(r for r in rows if r is not None)
     found = origin(album)
-    if not shown and found is Origin.UNKNOWN:
+    if (
+        not shown
+        and found is Origin.UNKNOWN
+        and (album.sidecar is None or album.sidecar.origin_override is None)
+    ):
         return None
     return Info(found, _why(album, found), shown)

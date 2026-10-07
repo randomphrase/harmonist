@@ -69,21 +69,19 @@
                     <span class="cursor-help underline decoration-dotted underline-offset-2"
                           title="{{ info.why if info else 'None of its tags says where the files came from.' }}">{{ info.origin if info else 'Unknown' }}</span>
                     {% endif %}
-                    {% if origin_links_store and album.state == AlbumState.NEEDS_SYNC %}
+                    <button type="button" hx-get="/library/{{ album.id }}/origin"
+                            hx-target="#modal" hx-swap="innerHTML" hx-disabled-elt="this"
+                            title="Change origin" aria-label="Change origin"
+                            class="inline-flex items-center justify-center w-5 h-5 rounded-full text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/>
+                        </svg>
+                    </button>
+                    {% if sc and sc.store_url and album.state == AlbumState.NEEDS_SYNC %}
                     {% with on_album_page=true %}{% include 'partials/_purchased_elsewhere_button.html' %}{% endwith %}
                     {% endif %}
                 </dd>
-                {# A store relationship is not proof of a download's origin. #}
-                {% if sc and sc.store_url and not origin_links_store %}
-                <dt>Store</dt>
-                <dd>
-                    <a href="{{ sc.store_url }}" target="_blank" rel="noopener" title="{{ store_tip }}"
-                       class="font-semibold text-bc-teal-dark hover:underline">{{ store|title if store else 'Store' }} ↗</a>
-                    {% if album.state == AlbumState.NEEDS_SYNC %}
-                    {% with on_album_page=true %}{% include 'partials/_purchased_elsewhere_button.html' %}{% endwith %}
-                    {% endif %}
-                </dd>
-                {% endif %}
             </dl>
 
             {# A merge of the release this link names used to be stated here,

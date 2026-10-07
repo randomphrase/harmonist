@@ -110,7 +110,7 @@ def test_album_page_shows_the_origin_and_links_only_the_comments_url(client, cfg
 
 
 @pytest.mark.parametrize("ripped", [False, True])
-def test_origin_links_only_its_own_store_and_keeps_other_store_references(client, cfg, ripped):  # noqa: F811
+def test_origin_links_only_its_own_store(client, cfg, ripped):  # noqa: F811
     url = "https://artist.bandcamp.com/album/record"
     d = _make_album(cfg, "Origin", mbid=MBID)
     sidecar.write(d, Sidecar(mb_release_id=MBID, store_url=url, bandcamp_downloaded=not ripped))
@@ -122,8 +122,11 @@ def test_origin_links_only_its_own_store_and_keeps_other_store_references(client
     origin = identity.select_one("dd[data-field='origin']")
     assert origin.select_one("a, span").get_text(strip=True) == ("CD" if ripped else "Bandcamp ↗")
     link = identity.select_one(f'a[href="{url}"]')
-    assert link is not None
-    assert (link in origin.descendants) is not ripped
+    if ripped:
+        assert link is None
+    else:
+        assert link is not None
+        assert link in origin.descendants
     assert bool(page.select_one("#album-info")) is ripped
 
 

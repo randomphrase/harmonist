@@ -238,11 +238,20 @@ rests on are listed under **Additional tags**.
 Only those marks count. A barcode isn't enough, because CD rippers write one
 too, and neither is hi-res audio, which vinyl rips have as well. When there are
 no marks, or they disagree (a rip's and a store's, or two stores'), the origin
-is Unknown. An album Harmonist downloaded from Bandcamp itself is Bandcamp
-regardless.
+is Unknown. An album Harmonist downloaded from Bandcamp itself is detected as
+Bandcamp.
 
 The origin describes the files, not the purchase: a CD bought on Bandcamp and
 then ripped is a CD.
+
+An explicit Origin choice takes precedence when the tags tell the wrong story:
+for example, a CD rip may retain Amazon comments copied from an older download.
+The choice affects mismatch and contribution checks without changing those tags.
+It survives scans, retagging and rematching, and applies to every folder of the
+album. Re-download archives that choice with the old files; the replacement uses
+automatic detection. Choosing Unknown suppresses detection, while Automatic
+detection removes the choice. Files replaced outside Harmonist keep the choice
+until it is changed or removed.
 
 ## When the match might be wrong
 

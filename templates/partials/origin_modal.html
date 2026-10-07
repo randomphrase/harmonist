@@ -1,0 +1,25 @@
+<dialog aria-labelledby="origin-heading" class="bg-transparent p-0 m-auto max-w-sm w-full"
+        onclick="if (event.target === this) this.close()">
+    <div class="bg-white border border-line rounded-lg w-full p-6 shadow-2xl space-y-4">
+        <h2 id="origin-heading" class="text-xl font-bold text-ink">Change origin</h2>
+        <form hx-post="/library/{{ album.id }}/origin" hx-swap="none"
+              hx-disabled-elt="find button"
+              hx-on::after-request="if (event.detail.successful) { harmonistCloseModal(); window.location.reload(); }"
+              class="space-y-4">
+            <label for="origin-choice" class="block text-sm text-muted">Origin</label>
+            <select id="origin-choice" name="origin" autofocus
+                    class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink">
+                <option value="automatic" {% if not album.sidecar or album.sidecar.origin_override is none %}selected{% endif %}>Automatic detection</option>
+                {% for choice in origins %}
+                <option value="{{ choice.value }}" {% if album.sidecar and album.sidecar.origin_override == choice %}selected{% endif %}>{{ choice.value }}</option>
+                {% endfor %}
+            </select>
+            <div class="flex gap-2 justify-end pt-2 border-t border-line">
+                <button type="button" onclick="harmonistCloseModal()"
+                        class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Cancel</button>
+                <button type="submit"
+                        class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">Save</button>
+            </div>
+        </form>
+    </div>
+</dialog>

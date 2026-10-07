@@ -27,6 +27,12 @@ barcode a download was sold under. But it isn't proof of a download on its own:
 CD rippers write it too (#632). An album spread over several folders has an
 original barcode only if every folder agrees on it.
 
+The owner's explicit Origin choice supersedes this inference (#694), including
+Harmonist's download record: the audio may have been replaced while its old tags
+survived. Display and checks share the chosen origin. It supplies no missing
+barcode, disc ID or URL, and a Bandcamp link inherited by files now identified as
+another source is not evidence to contribute to MusicBrainz.
+
 ### CD rips
 
 A **CD rip whose ripper wrote a UPC** qualifies too (#633), for the match half

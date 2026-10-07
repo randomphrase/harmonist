@@ -447,6 +447,16 @@ def _combine(mbid: str, group: list[ScannedDir]) -> Album:
     )
     written = [e.album.files_written_at for e in group if e.album.files_written_at]
     album = build_album(primary.album.path, files, io, max(written) if written else None)
+    album.origin_override_conflict = (
+        len(
+            {
+                e.album.sidecar.origin_override
+                for e in group
+                if e.album.sidecar is not None and e.album.sidecar.origin_override is not None
+            }
+        )
+        > 1
+    )
     observations = [
         e.album.contribution_observation
         for e in group
@@ -481,7 +491,16 @@ def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str) -> Sidecar:
     this call total so the next field cannot repeat it.
     """
     present = [s for s in sidecars if s is not None]
+    choices = {s.origin_override for s in present if s.origin_override is not None}
     return Sidecar(
+        # A choice is about the whole album; conflicting choices settle nothing.
+        origin_override=(
+            next(iter(choices))
+            if len(choices) == 1
+            else provenance.Origin.UNKNOWN
+            if choices
+            else None
+        ),
         store_url=next((s.store_url for s in present if s.store_url), None),
         bandcamp=next((s.bandcamp for s in present if s.bandcamp), None),
         downloaded_at=min((s.downloaded_at for s in present if s.downloaded_at), default=None),

@@ -22,6 +22,7 @@ what to do. For the ideas behind the answers, see
   [no purchase found](#no-purchase-found) ·
   [better format or missing tracks](#i-want-a-better-format-or-tracks-the-artist-added-later)
 - **Library:** [Incomplete](#an-album-says-incomplete-but-i-have-every-track) ·
+  [wrong origin](#an-albums-origin-is-wrong) ·
   [release has more tracks](#applying-an-update-says-the-release-has-more-tracks-than-my-files) ·
   [unwanted update](#i-dont-want-an-update-harmonist-is-offering) ·
   [everything has an update](#almost-every-album-shows-update-available) ·
@@ -217,6 +218,17 @@ Re-download only appears for albums linked to a single Bandcamp purchase, and
 not while a sync is running.
 
 ## Library
+
+### An album's Origin is wrong
+
+Tags can outlive the audio they described. A CD rip may carry an Amazon purchase
+comment inherited when it replaced an MP3 in iTunes, for example.
+
+Use **Change origin** beside Origin on the album page, select the source of the
+current audio, and save. The original tags stay intact, and mismatch and
+contribution checks use your choice. Choose **Automatic detection** to remove
+the override. If folders grouped into one album have conflicting choices, a new
+choice applies to all of them.
 
 ### An album says Incomplete but I have every track
 

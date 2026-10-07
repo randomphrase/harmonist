@@ -93,8 +93,10 @@ and never compared with MusicBrainz, and a tag joins the set only when something
 reads it. What they decide is whether an album is a download, which
 [contributions](contributions.md#which-albums-qualify) depends on.
 
-Only positive evidence counts: a download needs a store's own mark, and a rip
-needs AccurateRip's verification. Neither, or both, is no answer.
+Automatic detection needs positive evidence: a store's own mark for a download,
+or AccurateRip's verification for a rip. Neither, or both, is no answer. Marks
+can survive copying metadata between files, so the owner's explicit choice can
+overrule them without erasing the evidence.
 
 | Tag | Proves | Why |
 |---|---|---|
@@ -121,12 +123,20 @@ All of that evidence comes to one conclusion: the album's **origin**, the single
 place it points to (Bandcamp, Qobuz, Amazon, Beatport or CD), or **Unknown** when
 it points to none or to more than one (#634). Two stores' marks are as
 inconclusive as a store's mark beside a rip's. Harmonist's own Bandcamp download
-settles it outright.
+settles automatic detection.
 
 The origin names the files, not the purchase. A CD bought from Bandcamp and then
-ripped is a CD, because nothing of the purchase travels with the rip. That's also
-why the values are plain names rather than "Qobuz download": it leaves room for
-an origin the user chooses, or adds, later.
+ripped is a CD. Inherited purchase comments cannot disprove the owner's knowledge
+of that rip: replacing an iTunes library entry's audio can retain the old
+download's metadata (#694).
+
+An explicit choice overrides both tags and Harmonist's download record, since
+files can be replaced outside Harmonist. It survives retagging, rematching and
+scanning; a new Re-download starts with the replacement's provenance. Unknown
+is a real choice, distinct from returning to detection. The choice is recorded
+in every folder of the album; conflicting choices on separately adopted parts
+derive Unknown until resolved. The tags stay visible, and a user choice is never
+described as verification of the audio.
 
 It's one conclusion with two readers. The album page shows it, and
 [contributions](contributions.md#which-albums-qualify) treats an album as a

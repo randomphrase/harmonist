@@ -5384,6 +5384,56 @@ def _register_routes(app: FastAPI) -> None:
             ),
         )
 
+    @app.get("/library/{album_id}/origin", response_class=HTMLResponse)
+    def edit_origin(request: Request, album_id: str) -> Response:
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
+        return _templates(request).TemplateResponse(
+            request,
+            "partials/origin_modal.html",
+            _ctx(request, album=album, origins=list(provenance.Origin)),
+        )
+
+    @app.post("/library/{album_id}/origin", response_class=HTMLResponse)
+    def set_origin(request: Request, album_id: str, origin: str = Form(...)) -> Response:
+        if origin != "automatic" and origin not in {o.value for o in provenance.Origin}:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown origin choice")
+        target = None if origin == "automatic" else provenance.Origin(origin)
+        album = _refreshed_from_disk(request, _find_album(request, album_id))
+        changed = False
+        # Each folder remains independently usable. Re-read its own sidecar,
+        # never write the merged view back over unrelated per-folder decisions.
+        for folder in album.folders:
+            current = sidecar_mod.read(folder)
+            if current is None:
+                if target is None:
+                    continue
+                current = Sidecar(
+                    mb_release_id=album.sidecar.mb_release_id if album.sidecar else None,
+                    added_at=datetime.now(UTC),
+                )
+            if current.origin_override == target:
+                continue
+            if not changed:
+                audit.record(
+                    "origin.set",
+                    album_id=album.id,
+                    origin=target.value if target is not None else "automatic",
+                    folders=[str(folder) for folder in album.folders],
+                )
+            sidecar_mod.write(folder, replace(current, origin_override=target))
+            changed = True
+        runner = request.app.state.scan_runner
+        if changed and runner.is_engaged():
+            runner.refresh_album(album.folders)
+        request.state.skip_rescan = True
+        return _flash_response(
+            "Origin changed" if changed else "No change",
+            "Automatic detection" if target is None else target.value,
+            album=album,
+            record_activity=changed,
+            tasks_changed=changed,
+        )
+
     @app.post("/library/{album_id}/release-accepted", response_class=HTMLResponse)
     def set_release_accepted(
         request: Request, album_id: str, mbid: str = Form(...), accept: bool = Form(False)

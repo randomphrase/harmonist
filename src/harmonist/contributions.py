@@ -323,11 +323,11 @@ def release_url(url: str | None) -> str | None:
 
 
 def downloaded(album: Album) -> bool:
-    """Positive evidence the files are a download, and none that they're a rip.
+    """The files' effective origin is a download store.
 
     Their origin is a store (#634's `provenance.origin`, the same conclusion
-    the album page shows): Harmonist's own Bandcamp download, or a store's mark
-    in the files that nothing contradicts. A UPC alone never qualifies (#632).
+    the album page shows): the owner's choice, otherwise Harmonist's own download
+    or an uncontradicted store mark. A UPC alone never qualifies (#632).
     """
     return provenance.origin(album) in provenance.STORES
 
@@ -364,17 +364,17 @@ def assess(album: Album) -> Assessment:
     if sc is None or not sc.mb_release_id or not _eligible(album):
         return Assessment()
     rip = not downloaded(album)
-    bandcamp = sc.bandcamp_downloaded or bool(album.bandcamp_comment_urls)
+    bandcamp = provenance.origin(album) is provenance.Origin.BANDCAMP
     # A purchase link says nothing about where a rip's files came from.
-    private = not rip and bool(sc.bandcamp and sc.bandcamp.is_private)
-    comments = {u for raw in album.bandcamp_comment_urls if (u := release_url(raw))}
+    private = bandcamp and bool(sc.bandcamp and sc.bandcamp.is_private)
+    comments = {u for raw in album.bandcamp_comment_urls if bandcamp and (u := release_url(raw))}
     # An actual download records its own store URL. Otherwise prefer precise
     # file evidence over an MB-derived URL that may describe a nearby edition.
-    url = release_url(sc.store_url) if sc.bandcamp_downloaded else None
+    url = release_url(sc.store_url) if bandcamp and sc.bandcamp_downloaded else None
     if url is None and not rip:
         if len(comments) == 1:
             url = next(iter(comments))
-        elif not comments and bandcamp:
+        elif not comments and bandcamp and (sc.bandcamp_downloaded or album.bandcamp_comment_urls):
             url = release_url(sc.store_url)
     observed = album.contribution_observation
     if observed is not None and observed.mbid != sc.mb_release_id:

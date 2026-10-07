@@ -6,6 +6,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- An album's Origin can be corrected manually, with the same choice used for mismatch and contribution checks (#694).
+
 ## [1.24.0] - 2026-10-06
 
 ### Added

@@ -315,6 +315,8 @@ class Sidecar:
     bandcamp: BandcampInfo | None = None
     downloaded_at: datetime | None = None
     bandcamp_downloaded: bool = False
+    # The owner's knowledge of these files; None resumes automatic detection.
+    origin_override: Origin | None = None
     added_at: datetime | None = None
     mb_release_id: str | None = None
     temp_uid: str | None = None
@@ -506,6 +508,8 @@ class Album:
     # carries AccurateRip's verification of a physical disc. Scan-derived.
     download_stores: frozenset[Origin] = frozenset()
     ripped: bool = False
+    # Derived when folders with different explicit choices form one album.
+    origin_override_conflict: bool = False
     # Each file's provenance tags, in file order: what the album page's
     # Additional info shows (#634), read in the scan's one open per file.
     file_provenance: tuple[tuple[Path, ProvenanceTags], ...] = ()

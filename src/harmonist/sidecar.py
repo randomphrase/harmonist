@@ -24,6 +24,7 @@ from .models import (
     Sidecar,
     TrackComparison,
 )
+from .provenance import Origin
 
 log = logging.getLogger(__name__)
 
@@ -270,6 +271,8 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
       * identity — MBID / Bandcamp item_id / store_url
       * `bandcamp_downloaded` — actual download provenance, which enables
         contribution checks independently of purchase linkage or file comments.
+      * `origin_override` — the owner's decision about where the audio came from,
+        shared by its display and contribution checks.
       * `video_media` — which media are video-only, so an album missing just
         those derives COMPLETE rather than INCOMPLETE. Reclassifies the album.
       * `tracks_unavailable` — accepting an incomplete album as finished. Takes
@@ -307,6 +310,7 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
             item_id=new_item,
             store_url=new.store_url,
             bandcamp_downloaded=new.bandcamp_downloaded,
+            origin_override=new.origin_override,
         )
         return
     old_item = old.bandcamp.item_id if old.bandcamp else None
@@ -321,6 +325,8 @@ def _audit_sidecar_change(album_dir: Path, old: Sidecar | None, new: Sidecar) ->
         changes["store_url"] = f"{old.store_url}->{new.store_url}"
     if old.bandcamp_downloaded != new.bandcamp_downloaded:
         changes["bandcamp_downloaded"] = f"{old.bandcamp_downloaded}->{new.bandcamp_downloaded}"
+    if old.origin_override != new.origin_override:
+        changes["origin_override"] = f"{old.origin_override}->{new.origin_override}"
     if old.purchase_unavailable != new.purchase_unavailable:
         changes["purchase_unavailable"] = f"{old.purchase_unavailable}->{new.purchase_unavailable}"
     if old.tracks_unavailable != new.tracks_unavailable:
@@ -400,6 +406,8 @@ def _to_dict(s: Sidecar) -> dict[str, Any]:
         d["downloaded_at"] = _iso(s.downloaded_at)
     if s.bandcamp_downloaded:
         d["bandcamp_downloaded"] = True
+    if s.origin_override is not None:
+        d["origin_override"] = s.origin_override.value
     if s.added_at:
         d["added_at"] = _iso(s.added_at)
     if s.mb_release_id:
@@ -607,8 +615,15 @@ def _from_dict(d: dict[str, Any], source_path: Path) -> Sidecar:
             f"set; these are mutually exclusive."
         )
 
+    raw_origin = d.get("origin_override")
+    if raw_origin is not None and (
+        not isinstance(raw_origin, str) or raw_origin not in {o.value for o in Origin}
+    ):
+        raise InvalidSidecarError(f"sidecar at {source_path} has invalid origin_override")
+
     return Sidecar(
         schema_version=sv,
+        origin_override=Origin(raw_origin) if raw_origin is not None else None,
         store_url=d.get("store_url"),
         bandcamp=bandcamp,
         downloaded_at=_parse_iso(d.get("downloaded_at")),

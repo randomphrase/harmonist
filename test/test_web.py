@@ -7575,8 +7575,8 @@ def test_album_page_loads_the_comparison_lazily(client, cfg, monkeypatch):
 
 def test_library_detail_shows_ambiguous_bandcamp_ids(client, cfg):
     """An ambiguously-linked album (COMPLETE, candidate ids but no single id)
-    shows the candidate item ids in the store badge tooltip."""
-    d = _make_album(cfg, "Ambi")
+    shows the candidate item ids in the Bandcamp origin tooltip."""
+    d = _make_album(cfg, "Ambi", comment="Visit https://x.bandcamp.com/album/ambi")
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [b"rel-ambi"]
     audio.save()
