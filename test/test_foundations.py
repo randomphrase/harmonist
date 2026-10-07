@@ -98,6 +98,63 @@ port = 8765
     assert cfg.server.port == 9999
 
 
+def test_every_download_format_arrives_as_files_harmonist_can_tag():
+    """The choices are the formats Harmonist can READ, not the ones Bandcamp
+    offers (#627). WAV and AIFF are Bandcamp's too, and an album downloaded as
+    either was recorded as downloaded and then never appeared anywhere.
+
+    The extensions are the ones Bandcamp's zips carry for each format, so this
+    fails if a format is added that the scanner would walk straight past."""
+    from typing import get_args
+
+    from harmonist import formats
+
+    bandcamp_extension = {
+        "flac": ".flac",
+        "alac": ".m4a",
+        "mp3-320": ".mp3",
+        "mp3-v0": ".mp3",
+        "aac-hi": ".m4a",
+        "vorbis": ".ogg",
+    }
+    offered = get_args(config_mod.DownloadFormat)
+    assert set(offered) == set(bandcamp_extension)
+    readable = formats.supported_extensions()
+    assert {f: bandcamp_extension[f] in readable for f in offered} == dict.fromkeys(offered, True)
+
+
+@pytest.mark.parametrize("fmt", ["wav", "aiff"])
+def test_an_untaggable_download_format_in_the_config_file_stops_startup(monkeypatch, tmp_path, fmt):
+    """The Settings page offered these until #627, so harmonist.toml may hold
+    one. Starting anyway would keep downloading albums that never appear, so it
+    stops, naming the formats that would work — as `gardener.level` does."""
+    from pydantic import ValidationError
+
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    (cfg_dir / "harmonist.toml").write_text(f'[bandcamp]\ndownload_format = "{fmt}"\n')
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
+    monkeypatch.delenv("HARMONIST_DOWNLOAD_FORMAT", raising=False)
+
+    with pytest.raises(ValidationError) as e:
+        config_mod.load()
+
+    assert "download_format" in str(e.value)
+    assert "'flac'" in str(e.value) and "'vorbis'" in str(e.value), "it names the choices"
+
+
+def test_an_untaggable_download_format_in_the_environment_stops_startup(monkeypatch, tmp_path):
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
+    monkeypatch.setenv("HARMONIST_DOWNLOAD_FORMAT", "wav")
+
+    with pytest.raises(ValidationError, match="download_format"):
+        config_mod.load()
+
+
 def _load_tagging(monkeypatch, tmp_path, toml: str = "") -> TaggingChoices:
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir(exist_ok=True)

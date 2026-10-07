@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Any, Literal, NamedTuple, Protocol
+from typing import Annotated, Any, Literal, NamedTuple, Protocol, get_args
 from urllib.parse import parse_qsl, quote, urlencode
 
 from fastapi import (
@@ -4820,6 +4820,7 @@ def _register_routes(app: FastAPI) -> None:
             artwork_usage=artwork_store.usage(),
             cache_usage=cover_art.cache_usage(cfg.artwork_cache_dir),
             default_user_agent=config_mod.MusicBrainzConfig().user_agent,
+            download_formats=get_args(config_mod.DownloadFormat),
             # Per-album preference when the backup store exceeds its cap.
             keep_per_album=cfg.artwork_store.keep_per_album,
             **_update_check_ctx(request),
@@ -4878,11 +4879,13 @@ def _register_routes(app: FastAPI) -> None:
         # Re-validate by constructing fresh sub-models (model_copy does NOT
         # validate). Bad values (e.g. an unknown gardener level) raise here.
         try:
-            new_bandcamp = config_mod.BandcampConfig(
-                download_format=download_format.strip(),
-                max_downloads_per_sync=max_downloads_per_sync,
-                ignores_file=cfg.bandcamp.ignores_file,
-                cookies_file=cfg.bandcamp.cookies_file,
+            new_bandcamp = config_mod.BandcampConfig.model_validate(
+                {
+                    "download_format": download_format.strip(),
+                    "max_downloads_per_sync": max_downloads_per_sync,
+                    "ignores_file": cfg.bandcamp.ignores_file,
+                    "cookies_file": cfg.bandcamp.cookies_file,
+                }
             )
             new_mb = config_mod.MusicBrainzConfig(user_agent=user_agent.strip())
             # model_validate (vs the constructor) keeps mypy happy about the

@@ -6001,6 +6001,35 @@ def test_the_settings_page_offers_picards_artist_name_choices(client):
     assert checkbox and " checked" in re.sub(r'"[^"]*"', '""', checkbox.group(0))
 
 
+def test_the_settings_page_offers_only_download_formats_harmonist_can_tag(client):
+    """The list is the config's own set of permitted formats (#627). It used to
+    be typed into the template from Bandcamp's menu, WAV and AIFF included."""
+    from typing import get_args
+
+    from harmonist import config as config_mod
+
+    client.app.state.cfg.bandcamp.download_format = "alac"
+
+    html = client.get("/settings").text
+
+    select = re.search(r'<select[^>]*name="download_format".*?</select>', html, re.DOTALL)
+    assert select
+    options = re.findall(r'<option value="([^"]*)"( selected)?', select.group(0))
+    assert [v for v, _ in options] == list(get_args(config_mod.DownloadFormat))
+    assert [v for v, sel in options if sel] == ["alac"]
+
+
+def test_settings_save_refuses_an_untaggable_download_format(client, cfg):
+    """A form saved from an old page, or a hand-made POST, still can't store
+    one: it is refused with the reason, and nothing is written."""
+    r = _post_settings(client, download_format="wav")
+
+    assert "Couldn't save" in r.text
+    assert client.app.state.cfg.bandcamp.download_format == "flac"
+    toml = cfg.paths.config_dir / "harmonist.toml"
+    assert not toml.exists() or "wav" not in toml.read_text()
+
+
 def test_settings_save_rejects_an_unknown_transform(client, cfg):
     """A hand-made POST naming a transform nobody wrote is a rejection, for the
     reason an unknown gardener level is: silently dropping it would save a page

@@ -6,6 +6,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- **WAV and AIFF are no longer offered as download formats**, since albums downloaded that way never appeared. If either is configured, Harmonist won't start until it's changed to a format it can tag (#627).
 - An album's Origin can be corrected manually, with the same choice used for mismatch and contribution checks (#694).
 - Re-tagging an album whose MusicBrainz release has been deleted adds one Activity entry, not two (#466).
 - **Re-download from Bandcamp** shows "Archiving…" while it zips and removes the album, not "Tagging…" (#259).

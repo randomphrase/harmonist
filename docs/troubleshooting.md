@@ -7,6 +7,7 @@ what to do. For the ideas behind the answers, see
 - **Running Harmonist:** [not writable](#startup-fails-with-not-writable-by-this-process) ·
   [Synology permissions](#synology-the-user-is-right-but-it-still-cant-write) ·
   [artwork cache migration](#startup-fails-with-artwork-cache-migration) ·
+  [download format](#startup-fails-with-bandcampdownload_format) ·
   [invalid host header](#the-browser-shows-invalid-host-header) ·
   [changes not showing](#changes-to-my-files-dont-show-up)
 - **Matching:** [stuck in the Inbox](#an-album-is-stuck-in-new-or-needs-mbid) ·
@@ -72,6 +73,17 @@ For a symlink or separate mount, move its cached images to `caa-cache` and
 remove the old cache link or mount point while Harmonist is stopped. Correct any
 permission error, then restart. Leave the backup files directly inside `artwork`
 in place: those are what makes artwork Undo possible.
+
+### Startup fails with "bandcamp.download_format"
+
+The configured download format isn't one Harmonist can tag. Bandcamp's `wav` and
+`aiff` downloads can't be read, so albums downloaded that way never appear in the
+Inbox or Library. Older versions offered both on the Settings page, so the
+value may have been saved there.
+
+Set `download_format` in the `[bandcamp]` section of `harmonist.toml` in the
+config folder, or `HARMONIST_DOWNLOAD_FORMAT`, to one of the formats the error
+lists, such as `flac`, and restart.
 
 ### The browser shows "Invalid host header"
 

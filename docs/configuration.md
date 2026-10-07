@@ -27,7 +27,8 @@ Needs a restart.
 | `ignores_file` | | `ignores.txt` in the config folder | Bandcamp purchases Harmonist won't download. |
 
 The first two are on the Settings page. Bandcamp's `wav` and `aiff` downloads can't be
-tagged, so Harmonist won't see them.
+tagged, so Harmonist doesn't offer them and won't start with either configured
+([troubleshooting](troubleshooting.md#startup-fails-with-bandcampdownload_format)).
 
 ## `[musicbrainz]`
 

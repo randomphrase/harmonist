@@ -19,6 +19,15 @@ log = logging.getLogger(__name__)
 TestMode = Literal["fixture", "cassette", "live"]
 GardenerLevel = Literal["off", "review"]
 
+#: Bandcamp's download formats that arrive as files Harmonist can read and tag
+#: (#627). Bandcamp also offers WAV and AIFF, and an album downloaded as either
+#: is recorded as downloaded and then never appears in the Inbox or the Library,
+#: because the scanner doesn't read them (`formats`). A Literal rather than a
+#: free string so a config file or environment naming one stops startup with
+#: these listed, as an unknown gardener level does. The Settings page offers
+#: exactly this list, in this order.
+DownloadFormat = Literal["flac", "alac", "mp3-320", "mp3-v0", "aac-hi", "vorbis"]
+
 
 class PathsConfig(BaseModel):
     config_dir: Path
@@ -28,7 +37,7 @@ class PathsConfig(BaseModel):
 class BandcampConfig(BaseModel):
     # FLAC by default: lossless, broadly compatible, and the safest choice
     # for an archive. Users can override (e.g. to alac) via config/env.
-    download_format: str = "flac"
+    download_format: DownloadFormat = "flac"
     max_downloads_per_sync: int = 5
     ignores_file: Path | None = None
     cookies_file: Path | None = None
@@ -318,7 +327,9 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     if v := env.get("HARMONIST_MUSIC_DIR"):
         paths["music_dir"] = v
     if v := env.get("HARMONIST_DOWNLOAD_FORMAT"):
-        bandcamp["download_format"] = v
+        # Unvalidated, for the reason the gardener level is (below): pydantic
+        # rejects a format Harmonist can't tag with the permitted ones listed.
+        bandcamp["download_format"] = v.strip()
     if v := env.get("HARMONIST_MAX_DOWNLOADS_PER_SYNC"):
         bandcamp["max_downloads_per_sync"] = int(v)
     if v := env.get("HARMONIST_HOST"):

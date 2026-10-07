@@ -150,9 +150,9 @@
                 <label class="block min-w-0">
                     <span class="block text-xs font-bold text-ink mb-1">Download format</span>
                     <select name="download_format" class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink focus:border-accent">
-                        {% set fmts = ['flac', 'alac', 'mp3-320', 'mp3-v0', 'aac-hi', 'vorbis', 'wav', 'aiff'] %}
-                        {% if cfg.bandcamp.download_format not in fmts %}<option selected>{{ cfg.bandcamp.download_format }}</option>{% endif %}
-                        {% for f in fmts %}<option value="{{ f }}" {{ 'selected' if f == cfg.bandcamp.download_format }}>{{ f }}</option>{% endfor %}
+                        {# The formats Harmonist can tag, from `config.DownloadFormat` (#627) —
+                           not Bandcamp's whole menu, which includes WAV and AIFF. #}
+                        {% for f in download_formats %}<option value="{{ f }}" {{ 'selected' if f == cfg.bandcamp.download_format }}>{{ f }}</option>{% endfor %}
                     </select>
                 </label>
                 <label class="block min-w-0">
