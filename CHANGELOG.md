@@ -8,6 +8,7 @@ versions follow [semantic versioning](https://semver.org).
 
 - An album's Origin can be corrected manually, with the same choice used for mismatch and contribution checks (#694).
 - Re-tagging an album whose MusicBrainz release has been deleted adds one Activity entry, not two (#466).
+- **Re-download from Bandcamp** shows "Archiving…" while it zips and removes the album, not "Tagging…" (#259).
 
 ## [1.24.0] - 2026-10-06
 

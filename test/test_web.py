@@ -8996,6 +8996,31 @@ def _ignores_with(cfg, *, user: Sequence[int] = (), auto: Sequence[int] = ()) ->
     return cfg.ignores_file
 
 
+def test_redownload_says_archiving_while_it_archives_not_tagging(client, cfg):
+    """#259: Re-download pointed its spinner at the card's shared "Tagging…"
+    overlay, so the moment the album is zipped and removed from disk was
+    described as a re-tag. Each control's indicator must say what it does."""
+    from bs4 import BeautifulSoup
+
+    d = _make_tagged_album(
+        cfg, "Upgrade Me", mbid="rel-rd-1", tagged_at=datetime.now(UTC), item_id=5150
+    )
+    aid = _id_for(cfg, d)
+    page = BeautifulSoup(client.get(f"/album/{aid}").text, "html.parser")
+
+    button = page.find("button", attrs={"hx-post": f"/library/{aid}/redownload"})
+    assert button is not None
+    indicator = button.get("hx-indicator")
+    assert isinstance(indicator, str)
+    overlay = page.select_one(indicator)
+    assert overlay is not None, indicator
+    assert " ".join(overlay.get_text().split()) == "Archiving…"
+    # The re-tag controls arrive later, from /compare, and point at the card's
+    # default overlay — which still says what they do.
+    tagging = page.select_one(f"#tagging-{aid}")
+    assert tagging is not None and " ".join(tagging.get_text().split()) == "Tagging…"
+
+
 def test_redownload_archives_the_album_and_takes_it_off_disk(client, cfg, quiet_sync):
     d = _make_tagged_album(
         cfg, "Upgrade Me", mbid="rel-rd-1", tagged_at=datetime.now(UTC), item_id=5150

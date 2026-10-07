@@ -16,6 +16,12 @@
     {# Covers the panel while a multi-second re-tag is in flight (the re-tag
        buttons point their hx-indicator here). #}
     {% include 'partials/_tagging_overlay.html' %}
+    {# Re-download's own: it zips the album and removes it from disk, and the
+       fetch happens on the next sync, so neither "Tagging…" nor anything about
+       downloading is true while it runs (#259). #}
+    {% if bc and bc.item_id %}
+    {% with overlay_id = 'archiving', label = 'Archiving…' %}{% include 'partials/_tagging_overlay.html' %}{% endwith %}
+    {% endif %}
 
     {# Title bar. "<Title> — <Artist>" IS the header — a separate "Album" heading
        said nothing the context didn't, and the artist on its own line below the
@@ -332,7 +338,7 @@
         {% set bc = album.sidecar.bandcamp if album.sidecar else None %}
         {% if bc and bc.item_id %}
         <button hx-post="/library/{{ album.id }}/redownload"
-                hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+                hx-swap="none" hx-disabled-elt="this" hx-indicator="#archiving-{{ album.id }}"
                 hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
                 hx-confirm="Re-download this album as {{ cfg.bandcamp.download_format|upper }}? The files you have now are zipped into the top of your music folder first, then removed, and the next sync fetches a fresh copy."
                 class="px-3 py-1.5 bg-surface hover:bg-line text-muted hover:text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition"
