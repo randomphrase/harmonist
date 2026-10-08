@@ -6,6 +6,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Qobuz albums can get a specific barcode suggestion when only one compatible release links to Qobuz (#704).
 - Bandcamp downloads stop and report a destination conflict instead of mixing files or silently skipping a different purchase with the same folder name (#703).
 - CD rips matched to digital releases can raise a possible mismatch even without an original UPC tag (#701).
 - **WAV and AIFF are no longer offered as download formats**, since albums downloaded that way never appeared. If either is configured, Harmonist won't start until it's changed to a format it can tag (#627).

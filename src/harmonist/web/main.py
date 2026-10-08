@@ -7865,12 +7865,15 @@ def _register_routes(app: FastAPI) -> None:
             return response
         try:
             results, total = mb_search.search_barcode(evidence)
-            if total == 1 and len(results) == 1:
-                release = mb_cache.fetch_release(results[0]["id"], max_age=mb_cache.FRESH)
-                if not mb_search.matches_barcode(release, evidence):
-                    raise mb_search.MBSearchError(
-                        "Release metadata changed since the barcode search"
-                    )
+            release = mb_search.barcode_suggestion(
+                evidence,
+                results,
+                total,
+                origin=provenance.origin(album),
+                track_count=album.track_count,
+                max_age=mb_cache.FRESH,
+            )
+            if release is not None:
                 ranking = match_releases(album.path, [release])
                 assert ranking is not None
                 current = sidecar_mod.read(album.path) or Sidecar(added_at=datetime.now(UTC))
@@ -7878,6 +7881,10 @@ def _register_routes(app: FastAPI) -> None:
                     raise mb_search.MBSearchError("Album was matched while the lookup ran")
                 if current.mb_match_candidate is not None:
                     return Response(status_code=status.HTTP_204_NO_CONTENT)  # #638
+                if len(results) > 1 and provenance.origin(
+                    replace(album, sidecar=current)
+                ) is not provenance.origin(album):
+                    raise mb_search.MBSearchError("Album origin changed while the lookup ran")
                 sidecar_mod.write(
                     album.path,
                     replace(

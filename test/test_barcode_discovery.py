@@ -10,6 +10,7 @@ from mutagen.mp4 import MP4
 
 from harmonist import mb_cache, mb_search, reconcile, scanner, sidecar
 from harmonist.models import FoundBy, MatchCandidate, Sidecar
+from harmonist.provenance import Origin
 from test import test_web
 
 cfg = test_web.cfg
@@ -68,6 +69,220 @@ def services(monkeypatch, releases):
     monkeypatch.setattr("musicbrainzngs.search_releases", search)
     monkeypatch.setattr("harmonist.mb_cache.fetch_release", fetch)
     return search, fetch
+
+
+def qobuz_album(root):
+    path, file = album(root)
+    tags = MP4(file)
+    tags["----:com.apple.iTunes:QBZ:TID"] = [b"3775344"]
+    tags.save()
+    return path, file
+
+
+def qobuz_release(mbid=OTHER):
+    result = release(mbid, "801061000332")
+    result["medium-list"][0]["format"] = "Digital Media"
+    result["medium-list"][0]["track-list"][0]["length"] = "207000"
+    result["url-relation-list"] = [
+        {
+            "type": "purchase for download",
+            "target": "https://www.qobuz.com/us-en/album/frequencies-lfo/0801061000332",
+        }
+    ]
+    return result
+
+
+def test_adoption_narrows_qobuz_barcode_but_preserves_duration_confidence(tmp_path, monkeypatch):
+    path, file = qobuz_album(tmp_path)
+    before = file.read_bytes()
+    search, fetch = services(monkeypatch, [release(), qobuz_release()])
+
+    result = reconcile.reconcile_album(path, fetch_urls=lambda _: [])
+
+    assert result.mb_match_candidate is not None
+    assert result.mb_match_candidate.mb_release_id == OTHER
+    assert result.mb_match_candidate.confidence == "approximate"
+    assert result.mb_match_candidate.found_by == FoundBy.BARCODE
+    assert result.mb_release_id is None
+    assert file.read_bytes() == before
+    assert search.call_count == 1 and fetch.call_count == 2
+    assert reconcile.reconcile_album(path, fetch_urls=lambda _: []) is None
+    assert search.call_count == 1 and fetch.call_count == 2
+
+
+@pytest.mark.parametrize("override", [None, Origin.QOBUZ, Origin.CD, Origin.UNKNOWN])
+def test_barcode_lookup_uses_effective_qobuz_origin(client, cfg, monkeypatch, override):
+    path, file = (
+        album(cfg.paths.music_dir) if override is Origin.QOBUZ else qobuz_album(cfg.paths.music_dir)
+    )
+    sidecar.write(path, Sidecar(origin_override=override))
+    aid = scanner.scan(cfg.paths.music_dir)[0].id
+    before = file.read_bytes()
+    search, fetch = services(monkeypatch, [release(), qobuz_release()])
+
+    response = client.post(f"/manual/{aid}/barcode")
+
+    assert response.status_code == 200
+    suggestion = sidecar.read(path).mb_match_candidate
+    if override in {None, Origin.QOBUZ}:
+        assert suggestion is not None and suggestion.mb_release_id == OTHER
+        assert suggestion.confidence == "approximate"
+        assert fetch.call_count == 2
+        assert all(c.kwargs["max_age"] == mb_cache.FRESH for c in fetch.call_args_list)
+        assert client.post(f"/manual/{aid}/barcode").status_code == 204
+        assert search.call_count == 1 and fetch.call_count == 2
+    else:
+        assert suggestion is None
+        assert MBID in response.text and OTHER in response.text
+        assert fetch.call_count == 0
+    assert sidecar.read(path).mb_release_id is None
+    assert file.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "both",
+        "neither",
+        "cd",
+        "extra_tracks",
+        "unknown_media",
+        "conflicting_origin",
+        "truncated",
+        "over_budget",
+        "lookalike_host",
+    ],
+)
+def test_qobuz_narrowing_leaves_uncertain_results_for_review(tmp_path, monkeypatch, case):
+    path, file = qobuz_album(tmp_path)
+    preferred = qobuz_release()
+    candidates = [release(), preferred]
+    if case == "both":
+        candidates[0] = qobuz_release(MBID)
+    elif case == "neither":
+        preferred["url-relation-list"] = []
+    elif case == "cd":
+        preferred["medium-list"][0]["format"] = "CD"
+    elif case == "extra_tracks":
+        preferred["medium-list"][0]["track-list"] *= 2
+        preferred["medium-list"][0]["track-count"] = "2"
+    elif case == "unknown_media":
+        del preferred["medium-list"][0]["format"]
+    elif case == "conflicting_origin":
+        tags = MP4(file)
+        tags["©cmt"] = ["Amazon.com Song ID: 123"]
+        tags.save()
+    elif case == "over_budget":
+        candidates.extend(release(f"other-{i}") for i in range(4))
+    elif case == "lookalike_host":
+        preferred["url-relation-list"][0]["target"] = "https://qobuz.com.example.org/album/123"
+    search, fetch = services(monkeypatch, candidates)
+    if case == "truncated":
+        search.return_value["release-count"] = 101
+
+    result = reconcile.reconcile_album(path, fetch_urls=lambda _: [])
+
+    assert result is not None and result.mb_match_candidate is None
+    assert result.mb_release_id is None
+    assert fetch.call_count == (
+        0 if case in {"conflicting_origin", "truncated", "over_budget"} else 2
+    )
+
+
+def test_qobuz_candidate_fetch_failure_does_not_hide_ambiguity(client, cfg, monkeypatch):
+    from harmonist.mb_lookup import MBError
+
+    path, _ = qobuz_album(cfg.paths.music_dir)
+    sidecar.write(path, Sidecar())
+    aid = scanner.scan(cfg.paths.music_dir)[0].id
+    _, fetch = services(monkeypatch, [qobuz_release(), release()])
+    fetch.side_effect = [qobuz_release(), MBError("offline")]
+    before = (path / ".harmonist.json").read_bytes()
+
+    response = client.post(f"/manual/{aid}/barcode")
+
+    assert "Barcode lookup failed" in response.text
+    assert "offline" in response.text
+    assert (path / ".harmonist.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("change", ["origin", "suggestion", "matched"])
+def test_qobuz_lookup_preserves_decisions_made_during_fetch(client, cfg, monkeypatch, change):
+    from dataclasses import replace
+
+    path, _ = qobuz_album(cfg.paths.music_dir)
+    original = Sidecar()
+    sidecar.write(path, original)
+    aid = scanner.scan(cfg.paths.music_dir)[0].id
+    _, fetch = services(monkeypatch, [release(), qobuz_release()])
+    current = {
+        "origin": replace(original, origin_override=Origin.CD),
+        "suggestion": replace(
+            original,
+            mb_match_candidate=MatchCandidate(
+                mb_release_id=MBID, confidence="approximate", file_count=1, track_count=1
+            ),
+        ),
+        "matched": replace(original, mb_release_id=MBID),
+    }[change]
+    fetched = fetch.side_effect
+
+    def meanwhile(mbid, **kwargs):
+        sidecar.write(path, current)
+        return fetched(mbid, **kwargs)
+
+    fetch.side_effect = meanwhile
+    response = client.post(f"/manual/{aid}/barcode")
+
+    assert sidecar.read(path).origin_override == current.origin_override
+    assert sidecar.read(path).mb_match_candidate == current.mb_match_candidate
+    assert sidecar.read(path).mb_release_id == current.mb_release_id
+    if change == "suggestion":
+        assert response.status_code == 204
+    else:
+        assert "Barcode lookup failed" in response.text
+
+
+def test_qobuz_suggestion_follows_a_merged_release_id(tmp_path, monkeypatch):
+    path, _ = qobuz_album(tmp_path)
+    _, fetch = services(monkeypatch, [release(), qobuz_release()])
+    fetch.side_effect = None
+    fetch.return_value = qobuz_release()
+
+    result = reconcile.reconcile_album(path, fetch_urls=lambda _: [])
+
+    assert result.mb_match_candidate.mb_release_id == OTHER
+    assert fetch.call_count == 2
+
+
+def test_qobuz_adoption_reuses_cached_candidate_payloads(tmp_path, monkeypatch):
+    from harmonist import activity_store, mb_lookup
+
+    activity_store.init_memory()
+    candidates = [release(), qobuz_release()]
+    search = Mock(return_value={"release-list": candidates, "release-count": 2})
+    fetch = Mock(side_effect=lambda mbid: next(r for r in candidates if r["id"] == mbid))
+    monkeypatch.setattr("musicbrainzngs.search_releases", search)
+    monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
+
+    for copy in ("first", "second"):
+        path, _ = qobuz_album(tmp_path / copy)
+        result = reconcile.reconcile_album(path, fetch_urls=lambda _: [])
+        assert result.mb_match_candidate.mb_release_id == OTHER
+
+    assert search.call_count == 2
+    assert fetch.call_count == 2  # Two releases, reused for the second copy.
+
+
+def test_qobuz_narrowing_revalidates_even_the_other_candidates_barcode(tmp_path, monkeypatch):
+    path, _ = qobuz_album(tmp_path)
+    _, fetch = services(monkeypatch, [qobuz_release(), release()])
+    fetch.side_effect = [qobuz_release(), release(barcode="0801061000639")]
+
+    with pytest.raises(mb_search.MBSearchError, match="changed"):
+        reconcile.reconcile_album(path, fetch_urls=lambda _: [])
+
+    assert sidecar.read(path) is None
 
 
 @pytest.mark.parametrize("suffix", ["flac", "m4a"])

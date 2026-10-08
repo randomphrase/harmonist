@@ -33,7 +33,16 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from . import album_files, barcodes, formats, match, mb_cache, mb_search, url_recovery
+from . import (
+    album_files,
+    barcodes,
+    formats,
+    match,
+    mb_search,
+    provenance,
+    scanner,
+    url_recovery,
+)
 from . import sidecar as sidecar_mod
 from .models import Album, FoundBy, Sidecar, is_bandcamp_url
 
@@ -121,9 +130,9 @@ def _reconcile_untagged(
         log.warning("URL recovery failed for %s: %s", album_dir, e)
         return None
     if not recovered:
-        evidence = barcodes.evidence(
-            [formats.read_scan_fields(f) for f in album_files.audio_files(album_dir)]
-        )
+        files = album_files.audio_files(album_dir)
+        fields = [formats.read_scan_fields(f) for f in files]
+        evidence = barcodes.evidence(fields)
         if evidence is None:
             return None
         results, total = mb_search.search_barcode(evidence)
@@ -131,10 +140,11 @@ def _reconcile_untagged(
         # ambiguous/empty. It is not a negative search cache: explicit lookup
         # always searches again. Existing sidecars bypass initial adoption.
         sc = Sidecar(added_at=now)
-        if total == 1 and len(results) == 1:
-            release = mb_cache.fetch_release(results[0]["id"])
-            if not mb_search.matches_barcode(release, evidence):
-                raise mb_search.MBSearchError("Release metadata changed since the barcode search")
+        album = scanner.build_album(album_dir, files, scanner.AlbumIO(None, fields, None))
+        release = mb_search.barcode_suggestion(
+            evidence, results, total, origin=provenance.origin(album), track_count=len(files)
+        )
+        if release is not None:
             sc = replace(
                 sc,
                 mb_match_candidate=replace(

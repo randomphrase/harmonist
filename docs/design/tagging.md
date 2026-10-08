@@ -138,10 +138,11 @@ in every folder of the album; conflicting choices on separately adopted parts
 derive Unknown until resolved. The tags stay visible, and a user choice is never
 described as verification of the audio.
 
-It's one conclusion with two readers. The album page shows it, and
+It's one conclusion shared by its readers. The album page shows it, and
 [contributions](contributions.md#which-albums-qualify) treats an album as a
-download exactly when its origin is a store. So the page can't name an origin
-the checks disagree with.
+download exactly when its origin is a store. Barcode discovery also uses it to
+[narrow Qobuz suggestions](matching.md#barcode-search). So the page can't name
+an origin the checks disagree with.
 
 ### Origin and additional tags
 

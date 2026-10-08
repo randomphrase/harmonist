@@ -10,14 +10,19 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import timedelta
 from typing import Any
 
 import musicbrainzngs
 
-from . import barcodes, mb_lookup
-from .models import Release
+from . import barcodes, mb_cache, mb_lookup
+from .models import Release, host_is
+from .provenance import Origin
 
 log = logging.getLogger(__name__)
+
+# Enrich only a handful of barcode hits; larger sets remain manual choices.
+MAX_BARCODE_CANDIDATES = 5
 
 
 class MBSearchError(Exception):
@@ -55,6 +60,57 @@ def search_barcode(evidence: barcodes.Evidence) -> tuple[list[dict[str, Any]], i
         if matches_barcode(release, evidence):
             results[release["id"]] = mb_lookup.release_summary(release)
     return list(results.values()), total if total > len(releases) else len(results)
+
+
+def barcode_suggestion(
+    evidence: barcodes.Evidence,
+    results: list[dict[str, Any]],
+    total: int,
+    *,
+    origin: Origin,
+    track_count: int,
+    max_age: timedelta | None = None,
+) -> Release | None:
+    """A unique barcode hit, or one compatible Qobuz-linked hit, for review.
+
+    Origin narrows only a complete result set. Missing relationships are not
+    proof against another edition, so this never authorizes automatic tagging.
+    Fetch every candidate before choosing: a failed fetch cannot vote against
+    it. Duration confidence remains the caller's ordinary match assessment.
+    """
+    if not results or total != len(results):
+        return None
+    narrow = len(results) > 1
+    if narrow and (origin is not Origin.QOBUZ or len(results) > MAX_BARCODE_CANDIDATES):
+        return None
+    candidates: dict[str, Release] = {}
+    for result in results:
+        release = mb_cache.fetch_release(result["id"], max_age=max_age)
+        if not matches_barcode(release, evidence):
+            raise MBSearchError("Release metadata changed since the barcode search")
+        # A pending merge can make two search hits resolve to the same release.
+        candidates[release["id"]] = release
+    if narrow:
+        candidates = {
+            mbid: release
+            for mbid, release in candidates.items()
+            if _qobuz_compatible(release, track_count)
+        }
+    return next(iter(candidates.values())) if len(candidates) == 1 else None
+
+
+def _qobuz_compatible(release: Release, track_count: int) -> bool:
+    media = release.get("medium-list") or []
+    return (
+        bool(media)
+        and all(medium.get("format") == "Digital Media" for medium in media)
+        and sum(len(medium.get("track-list") or []) for medium in media) == track_count
+        and any(
+            relation.get("type") in {"purchase for download", "streaming", "free streaming"}
+            and host_is(relation.get("target"), "qobuz.com")
+            for relation in release.get("url-relation-list") or []
+        )
+    )
 
 
 def search_releases(artist: str, title: str, limit: int = 10) -> list[dict[str, Any]]:

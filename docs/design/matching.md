@@ -33,20 +33,34 @@ it doesn't invent the URL it doesn't have.
 
 ### Barcode search
 
-A barcode search matches the barcode exactly and **filters on nothing else**. The
-artist and title in store metadata often differ from MusicBrainz's, and
+A barcode search retrieves every exact barcode match. Artist and title in
+store metadata often differ from MusicBrainz's, and
 filtering on them would hide the right release or, worse, hide the ambiguity
-that should stop an automatic choice. Format isn't a filter either: an exact,
-unique match may be a CD, and the comparison shows it.
+that should stop an automatic choice. Search results retain every format: an
+exact, unique match may be a CD, and the comparison shows it.
 
 Barcodes are compared in their zero-padded 14-digit form, since the same code
 has 8-, 12-, 13- and 14-digit spellings. The file's own spelling is kept for
 links to Harmony, which doesn't accept the padded form for Qobuz.
 
 A single result is **still only a suggestion**, even when every track length
-agrees, because barcodes are reused between releases. Several results are listed,
-never ranked into one. A search that hit its result limit can't prove anything is
-unique.
+agrees, because barcodes are reused between releases. A search that hit its result
+limit can't prove anything is unique.
+
+**Known Qobuz origin can narrow a small, complete set of barcode results.** If
+exactly one release links to Qobuz, has only digital media and has the same number
+of tracks as the files, it becomes a suggestion for review. The effective Origin
+includes the owner's explicit choice. This combines exact barcode evidence with
+positive source evidence; an absent Qobuz link is not proof that another edition
+was never sold there. Duration still decides confidence, and nothing is tagged
+automatically. Dismissing the suggestion leaves the ordinary search and manual
+assignment tools available.
+
+Without that unique compatible candidate, all barcode results remain choices.
+Unknown or conflicting origin cannot narrow them. Only sets of at most five
+results are enriched with release data, bounding the MusicBrainz cost; larger
+sets remain manual choices. Initial adoption may reuse cached releases, while an
+explicit lookup refreshes them.
 
 ## Match confidence
 

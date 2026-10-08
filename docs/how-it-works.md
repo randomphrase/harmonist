@@ -244,9 +244,15 @@ Bandcamp.
 The origin describes the files, not the purchase: a CD bought on Bandcamp and
 then ripped is a CD.
 
+For Qobuz albums with several barcode matches, a single release linked to Qobuz
+can become the suggested match when its digital format and track count agree
+with the files. It still needs confirmation, and any track-length differences
+remain visible in the comparison.
+
 An explicit Origin choice takes precedence when the tags tell the wrong story:
 for example, a CD rip may retain Amazon comments copied from an older download.
-The choice affects mismatch and contribution checks without changing those tags.
+The choice affects mismatch checks, contribution checks and Qobuz barcode
+suggestions without changing those tags.
 It survives scans, retagging and rematching, and applies to every folder of the
 album. Re-download archives that choice with the old files; the replacement uses
 automatic detection. Choosing Unknown suppresses detection, while Automatic
