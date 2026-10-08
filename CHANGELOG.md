@@ -6,6 +6,12 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Bandcamp download whose page is linked from both a digital and a physical
+  release is tagged as the digital one**, instead of waiting for you to choose
+  (#715).
+
 ## [1.25.0] - 2026-10-08
 
 ### Added

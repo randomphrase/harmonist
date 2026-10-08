@@ -80,7 +80,7 @@ from harmonist import tagger as tagger_mod
 from harmonist.activity_store import Level
 from harmonist.bandcamp_hook import HarmonistSyncer, album_slug
 from harmonist.formats import owned
-from harmonist.match import match_releases
+from harmonist.match import Ranking, match_releases
 from harmonist.models import (
     Album,
     AlbumState,
@@ -3926,6 +3926,7 @@ def _apply_best_match(
     *,
     found_by: FoundBy,
     review_only: bool = False,
+    download: bool = False,
 ) -> tuple[str, str]:
     """Fetch every candidate MB release, pick the best fit, then tag or stash.
 
@@ -3934,6 +3935,9 @@ def _apply_best_match(
 
     `found_by` is how `mbids` were found, which a stashed suggestion carries to
     its confirm (#639). Required, so no caller can forget to say.
+
+    `download` says the files are known to be a download, which lets media
+    settle a tie between editions (`_settle_by_media`).
 
     Returns (status, message) where status is
     'tagged' | 'needs_confirmation' | 'ambiguous' | 'no_match'.
@@ -3944,6 +3948,8 @@ def _apply_best_match(
     ranking = match_releases(album_path, releases)
     if ranking is None:
         return "no_match", "No MusicBrainz release linked."
+    if download and not ranking.unique:
+        ranking = _settle_by_media(ranking, releases)
     candidate = ranking.best
 
     if not ranking.unique:
@@ -3982,6 +3988,29 @@ def _apply_best_match(
         "needs_confirmation",
         f"Match found ({candidate.confidence}) — please review and confirm.",
     )
+
+
+def _settle_by_media(ranking: Ranking, releases: list[Release]) -> Ranking:
+    """Break a tie between editions by their media, for files that are a
+    download (#715).
+
+    One store page is often linked from every edition sold on it, digital and
+    vinyl or CD alike, and their tracklists and lengths agree, so the ranking
+    can't separate them. Their media can: a download is only ever a digital
+    release (`contributions.media_fit`, the rule the edition check uses). Only
+    the tied editions are weighed, so this never beats a better fit. The ones
+    that aren't digital are dropped, so a single digital edition becomes the
+    unique best, and several stay tied. Nothing is dropped when none is digital,
+    or when one has a medium MusicBrainz hasn't specified, which could be
+    digital too.
+    """
+    by_id = {release["id"]: release for release in releases}
+    tied = ranking.equal_best
+    fits = [contributions.media_fit(by_id[c.mb_release_id], rip=False) for c in tied]
+    if None in fits or True not in fits:
+        return ranking
+    ruled_out = {c.mb_release_id for c, fit in zip(tied, fits, strict=True) if not fit}
+    return Ranking(tuple(c for c in ranking.candidates if c.mb_release_id not in ruled_out))
 
 
 def _claim_pending_by_store_url(store_url: str | None) -> None:
@@ -4465,7 +4494,12 @@ def _resolve_by_store_url(album_path: Path, cfg: config_mod.Config, tagger: Tagg
             )
             return "no_match"
         status_str, msg = _apply_best_match(
-            album_path, mbids, cfg, tagger, found_by=FoundBy.STORE_URL
+            album_path,
+            mbids,
+            cfg,
+            tagger,
+            found_by=FoundBy.STORE_URL,
+            download=sc.bandcamp_downloaded,
         )
         album_id = sidecar_mod.album_id_for(album_path)
         if status_str == "tagged":

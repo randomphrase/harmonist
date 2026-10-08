@@ -4870,6 +4870,71 @@ def test_a_download_matching_two_editions_equally_is_not_tagged_as_either(cfg, m
     assert tagged_as == [None, None]
 
 
+def _release_on(mbid: str, media_format: str | None) -> dict:
+    release = _release_for_match(mbid, n_tracks=1)
+    if media_format is not None:
+        release["medium-list"][0]["format"] = media_format
+    return release
+
+
+def test_a_download_matching_two_editions_equally_is_tagged_as_the_digital_one(cfg, monkeypatch):
+    """#715. One Bandcamp page is linked from every edition sold on it, so the
+    digital release and the vinyl tie on tracklist and lengths. A download can
+    only be the digital one, so that settles it, whichever order they arrive in."""
+    from harmonist.tagger import PicardCompatibleTagger
+    from harmonist.web.main import _resolve_by_store_url
+
+    formats = {"rel-digital": "Digital Media", "rel-vinyl": '12" Vinyl'}
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_on(mbid, formats[mbid])
+    )
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+
+    for order in (["rel-digital", "rel-vinyl"], ["rel-vinyl", "rel-digital"]):
+        d = _make_album(cfg, f"Editions {order[0]}")
+        sc.write(
+            d, Sidecar(store_url="https://x.bandcamp.com/album/editions", bandcamp_downloaded=True)
+        )
+        monkeypatch.setattr("harmonist.mb_lookup.lookup_by_bandcamp_url", lambda _u, o=order: o)
+
+        assert _resolve_by_store_url(d, cfg, PicardCompatibleTagger()) == "tagged"
+        assert sc.read(d).mb_release_id == "rel-digital"
+        assert MP4(d / "01 Track.m4a").get(ATOM_MB_ALBUM_ID) == [b"rel-digital"]
+
+
+@pytest.mark.parametrize(
+    ("formats", "downloaded"),
+    [
+        # Two digital editions: media can't choose between them.
+        ({"rel-a": "Digital Media", "rel-b": "Digital Media", "rel-c": "CD"}, True),
+        # Nor when neither is digital.
+        ({"rel-a": "CD", "rel-b": '12" Vinyl'}, True),
+        # A medium MusicBrainz hasn't specified could be digital too.
+        ({"rel-a": "Digital Media", "rel-b": None}, True),
+        # Files Harmonist didn't download aren't known to be a download.
+        ({"rel-a": "Digital Media", "rel-b": "CD"}, False),
+    ],
+)
+def test_media_leaves_a_tie_it_cannot_settle(cfg, monkeypatch, formats, downloaded):
+    """#715's tie-break only acts on a single digital edition among the tied
+    ones, for files known to be a download. Anything less stays #426's question."""
+    from harmonist.tagger import PicardCompatibleTagger
+    from harmonist.web.main import _resolve_by_store_url
+
+    monkeypatch.setattr(
+        "harmonist.mb_lookup.fetch_release", lambda mbid: _release_on(mbid, formats[mbid])
+    )
+    monkeypatch.setattr("harmonist.mb_lookup.lookup_by_bandcamp_url", lambda _u: list(formats))
+    d = _make_album(cfg, "Undecided")
+    sc.write(
+        d,
+        Sidecar(store_url="https://x.bandcamp.com/album/editions", bandcamp_downloaded=downloaded),
+    )
+
+    assert _resolve_by_store_url(d, cfg, PicardCompatibleTagger()) == "ambiguous"
+    assert sc.read(d).mb_release_id is None
+
+
 def test_reconcile_with_nothing_to_do_is_silent_in_the_feed(cfg, caplog):
     """#101: reconcile runs on startup and after every sync, and used to report a
     no-op with three entries — making "nothing happened" the feed's most frequent

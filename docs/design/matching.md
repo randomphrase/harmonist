@@ -84,6 +84,15 @@ same, and choosing between them would be taking whichever MusicBrainz listed
 first. Harmonist tags nothing and suggests nothing, since a suggestion would be
 the same coin toss, and lists the releases for the user to choose.
 
+**Media can break that tie for a download.** One Bandcamp page is often linked
+from every edition sold there, digital and physical alike, and only a digital
+release can be what a download is. When the files are a Harmonist download and
+exactly one of the tied releases is digital, it's the match. A release whose
+media MusicBrainz hasn't specified could be digital too, so it leaves the tie
+standing. The kind of store link (download or mail-order) would say the same
+thing, but it's easier to mis-enter on MusicBrainz than a release's format, so
+it isn't used.
+
 Only a first, exact, unique match is tagged unasked. Everything else, including
 every search the user runs, produces a suggestion to review.
 
