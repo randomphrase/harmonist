@@ -125,6 +125,26 @@ A known limitation: surrender can't tell a release the user chose by hand from
 one Harmonist derived, so a hand-matched album whose purchase can't be found also
 comes back to the Inbox, costing one click.
 
+## Download destinations
+
+Bandcamp's artist and album names choose the download folder, but names do not
+establish ownership. Two purchases can have identical names, and filename
+cleanup can make different names collide. The downloader's duplicate-name
+suffixes only see the purchases fetched together, so they cannot protect an
+older copy during an incremental sync.
+
+A download therefore needs an absent or empty destination. An occupied folder
+is already downloaded only when its sidecar or Bandcamp marker identifies the
+exact purchase and the records do not disagree. Otherwise the purchase stays
+pending, with the conflict reported, rather than mixing files or treating a
+different purchase as complete. Unreadable ownership evidence blocks the
+download too. Explicit Download approval does not override this boundary.
+
+Existing folders are not renamed and alternative destinations are not invented:
+the owner can move an older copy intact or link the purchase to the right copy.
+Keeping the blocked purchase ahead of the collection checkpoint makes that
+decision recoverable on a later sync, including after a restart.
+
 ## Re-download
 
 Re-download fetches a purchase again, for a better format or for tracks the

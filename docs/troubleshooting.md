@@ -19,6 +19,7 @@ what to do. For the ideas behind the answers, see
 - **Bandcamp:** [sync fails](#sync-failed) ·
   [first sync downloaded nothing](#my-first-sync-didnt-download-anything) ·
   [purchase never arrived](#a-purchase-never-downloaded) ·
+  [download blocked](#a-download-is-blocked-by-a-destination-conflict) ·
   [not bought on Bandcamp](#an-album-in-needs-linking-wasnt-bought-on-bandcamp) ·
   [no purchase found](#no-purchase-found) ·
   [better format or missing tracks](#i-want-a-better-format-or-tracks-the-artist-added-later)
@@ -207,6 +208,23 @@ Check, in order:
    considers downloaded, one per line: an ID, then `#` and the album's name.
    Delete **that one line** and sync again. Don't empty the file, or Harmonist
    will download your whole collection again.
+
+### A download is blocked by a destination conflict
+
+The folder named in Activity already contains files, and Harmonist cannot
+confirm that they belong to the purchase it was about to download. Two Bandcamp
+purchases can produce the same folder name, even when their page URLs differ.
+An unreadable sidecar or Bandcamp marker also blocks the download.
+
+Inspect the named folder. If it is a different album or edition, move the whole
+folder to a distinct name, keeping its sidecar and any Bandcamp marker inside.
+Then choose **Download** for the waiting purchase in the Inbox. If the existing
+files are the purchase you wanted, use **Match to an existing album** instead.
+For a read error, correct the reported filesystem problem before retrying.
+
+Do not remove the ownership marker to force a download: an unmarked folder
+containing files is also protected. Harmonist leaves the files untouched and
+keeps the purchase available for a later sync.
 
 ### An album in Needs Linking wasn't bought on Bandcamp
 

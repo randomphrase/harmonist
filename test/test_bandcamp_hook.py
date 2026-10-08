@@ -54,6 +54,7 @@ class _StubItem:
         # Some attributes are accessed directly (parent code)
         self.item_id = data.get("item_id", 1)
         self.is_preorder = data.get("is_preorder", False)
+        self.hidden = data.get("hidden", False)  # BandcampItem has a property with this default.
         self.band_name = data.get("band_name", "Test Artist")
         self.item_title = data.get("item_title", "Test Album")
 

@@ -22,6 +22,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import bandcampsync.sync as _bcsync
+from bandcampsync.media import LocalMedia
 from bandcampsync.options import BandcampSyncOptions
 from bandcampsync.sync import Syncer as _BCSyncer
 
@@ -489,9 +490,8 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # The download limit is enforced per item in sync_item (download up to
         # the cap, defer the rest to the next sync) rather than aborting here.
         await super().sync_items()
-        # Swap this run's potential downloads into the in-memory store atomically
-        # (a full/non-link sync accumulates none → replaces with an empty set,
-        # which is correct: steady state has no pending downloads).
+        # Swap this run's potential downloads into the in-memory store atomically.
+        # Full syncs can also leave purchases pending when a destination is blocked.
         pending_downloads.replace_all(self._pending_this_run)
 
     def _backfill_ignored_purchases(
@@ -995,30 +995,43 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             )
             return False
 
+        # Check before even the cap's upstream is_locally_downloaded call: it
+        # treats a DIFFERENT purchase's marker as already downloaded (#703).
+        # Neither an explicit Download nor an upstream duplicate-name suffix
+        # authorises writing into an occupied destination.
+        local_path = self.local_media.get_path_for_purchase(item)
+        if (
+            not self.ignores.is_ignored(item)
+            and not _is_preorder(item)
+            and not getattr(item, "hidden", False)
+            and item_id_int not in self.local_media.media
+            and not self._can_download_to(item, local_path, encoding)
+        ):
+            return False
+
         # Per-sync download limit: once we've downloaded the cap this run, defer
         # the rest to the next sync (don't mark them ignored, so they retry).
         # Only a genuinely-new item counts as "deferred" — ignored / preorder /
         # hidden / already-local items wouldn't download anyway, so let super()
         # skip them normally and don't inflate the "remaining" tally. An explicitly
         # approved (user clicked Download) item bypasses the cap.
-        if not approved and self.new_items >= self._max_downloads_per_sync:
-            local_path = self.local_media.get_path_for_purchase(item)
-            if (
-                not self.ignores.is_ignored(item)
-                and not _is_preorder(item)
-                and not getattr(item, "hidden", False)
-                and not self.local_media.is_locally_downloaded(item, local_path)
-            ):
-                self.skipped_for_limit += 1
-                # Deferred, not declined — the checkpoint must stay behind it or
-                # "run Sync again" can never reach it (#351).
-                self._unfinished.add(item_id_int)
-                return False
+        if (
+            not approved
+            and self.new_items >= self._max_downloads_per_sync
+            and not self.ignores.is_ignored(item)
+            and not _is_preorder(item)
+            and not getattr(item, "hidden", False)
+            and not self.local_media.is_locally_downloaded(item, local_path)
+        ):
+            self.skipped_for_limit += 1
+            # Deferred, not declined — the checkpoint must stay behind it or
+            # "run Sync again" can never reach it (#351).
+            self._unfinished.add(item_id_int)
+            return False
 
         # Detect a case-collision BEFORE the download creates the folder (after,
         # the dir exists and the check can't see it). Only logged if we actually
         # download — see below.
-        local_path = self.local_media.get_path_for_purchase(item)
         collided = _case_collision(local_path.parent)
         result = bool(super().sync_item(item, encoding))
         if not result:
@@ -1057,6 +1070,71 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
             else:
                 self._run_post_download(local_path)
         return result
+
+    def _can_download_to(self, item: Any, destination: Path, encoding: str | None) -> bool:
+        """Allow only an absent or empty destination; skip an exact owned copy.
+
+        Everything else is deferred visibly, before bandcampsync can mistake a
+        different purchase for a local copy or overwrite unmarked files. Check
+        both ownership records: disagreement or an unreadable record cannot
+        establish identity. This reads only the destination, never the library.
+        """
+        item_id = _item_id(item)
+        failure: Exception | None = None
+        reason = "the folder contains files with no confirmed Bandcamp purchase"
+        try:
+            try:
+                destination.lstat()
+            except FileNotFoundError:
+                return True
+            entries = set(destination.iterdir())
+            if not entries:
+                return True
+            owned_ids: set[int] = set()
+            marker = destination / LocalMedia.ITEM_INDEX_FILENAME
+            if marker in entries:
+                owned_ids.add(int(marker.read_text(encoding="utf-8").strip()))
+            existing = sidecar_mod.read(destination)
+            if existing and existing.bandcamp and existing.bandcamp.item_id is not None:
+                owned_ids.add(existing.bandcamp.item_id)
+            if owned_ids == {item_id}:
+                return False  # Already owned; do not rewrite files or the sidecar.
+            if owned_ids:
+                reason = "the folder identifies another Bandcamp purchase: " + ", ".join(
+                    str(i) for i in sorted(owned_ids)
+                )
+        except (
+            OSError,
+            ValueError,
+            sidecar_mod.InvalidSidecarError,
+            sidecar_mod.UnsupportedSchemaVersionError,
+        ) as e:
+            failure = e
+            reason = f"the destination could not be checked: {e}"
+
+        # ERROR is mirrored into Activity. Keep the purchase above the collection
+        # checkpoint and in the Inbox; a later approval still runs this guard.
+        log.error(
+            "Download blocked for %s — %s (purchase %s) at %s: %s. "
+            "Resolve the destination conflict, then retry Download from the Inbox.",
+            item.band_name,
+            item.item_title,
+            item_id,
+            destination,
+            reason,
+            exc_info=failure,
+        )
+        self._unfinished.add(item_id)
+        self._pending_this_run.append(
+            PendingPurchase(
+                item_id=item_id,
+                band=str(item.band_name),
+                title=str(item.item_title),
+                url=construct_bandcamp_url(item) or "",
+                fmt=encoding or str(self.media_format),
+            )
+        )
+        return False
 
     def _note_preorder_deferral(self, item: Any, local_path: Path) -> None:
         """Record a purchase the parent skipped because it is an unreleased

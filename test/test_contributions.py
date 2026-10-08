@@ -131,8 +131,6 @@ def test_only_successful_download_records_provenance(tmp_path, monkeypatch):
     item = _StubItem(item_id=123, item_url=URL)
     d = tmp_path / "album"
     d.mkdir()
-    write_sidecar_for_item(item, d)
-    assert not sidecar.read(d).bandcamp_downloaded
     syncer = _bare_syncer()
     syncer.ignores.is_ignored.return_value = False
     syncer.local_media.get_path_for_purchase.return_value = d
@@ -140,7 +138,16 @@ def test_only_successful_download_records_provenance(tmp_path, monkeypatch):
     from harmonist import library_index
 
     library_index.clear()
-    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_item", lambda *args: True)
+
+    def download(*args):
+        # Reconciliation can create a sidecar while downloaded files arrive.
+        # It must appear AFTER the destination check; an already-owned folder
+        # before the download is now correctly skipped (#703).
+        write_sidecar_for_item(item, d)
+        assert not sidecar.read(d).bandcamp_downloaded
+        return True
+
+    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_item", download)
     syncer.sync_item(item, "flac")
     assert sidecar.read(d).bandcamp_downloaded
     write_sidecar_for_item(item, d)
