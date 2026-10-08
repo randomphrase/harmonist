@@ -61,9 +61,6 @@ KEY_MEDIA = "MEDIA"
 #: Picard's `discsubtitle` — the medium's own name (#218).
 KEY_DISC_SUBTITLE = "DISCSUBTITLE"
 KEY_COMMENT = "COMMENT"
-# Read-only: Harmonist doesn't write a genre (that's #12), but files tagged
-# elsewhere carry one and the album comparison should show it.
-KEY_GENRE = "GENRE"
 KEY_DESCRIPTION = "DESCRIPTION"
 
 # The Vorbis keys behind each owned field (#149). COMMENT / DESCRIPTION are
@@ -340,7 +337,6 @@ class VorbisTagger:
             catalog_number=every(KEY_CATALOG),
             barcode=first(KEY_BARCODE),
             media=first(KEY_MEDIA),
-            genre=first(KEY_GENRE),
             title=first(KEY_TITLE),
             artist=first(KEY_ARTIST),
             track_num=_first_int(track_num),

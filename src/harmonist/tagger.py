@@ -52,7 +52,6 @@ from .formats.m4a import (  # noqa: F401 — back-compat re-exports
     ATOM_COVER,
     ATOM_DATE,
     ATOM_DISC_NUM,
-    ATOM_GENRE,
     ATOM_ISRC,
     ATOM_LABEL,
     ATOM_MB_ALBUM_ARTIST_ID,

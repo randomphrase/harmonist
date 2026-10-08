@@ -261,7 +261,6 @@ def read_tags(path: Path) -> TrackTags:
         # until #149, so `media` never round-tripped and every MP3 Harmonist
         # had tagged reported it missing on the album page.
         media=_text(tags, "TMED"),
-        genre=_text(tags, "TCON"),
         title=_text(tags, "TIT2"),
         artist=_text(tags, "TPE1"),
         # TRCK is "5" or "5/12" — the total belongs to the album, not the track.

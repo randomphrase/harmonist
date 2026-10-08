@@ -199,9 +199,9 @@ class FieldComparison:
     disk_runs: tuple[Run, ...] = ()
     mb_runs: tuple[Run, ...] = ()
     consensus: Consensus | None = None
-    #: Whether MusicBrainz has a counterpart for this field at all. False for
-    #: `genre` and `comment`, which are in the table deliberately but have no MB
-    #: attribute behind them (#12, and the recovered Bandcamp URL).
+    #: Whether MusicBrainz has a counterpart for this field at all. False for a
+    #: track's length, which MusicBrainz has but a re-tag never writes; every
+    #: album row has one since Genre left the panel (#224).
     #:
     #: NOT derivable from `agreement`: a field with no MB counterpart lands in
     #: ONLY_DISK, but so does a comparable field MusicBrainz happens to have no
@@ -233,10 +233,9 @@ class FieldComparison:
     #: a tag deserves to know it is recording *false* rather than discarding
     #: what they had.
     flag: bool = False
-    #: Which field this row IS — the `Owned` value, or `"genre"` / `"comment"`
-    #: for the two display-only rows. `label` is prose and free to be reworded;
-    #: this is the identity, and it is what lets the page hang a per-field
-    #: annotation off one row without matching on its wording (#329).
+    #: Which field this row IS — the `Owned` value. `label` is prose and free to
+    #: be reworded; this is the identity, and it is what lets the page hang a
+    #: per-field annotation off one row without matching on its wording (#329).
     #:
     #: The annotation itself is deliberately not here, for the reason the NAME
     #: behind an id isn't: it comes from the release payload, which this module
@@ -262,11 +261,12 @@ class FieldComparison:
         agreement alone, and `comparable` is the only thing that tells them
         apart:
 
-        * MusicBrainz has no counterpart for the field — `genre`, and the
-          recovered Bandcamp URL in `comment`. Nothing is pending; a re-tag
-          preserves them. Calling those findings would put every adopted album
-          permanently in the Inbox over a URL Harmonist put there itself. This is
-          the case the blanket exclusion was written for.
+        * Harmonist doesn't write the field — a track's length today, and the
+          genre and the recovered Bandcamp URL in `comment` when the panel
+          still showed them (#224, #634). Nothing is pending; a re-tag
+          preserves them. Calling the comment a finding would have put every
+          adopted album permanently in the Inbox over a URL Harmonist put there
+          itself, which is the case the blanket exclusion was written for.
         * MusicBrainz has a counterpart and simply no value — a barcode it does
           not know. **A re-tag deletes that**, so it is exactly the kind of
           pending change this table exists to state. Excluding it left the page
@@ -478,13 +478,6 @@ def compare_field(
     )
 
 
-#: The album-level fields the page shows, in display order, as
-#: `(label, TrackTags attribute, TagSet attribute, kind)`.
-#:
-#: `comment` is here with no MusicBrainz counterpart on purpose: it carries the
-#: recovered Bandcamp URL, MusicBrainz has no opinion on it, and comparing would
-#: invent a difference. Absent from this table entirely would be worse — the
-#: user can't see a tag Harmonist is keeping for them.
 #: Which owned fields want the stacked (TEXT) treatment rather than an inline
 #: arrow. Prose and identifiers stack because they are long; everything else is
 #: short enough to sit on one line. Total over `Owned` — a field added later
@@ -527,20 +520,17 @@ _KINDS: dict[str, Kind] = {
     Owned.ISRCS: Kind.TEXT,
 }
 
-#: Rows the panel shows but cannot compare, because Harmonist does not write the
-#: tag and so has no MusicBrainz counterpart to put beside it (#164). `mb=None`
-#: is what marks a row uncomparable, and it states a fact rather than a policy:
+#: No rows the panel shows without comparing. There used to be two, for tags
+#: Harmonist does not write (#164), and both have gone:
 #:
-#: * **Genre** — `RELEASE_INCLUDES` does not request `genres`, so no genre is
-#:   ever fetched. There is nothing to compare against. Writing one is #12; if
-#:   that lands, genre becomes owned and joins the compared set automatically,
-#:   because the table below is derived rather than listed.
-#:
-#: The comment was here too until #634 moved it to the page's Additional info.
-#: It answers a different question from this table — not "does this match
-#: MusicBrainz" but "where did these files come from" — and it sits there with
-#: the other tags that answer that one.
-_DISPLAY_ONLY: tuple[tuple[str, str, None, Kind], ...] = (("Genre", "genre", None, Kind.TEXT),)
+#: * **The comment** moved to the page's Additional info (#634). It answers a
+#:   different question — not "does this match MusicBrainz" but "where did these
+#:   files come from" — and sits there with the other tags that answer that one.
+#: * **Genre** was dropped (#224). `RELEASE_INCLUDES` does not request `genres`,
+#:   so there was never anything to compare it against, and all the row could
+#:   report was the user's own files disagreeing about a tag nothing here will
+#:   change. Writing one is #12; when that lands genre becomes owned and joins
+#:   the table below on its own, because the table is derived rather than listed.
 
 
 def _disk_value(tags: TrackTags, key: str) -> str | None:
@@ -548,8 +538,8 @@ def _disk_value(tags: TrackTags, key: str) -> str | None:
 
     Owned fields come from the `owned` snapshot `read_tags` took off the handle
     it already had open (#295), which is why widening this panel to thirty
-    fields costs no extra file reads. Genre and Comment are not owned, so they
-    keep their named attribute.
+    fields costs no extra file reads. A field that isn't owned falls back to
+    its named attribute.
 
     Lists join with "; " and numbers stringify, matching how the same values are
     rendered in a History entry — the panel and the record must not describe one
@@ -678,7 +668,7 @@ def _in_display_order(fields: Sequence[Owned]) -> list[Owned]:
 
 
 #: The album panel's rows: every album-scoped tag Harmonist writes bar the one
-#: above, in the display order above, then the two it only displays.
+#: above, in the display order above, and nothing else (#224).
 #:
 #: **Derived, not listed.** It used to be a hand-written tuple of nine, and the
 #: gap between it and `Owned` grew to twenty-one fields without anyone noticing
@@ -687,8 +677,8 @@ def _in_display_order(fields: Sequence[Owned]) -> list[Owned]:
 #: differ" count measured a denominator that had nothing to do with what a
 #: re-tag would write (#295). Deriving it means a field added to `Owned` is
 #: compared from the day it exists.
-_ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = (
-    _rows(_in_display_order([f for f in ALBUM_FIELDS if f not in _NOT_COMPARED])) + _DISPLAY_ONLY
+_ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = _rows(
+    _in_display_order([f for f in ALBUM_FIELDS if f not in _NOT_COMPARED])
 )
 
 
@@ -924,9 +914,11 @@ class AlbumComparison:
     def comparable(self) -> tuple[FieldComparison, ...]:
         """The fields MusicBrainz actually has an opinion on.
 
-        Genre and the comment are shown but never compared, so counting them in
-        a sentence about matching MusicBrainz overstates what was checked — see
-        `FieldComparison.comparable` (#164).
+        Every album row is one today (#224). Genre and the comment used to be
+        shown without being compared, and counting them in a sentence about
+        matching MusicBrainz overstated what was checked — see
+        `FieldComparison.comparable` (#164). The filter stays so a row like
+        that can't quietly inflate the count again.
         """
         return tuple(f for f in self.fields if f.comparable)
 
@@ -1637,9 +1629,9 @@ def advisory(album: AlbumComparison, tracks: TracklistComparison) -> bool:
     saying MusicBrainz could not be reached for an answer.
 
     The tags half is counted over `comparable`, not over `differing`, for the
-    reason `AlbumComparison.summary` is: Genre and the comment are shown but
-    never compared, and a tint drawn from a wider set than the sentence beside
-    it would contradict it on exactly the album that reads "All 22 tags match".
+    reason `AlbumComparison.summary` is: a tint drawn from a wider set than the
+    sentence beside it would contradict it on exactly the album that reads "All
+    22 tags match", as it could while Genre was shown uncompared (#224).
     """
     fields = album.comparable
     if not (album.mb_available and fields):
@@ -1661,9 +1653,9 @@ def advisory(album: AlbumComparison, tracks: TracklistComparison) -> bool:
 #: row printed twice — the exact complaint #297 was filed about. Taken from
 #: `_ALBUM_FIELDS` rather than `ALBUM_FIELDS` so it tracks what the panel
 #: RENDERS rather than what the album scope contains; a row the panel drops
-#: falls back to the box by itself. The `mb_attr` guard is what keeps Genre and
-#: Comment out — they are displayed, but they are not owned fields and a plan
-#: can never carry them.
+#: falls back to the box by itself. The `mb_attr` guard keeps out a row the panel
+#: displays without comparing — there are none since Genre went (#224) — because
+#: a tag Harmonist doesn't write is not one a plan can ever carry.
 #:
 #: `MB_ALBUM_ID` is named by hand, and is the one member that has to be: it has
 #: no row in `_ALBUM_FIELDS` to be derived from (`_NOT_COMPARED` took it out in

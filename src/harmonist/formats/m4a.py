@@ -80,7 +80,6 @@ ATOM_ALBUM = "\xa9alb"
 ATOM_ARTIST = "\xa9ART"
 ATOM_ALBUM_ARTIST = "aART"
 ATOM_DATE = "\xa9day"
-ATOM_GENRE = "\xa9gen"
 ATOM_COMMENT = "\xa9cmt"
 
 # Native sort-name atoms (Picard maps artistsort/albumartistsort here).
@@ -100,8 +99,8 @@ ATOM_COVER = "covr"
 
 
 # The MP4 atoms behind each owned field (#149). ATOM_COMMENT is absent so a
-# recovered Bandcamp URL survives a retag, ATOM_GENRE because Harmonist doesn't
-# write one (#12), and ATOM_COVER because per-track artwork is preserved
+# recovered Bandcamp URL survives a retag, the genre (©gen) because Harmonist
+# doesn't write one (#12), and ATOM_COVER because per-track artwork is preserved
 # deliberately — see `owned.py`.
 OWNED_ATOMS: dict[Owned, tuple[str, ...]] = {
     # The legacy atom rides along with the id it was an older spelling of, so
@@ -348,7 +347,6 @@ def read_tags(path: Path) -> TrackTags:
         catalog_number=_binary_atom_list(audio, ATOM_CATALOG),
         barcode=_binary_atom_str(audio, ATOM_BARCODE),
         media=_binary_atom_str(audio, ATOM_MEDIA),
-        genre=_text_atom(audio, ATOM_GENRE),
         title=_text_atom(audio, ATOM_TITLE),
         artist=_text_atom(audio, ATOM_ARTIST),
         track_num=trkn[0][0] if trkn and trkn[0] else None,

@@ -6719,37 +6719,6 @@ def test_a_tag_the_re_tag_would_delete_says_so(client, cfg, monkeypatch):
     assert "tag-fields__removed" in row.group(1)
 
 
-def test_a_tag_musicbrainz_never_had_a_counterpart_for_stays_quiet(client, cfg, monkeypatch):
-    """The other half of #340's distinction, and the reason this cannot simply
-    mark every ONLY_DISK row.
-
-    Genre has no MusicBrainz attribute behind it at all (`comparable=False`), so
-    nothing about it is pending and a re-tag preserves it. Marking it as a
-    removal would tell the user their genre is about to be deleted, which is
-    false — and would put every adopted album in the Inbox over a tag Harmonist
-    never touches.
-    """
-    d = _make_tagged_album(cfg, "Genred", mbid="rel-genre", tagged_at=datetime.now(UTC))
-    audio = MP4(d / "01 Track.m4a")
-    audio["\xa9gen"] = ["Ambient"]
-    audio.save()
-
-    def fake_release(mbid):
-        return {
-            "id": mbid,
-            "title": "Genred",
-            "medium-list": [{"position": "1", "track-list": [{"id": "rt-1", "title": "Track 1"}]}],
-        }
-
-    monkeypatch.setattr("harmonist.web.main.mb_lookup.fetch_release", fake_release)
-    body = client.get(f"/library/{_id_for(cfg, d)}/compare").text
-
-    row = re.search(r"<dt>Genre</dt>\s*<dd>(.*?)</dd>", body, re.DOTALL)
-    assert row, body
-    assert "Ambient" in row.group(1)
-    assert "tag-fields__removed" not in row.group(1)
-
-
 def test_library_compare_escapes_mb_error_text(client, cfg, monkeypatch):
     """#142: the compare panel's fetch-failure fragment escapes the MB message."""
     d = _make_tagged_album(cfg, "Hostile", mbid="rel-hostile", tagged_at=datetime.now(UTC))
@@ -9786,18 +9755,19 @@ def test_an_album_that_is_no_compilation_says_so_without_explaining_itself(
     assert "means removing the tag" not in cell.group(1)
 
 
-def _genre_popover(client, cfg, monkeypatch, name: str, genres: tuple[str, ...]) -> str:
-    """An album of `len(genres)` tracks, one genre each, rendered to its panel.
+def _barcode_popover(client, cfg, monkeypatch, name: str, barcodes: tuple[str, ...]) -> str:
+    """An album of `len(barcodes)` tracks, one barcode each, rendered to its panel.
 
-    Genre is the field to disagree on: it is display-only, so the popover under
-    test is the whole finding rather than a side effect of a differing tag.
+    Barcode is the field to disagree on because the release these tests fetch
+    has none, so no MusicBrainz value sits beside the popover under test. (It was
+    Genre until #224 took that row out of the panel.)
     """
     d = _make_tagged_album(cfg, name, mbid="rel-cmp", tagged_at=datetime.now(UTC))
-    for i in range(2, len(genres) + 1):
+    for i in range(2, len(barcodes) + 1):
         shutil.copy(d / "01 Track.m4a", d / f"0{i} Track.m4a")
-    for track, genre in zip(sorted(d.glob("*.m4a")), genres, strict=True):
+    for track, barcode in zip(sorted(d.glob("*.m4a")), barcodes, strict=True):
         audio = MP4(track)
-        audio["\xa9gen"] = [genre]
+        audio[ATOM_BARCODE] = [barcode.encode()]
         audio.save()
     monkeypatch.setattr(
         "harmonist.web.main.mb_lookup.fetch_release", lambda mbid: _release_with_metadata(mbid)
@@ -9810,21 +9780,21 @@ def test_the_outlier_popover_agrees_with_its_own_count(client, cfg, monkeypatch)
     "The others have" — and `Consensus.odd_summary` states the rule outright in
     Python. These two verbs were written plural and left there, so a field one
     track carries read "1 carry"."""
-    # Three genres, no majority: the tie goes to track 1, so the value the album
-    # shows is carried by exactly one file.
-    body = _genre_popover(client, cfg, monkeypatch, "Odd", ("Ambient", "Drone", "Techno"))
+    # Three barcodes, no majority: the tie goes to track 1, so the value the
+    # album shows is carried by exactly one file.
+    body = _barcode_popover(client, cfg, monkeypatch, "Odd", ("111", "222", "333"))
 
     assert "1 of your 3 tracks agrees" in body
-    assert "1 carries “Ambient”" in body
+    assert "1 carries “111”" in body
 
 
 def test_the_outlier_popover_still_reads_as_a_plural_when_it_is_one(client, cfg, monkeypatch):
     """The other half of the same rule, and what stops the fix being a swap of
     one hard-coded verb for the other."""
-    body = _genre_popover(client, cfg, monkeypatch, "Even", ("Ambient", "Ambient", "Techno"))
+    body = _barcode_popover(client, cfg, monkeypatch, "Even", ("111", "111", "333"))
 
     assert "2 of your 3 tracks agree" in body
-    assert "2 carry “Ambient”" in body
+    assert "2 carry “111”" in body
 
 
 # ---------- Artwork section (#155) ----------

@@ -325,7 +325,8 @@ class TrackTags:
     catalog_number: list[str] = field(default_factory=list)
     barcode: str | None = None
     media: str | None = None
-    genre: str | None = None
+    # No genre: Harmonist doesn't write one (#12), and since #224 nothing shows
+    # it either, so reading it would be a field with no reader.
 
     # Per-track: expected to vary.
     title: str | None = None

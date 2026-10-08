@@ -312,29 +312,24 @@ def test_summary_counts_only_real_findings():
     assert album.summary == "2 of 3 album tags differ"
 
 
-def test_summary_excludes_fields_musicbrainz_has_no_opinion_on(tmp_path):
-    """End to end, through `album_fields`, where the flag is really set.
+def test_the_album_panel_is_exactly_the_album_tags_harmonist_writes(tmp_path):
+    """End to end, through `album_fields`.
 
-    Genre is in the field table deliberately — the user should see a tag
-    Harmonist is keeping for them — but MusicBrainz has no counterpart for it, so
-    "All N fields match MusicBrainz" must not count it. (The comment was the
-    other such row until #634 moved it to the page's Additional info.)
+    Every row is a tag a re-tag writes, so every row is compared and the count
+    above it is the number of rows (#224). Genre used to be a row too, shown and
+    never compared: Harmonist doesn't write it (#12), so all it could ever report
+    was the user's own files disagreeing about something nothing here changes.
     """
-    tags = TrackTags(
-        album="Obreel", album_artist="A", genre="Ambient", comment="https://x.bandcamp.com"
-    )
+    tags = TrackTags(album="Obreel", album_artist="A", comment="https://x.bandcamp.com")
     mb = _tagset(album="Obreel", album_artist="A")
 
     fields = album_fields([("1.flac", tags)], mb)
-    by_label = {f.label: f for f in fields}
 
-    assert by_label["Genre"].comparable is False
-    assert by_label["Album"].comparable is True
-    # Every album-scoped tag Harmonist writes is compared bar one, and the one it
-    # only displays is not. Stated against `owned` rather than as literals: the
-    # gap between a hand-written count here and the real field set is what let
-    # this panel omit twenty-one fields (#295), and a test asserting "19" would
-    # have to be edited by the same person who forgot to add the field.
+    assert all(f.comparable for f in fields), [f.label for f in fields if not f.comparable]
+    # Stated against `owned` rather than as literals: the gap between a
+    # hand-written count here and the real field set is what let this panel
+    # omit twenty-one fields (#295), and a test asserting "18" would have to be
+    # edited by the same person who forgot to add the field.
     #
     # The exception is spelled out rather than imported, so a SECOND row dropped
     # from the panel has to be argued for here. `mb_album_id` is the release the
@@ -343,10 +338,8 @@ def test_summary_excludes_fields_musicbrainz_has_no_opinion_on(tmp_path):
     from harmonist.formats.owned import ALBUM_FIELDS, LABELS, Owned
 
     compared = [f for f in ALBUM_FIELDS if f is not Owned.MB_ALBUM_ID]
-    assert len(fields) == len(compared) + 1
-    comparable = AlbumComparison(fields=fields).comparable
-    assert len(comparable) == len(compared)
-    assert {f.label for f in comparable} == {LABELS[f] for f in compared}
+    assert [f.label for f in fields] == [f.label for f in AlbumComparison(fields=fields).comparable]
+    assert {f.label for f in fields} == {LABELS[f] for f in compared}
 
 
 def test_unreadable_files_cannot_push_the_count_past_the_total():
@@ -1958,8 +1951,7 @@ def test_the_panel_pairs_release_fields_against_artist_fields():
 
     `Album artists` and `Compilation` (#322, #323) both landed in the release/
     artist blocks, which makes the album fields an even eighteen again — so
-    `Script` keeps its old place beside `Disc total` and `Genre` and `Comment`
-    stay paired at the end.
+    `Script` keeps its old place beside `Disc total`.
     """
     fields = album_fields([("1.flac", TrackTags(album="Obreel"))], _tagset(album="Obreel"))
 
@@ -1973,7 +1965,6 @@ def test_the_panel_pairs_release_fields_against_artist_fields():
         "Label",           "Cat. no.",
         "Barcode",         "ASIN",
         "Disc total",      "Script",
-        "Genre",
     ]  # fmt: skip
 
 

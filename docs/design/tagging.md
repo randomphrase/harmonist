@@ -72,7 +72,7 @@ a library tagged by Picard with composers and performers keeps them.
 
 | Picard tags | Decision | Why |
 |---|---|---|
-| Genre | Deferred (#12) | Every other tag is a fact MusicBrainz states; genre is folksonomy: user-voted, contested, inconsistent between an artist's releases. Picking one isn't an exact match. It's also the tag most likely to be curated by the user, and players keep their own. A genre from elsewhere is shown and never touched. |
+| Genre | Deferred (#12) | Every other tag is a fact MusicBrainz states; genre is folksonomy: user-voted, contested, inconsistent between an artist's releases. Picking one isn't an exact match. It's also the tag most likely to be curated by the user, and players keep their own. A genre from elsewhere is never touched, and isn't shown on the album page: there is nothing to compare it with, so all it could report is the files disagreeing among themselves (#224). |
 | Composer, lyricist, work, performers, producer, engineer and the other relationship credits | Undecided | One more thing to include in the same request, but changing that list re-fetches the whole library ([external services](external-services.md#the-cache)), roughly doubles the owned set, needs ID3 frames no backend writes yet, and relationships change often enough that the update check would report churn. Composer, lyricist and work (the classical and soundtrack case) are worth considering separately from the rest. |
 | Comment | Never | The user's; see above. |
 | Original album and original artist | Leaning no | Needs a second lookup per release group; the original date already covers what users sort on. |
