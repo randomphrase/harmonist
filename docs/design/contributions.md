@@ -35,9 +35,10 @@ another source is not evidence to contribute to MusicBrainz.
 
 ### CD rips
 
-A **CD rip whose ripper wrote a UPC** qualifies too (#633), for the match half
-only. The UPC is the one thing a rip carries about which release it is, so it
-gets the same check a download's does, turned round where the two differ:
+A **CD rip** qualifies too, for the match half only. Its origin is enough to
+contradict a digital-only release, even without an original UPC (#701). When a
+ripper supplied a UPC, that also checks release identity (#633). The checks turn
+round where downloads and rips differ:
 
 - Its candidates are the group's **physical** releases, not its digital ones,
   and the review that switches the match accepts the same.
@@ -48,7 +49,8 @@ gets the same check a download's does, turned round where the two differ:
   offer MusicBrainz. And there's no **Add Release** through Harmony, which finds
   releases in digital stores.
 
-A rip with no UPC has nothing to check. A disc ID would be a second kind of
+A rip with no UPC supplies no barcode evidence, and the matched release's
+barcode cannot stand in for one. A disc ID would be another kind of identity
 evidence, but a table of contents in the tags may have been synthesised by a
 transcoder, so only one recorded by the ripper itself would count.
 
@@ -93,7 +95,10 @@ artwork), add the right release through Harmony, or say the current match is the
 one they bought. That last decision is recorded against the *release*, so it
 lapses by construction if the album is ever matched to something else, and
 Harmonist then takes the user at their word: nothing further is claimed about
-other releases.
+other releases. Changing the Origin choice also clears that acceptance across
+the album's folders: a decision made against the previous source evidence cannot
+silence a contradiction introduced by the new choice. Saving the same choice
+again preserves the acceptance.
 
 ### MB contributions
 

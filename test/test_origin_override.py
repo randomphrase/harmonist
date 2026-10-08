@@ -177,7 +177,10 @@ def test_multi_folder_choices_are_resolved_for_every_part(client, cfg):  # noqa:
     for i, folder in enumerate(folders, 1):
         folder.mkdir()
         _write_disc(folder, disc=i, n=1, album="Two discs", mbid=mbid)
-        sidecar.write(folder, Sidecar(mb_release_id=mbid, notes=f"part {i}"))
+        sidecar.write(
+            folder,
+            Sidecar(mb_release_id=mbid, notes=f"part {i}", accepted_release_id=mbid),
+        )
     choose(folders[0], "CD")
     choose(folders[1], "Amazon")
     albums = scanner.scan(cfg.paths.music_dir)
@@ -190,10 +193,36 @@ def test_multi_folder_choices_are_resolved_for_every_part(client, cfg):  # noqa:
         sc = sidecar.read(folder)
         assert sc.origin_override is Origin.CD
         assert sc.notes == f"part {i}"
+        assert sc.accepted_release_id is None
     assert provenance.origin(scanner.scan(cfg.paths.music_dir)[0]) is Origin.CD
     assert not scanner.scan(cfg.paths.music_dir)[0].origin_override_conflict
     assert client.post(endpoint, data={"origin": "automatic"}).status_code == 200
     assert all(sidecar.read(folder).origin_override is None for folder in folders)
+
+
+@pytest.mark.parametrize("choice", ["CD", "automatic"])
+def test_changing_origin_reopens_a_dismissed_mismatch(client, cfg, choice):  # noqa: F811
+    folder = _make_album(cfg, "Accepted", mbid="rel-accepted")
+    sidecar.write(
+        folder,
+        Sidecar(
+            mb_release_id="rel-accepted",
+            origin_override=Origin.AMAZON,
+            accepted_release_id="rel-accepted",
+        ),
+    )
+    aid = _id_for(cfg, folder)
+    endpoint = f"/library/{aid}/origin"
+    before = activity_store.album_history(aid)
+    assert client.post(endpoint, data={"origin": "Amazon"}).status_code == 200
+    assert sidecar.read(folder).accepted_release_id == "rel-accepted"
+    assert activity_store.album_history(aid) == before
+    assert client.post(endpoint, data={"origin": choice}).status_code == 200
+    assert sidecar.read(folder).accepted_release_id is None
+    assert any(
+        "accepted_release_id=rel-accepted->None" in e.message
+        for e in activity_store.album_history(aid)
+    )
 
 
 def test_redownload_keeps_the_old_choice_in_the_archive_not_the_new_files(client, cfg, quiet_sync):  # noqa: F811

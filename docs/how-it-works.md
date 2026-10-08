@@ -276,18 +276,19 @@ than its current match, for example:
   the matched one doesn't;
 - the matched release is a CD or other physical release.
 
-A CD rip whose ripping software wrote a barcode (UPC) is checked the same way,
-turned round: the other releases it could be are the group's CDs and other
-physical releases, and a match to a digital release is the suspect one. Its
-barcode came from the ripper's metadata lookup rather than off the disc, so it's
-used only to check the match, never offered to MusicBrainz.
+A CD rip is checked against the release's media even without an original UPC:
+a match to a digital release is suspect. The other releases it could be are the
+group's CDs and other physical releases. If its ripping software wrote a barcode
+(UPC), that also checks the match. That barcode came from the ripper's metadata
+lookup rather than off the disc, so it's never offered to MusicBrainz.
 
 The album's page lists the reasons, then the matched release beside the other
 releases in the group it could be, with the evidence that supports each. From
 there, the album can be switched to another release (after reviewing its tracks
 and artwork), the correct release can be added to MusicBrainz through Harmony,
 or **Don't warn me about this** records that the current match is the release
-you bought.
+you bought. Changing the Origin choice clears that dismissal so the new source
+evidence is checked again.
 
 Nothing is flagged until the whole release group has been compared, and a group
 that can't be compared in full (more than 100 releases, or releases with no

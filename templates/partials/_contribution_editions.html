@@ -66,7 +66,7 @@
 {% macro notes() %}
     {% if contribution.private %}
 <p class="text-xs text-muted">Private Bandcamp download: check the mix; its URL stays private.</p>
-    {% elif not contribution.store_url and not contribution.source_upc %}
+    {% elif not contribution.rip and not contribution.store_url and not contribution.source_upc %}
 <p class="text-xs text-muted">No unambiguous album or track URL is known. The store URL check is incomplete.</p>
     {% endif %}
 {% endmacro %}

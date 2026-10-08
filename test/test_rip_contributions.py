@@ -1,12 +1,19 @@
-"""A CD rip's UPC checks its match, as a download's does (#633)."""
+"""A CD origin checks media; its UPC, when present, also checks identity."""
 
+from dataclasses import replace
+from unittest.mock import Mock
+
+import musicbrainzngs
+import pytest
 from fastapi.testclient import TestClient
 
-from harmonist import activity_store, contributions, mb_cache, mb_lookup, scanner
+from harmonist import activity_store, contributions, mb_cache, mb_lookup, scanner, sidecar
 from harmonist.config import Config, PathsConfig
+from harmonist.provenance import Origin
 from harmonist.web.main import create_app
 from test.helpers import ACCURATERIP_TAGS, write_provenance_tags
 from test.test_contributions import MBID, release
+from test.test_release_match import _app
 from test.test_upc_contributions import OTHER_UPC, UPC, download
 from test.test_web import _confirmation_fields
 
@@ -88,9 +95,31 @@ def test_a_rip_matched_to_a_digital_release_is_a_possible_mismatch(tmp_path):
     assert not reasons(assessment).add_release
 
 
-def test_a_rip_without_a_upc_has_nothing_to_check(tmp_path):
-    assessment = assessed(rip(tmp_path, (None,)), edition(("CD",), OTHER_UPC, MBID))
-    assert not assessment.eligible
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.parametrize(
+    ("formats", "mismatch"),
+    [
+        (("Digital Media",), True),
+        (("CD",), False),
+        (("CD", "Digital Media"), False),
+        (("",), None),
+        ((), None),
+    ],
+)
+def test_cd_media_can_be_checked_without_an_original_upc(tmp_path, explicit, formats, mismatch):
+    folder = download(tmp_path, (None,), marks={}) if explicit else rip(tmp_path, (None,))
+    if explicit:
+        sc = sidecar.read(folder)
+        assert sc is not None
+        sidecar.write(folder, replace(sc, origin_override=Origin.CD))
+    assessment = assessed(folder, edition(formats, OTHER_UPC, MBID))
+    assert assessment.eligible
+    assert assessment.rip
+    assert assessment.source_upc is None
+    assert assessment.barcode_status is None
+    assert assessment.media_mismatch is mismatch
+    assert contributions.possible_mismatch(assessment) is (mismatch is True)
+    assert not contributions.contribution_due(assessment)
 
 
 def test_a_rips_physical_candidate_opens_for_review(tmp_path):
@@ -110,3 +139,19 @@ def test_a_rips_physical_candidate_opens_for_review(tmp_path):
     )
     assert editor.status_code == 200
     assert _confirmation_fields(editor.text)["candidate_mbid"] == "sibling-cd"
+
+
+@pytest.mark.parametrize("origin", [Origin.CD, Origin.AMAZON])
+def test_store_url_limitations_apply_only_to_downloads(tmp_path, monkeypatch, origin):
+    current = release(("Digital Media" if origin is Origin.CD else "CD",))
+    client, folder = _app(tmp_path, monkeypatch, current)
+    sc = sidecar.read(folder)
+    assert sc is not None
+    sidecar.write(folder, replace(sc, origin_override=origin))
+    browse = Mock(return_value={"release-list": [current], "release-count": 1})
+    monkeypatch.setattr(musicbrainzngs, "browse_releases", browse)
+    response = client.get(f"/library/{MBID}/contributions/editions")
+    assert response.status_code == 200
+    assert "Possible mismatch" in response.text
+    assert ("The store URL check is incomplete." in response.text) is (origin is Origin.AMAZON)
+    assert browse.call_count == 1

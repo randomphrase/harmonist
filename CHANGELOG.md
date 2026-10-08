@@ -6,6 +6,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- CD rips matched to digital releases can raise a possible mismatch even without an original UPC tag (#701).
 - **WAV and AIFF are no longer offered as download formats**, since albums downloaded that way never appeared. If either is configured, Harmonist won't start until it's changed to a format it can tag (#627).
 - An album's Origin can be corrected manually, with the same choice used for mismatch and contribution checks (#694).
 - Re-tagging an album whose MusicBrainz release has been deleted adds one Activity entry, not two (#466).

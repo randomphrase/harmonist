@@ -42,9 +42,8 @@ class Observation:
 @dataclass(frozen=True)
 class Assessment:
     eligible: bool = False
-    # The files are a CD rip rather than a download (#633): their evidence is
-    # the ripper's UPC alone, it points at physical releases rather than
-    # digital ones, and it is never offered to MusicBrainz.
+    # A CD origin checks media; an original UPC can also check identity (#633).
+    # It points at physical releases; its UPC is never offered to MusicBrainz.
     rip: bool = False
     private: bool = False
     store_url: str | None = None
@@ -332,20 +331,16 @@ def downloaded(album: Album) -> bool:
     return provenance.origin(album) in provenance.STORES
 
 
-def _rip_with_upc(album: Album) -> bool:
-    """A CD rip whose ripper wrote a consistent UPC (#633): the one piece of
-    evidence a rip carries about which release it is. Without it there is
-    nothing to check."""
-    return provenance.origin(album) is provenance.Origin.CD and bool(album.source_upc)
-
-
 def _eligible(album: Album) -> bool:
-    """A confirmed release plus download provenance, or a CD rip with a UPC:
-    see docs/design/contributions.md."""
+    """A confirmed release and a known download or CD origin.
+
+    A CD origin already contradicts digital-only media, even without a UPC.
+    Barcode comparisons still require an original UPC from the files (#701).
+    """
     sc = album.sidecar
     if sc is None or not sc.mb_release_id:
         return False
-    return downloaded(album) or _rip_with_upc(album)
+    return downloaded(album) or provenance.origin(album) is provenance.Origin.CD
 
 
 def _media_mismatch(formats: tuple[str, ...], rip: bool) -> bool | None:

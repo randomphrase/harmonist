@@ -5405,8 +5405,9 @@ def _register_routes(app: FastAPI) -> None:
         changed = False
         # Each folder remains independently usable. Re-read its own sidecar,
         # never write the merged view back over unrelated per-folder decisions.
-        for folder in album.folders:
-            current = sidecar_mod.read(folder)
+        parts = [(folder, sidecar_mod.read(folder)) for folder in album.folders]
+        origin_changed = any((sc.origin_override if sc else None) != target for _, sc in parts)
+        for folder, current in parts:
             if current is None:
                 if target is None:
                     continue
@@ -5414,7 +5415,15 @@ def _register_routes(app: FastAPI) -> None:
                     mb_release_id=album.sidecar.mb_release_id if album.sidecar else None,
                     added_at=datetime.now(UTC),
                 )
-            if current.origin_override == target:
+            # Accepting the release used the previous origin evidence. Clear it
+            # across every part when the choice changes, including parts already
+            # carrying the requested origin. An identical save remains a no-op.
+            updated = replace(
+                current,
+                origin_override=target,
+                accepted_release_id=None if origin_changed else current.accepted_release_id,
+            )
+            if current == updated:
                 continue
             if not changed:
                 audit.record(
@@ -5423,7 +5432,7 @@ def _register_routes(app: FastAPI) -> None:
                     origin=target.value if target is not None else "automatic",
                     folders=[str(folder) for folder in album.folders],
                 )
-            sidecar_mod.write(folder, replace(current, origin_override=target))
+            sidecar_mod.write(folder, updated)
             changed = True
         runner = request.app.state.scan_runner
         if changed and runner.is_engaged():
