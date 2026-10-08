@@ -14,6 +14,7 @@ versions follow [semantic versioning](https://semver.org).
 - Re-tagging an album whose MusicBrainz release has been deleted adds one Activity entry, not two (#466).
 - **Re-download from Bandcamp** shows "Archiving…" while it zips and removes the album, not "Tagging…" (#259).
 - The album page no longer lists Genre among the album's tags. Harmonist doesn't write genre or compare it with MusicBrainz, and the tag stays in your files untouched (#224).
+- A History entry's **Undo** sits at the right of the entry's first line, instead of against its text or partway across the row (#261).
 
 ## [1.24.0] - 2026-10-06
 

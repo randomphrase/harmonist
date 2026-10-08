@@ -278,14 +278,21 @@
                     {% elif e.level == 'warning' %}bg-amber-500
                     {% else %}bg-accent{% endif %}"
                     aria-hidden="true"></span>
-                <span class="min-w-0 break-words
+                <div class="flex-1 min-w-0 break-words
                     {% if e.source == 'audit' %}font-mono text-2xs text-muted
                     {% elif e.level == 'error' %}text-red-700
                     {% elif e.level == 'warning' %}text-amber-700
-                    {% else %}text-ink{% endif %}">{{ e.message }}
+                    {% else %}text-ink{% endif %}">
+                    {# The headline, with an entry's Undo at the row's right edge
+                       on the same line (#261). A flex row rather than a float: a
+                       float settled wherever the text it followed happened to
+                       end, so the button sat against the headline or mid-row
+                       depending on how long the field list below it was. #}
+                    <div class="album-history__head">
+                    <span class="min-w-0">{{ e.message }}</span>
                     {# The "wrong match" pencil's Undo (#639): on its newest row,
                        while the files still name the release it cleared. Same
-                       presentation and refresh as the tag Undo below. #}
+                       presentation and refresh as the tag Undo beside it. #}
                     {% if rematch_undo is not none and e.id == rematch_undo %}
                     <button hx-post="/library/{{ album.id }}/rematch/undo"
                             hx-swap="none" hx-disabled-elt="this"
@@ -294,6 +301,10 @@
                             title="Link the album to the release its files still carry"
                             aria-label="Undo clearing this album's MusicBrainz match">Undo</button>
                     {% endif %}
+                    {% if tag_changes and e.id in tag_changes %}
+                    {% with anchor_id = e.id %}{% include 'partials/_tag_undo.html' %}{% endwith %}
+                    {% endif %}
+                    </div>
                     {# What this tagging actually changed, field by field (#86).
                        Hangs off the tagging's ACTIVITY entry ("Re-tagged"), not
                        off any one file's audit line — see
@@ -307,7 +318,7 @@
                     {% include 'partials/_tag_changes.html' %}
                     {% endwith %}
                     {% endif %}
-                </span>
+                </div>
             </li>
             {% endfor %}
         </ul>

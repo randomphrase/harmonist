@@ -1043,12 +1043,22 @@ button[disabled],
   cursor: pointer;
   transition: color .12s, border-color .12s;
 }
-/* The tagging-level Undo (#157) sits above the field list rather than in a row,
-   so it needs its own spacing — and no left margin, since nothing precedes it. */
-.tag-changes__undo--tags {
-  margin: .3rem 0 0;
-  float: right;
+/* A History entry's headline, with its Undo at the row's right edge on the same
+   line (#261). The first button after the text takes the free space, so any
+   others stay beside it on the right; the gap does the rest of the spacing.
+   Wraps rather than squeezing the headline: on a phone the button would
+   otherwise break "Re-tagged" mid-word, so it drops to a line of its own. */
+.album-history__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .25rem .75rem;
 }
+.album-history__head > .tag-changes__undo {
+  margin-left: 0;
+  flex-shrink: 0;
+}
+.album-history__head > span + .tag-changes__undo { margin-left: auto; }
 .tag-changes__undo:hover { color: var(--color-accent); border-color: var(--color-accent); }
 .tag-changes__undo:focus-visible {
   outline: 2px solid var(--color-accent);
