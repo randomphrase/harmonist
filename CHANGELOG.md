@@ -6,6 +6,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- On a phone, a History entry's tag changes fit the card, each field's name above its value, instead of running off the right edge (#708).
 - Qobuz albums can get a specific barcode suggestion when only one compatible release links to Qobuz (#704).
 - Bandcamp downloads stop and report a destination conflict instead of mixing files or silently skipping a different purchase with the same folder name (#703).
 - CD rips matched to digital releases can raise a possible mismatch even without an original UPC tag (#701).

@@ -1026,6 +1026,14 @@ button[disabled],
    happened, not two sha256s that would swamp every row near it) and a field
    whose files disagree (how many answers there are, not one track's). */
 .tag-changes__opaque { color: var(--color-ink); }
+/* On a phone the label column alone is about as wide as the whole entry, which
+   left the values a sliver to wrap into and ran them off the card (#708). So
+   each label stacks above its value. */
+@media (width < 40rem) {
+  .tag-changes { grid-template-columns: minmax(0, 1fr); row-gap: 0; }
+  .tag-changes dt { text-align: left; }
+  .tag-changes dd + dt { margin-top: .3rem; }
+}
 
 /* Undo, on the row that says what happened. Rare and reversible, so it is
    muted until hover rather than competing with the values beside it. */
