@@ -111,9 +111,14 @@ def test_an_offered_image_opens_full_size(reset_carousel_server: str) -> None:
         image.click()
 
         viewer = page.locator(f"#art-cand-full-{ALBUM_ID}-101")
+        full = viewer.locator("img")
         pw.expect(viewer).to_be_visible()
-        pw.expect(viewer.locator("img")).to_have_js_property("complete", True)
-        assert viewer.locator("img").evaluate("img => img.naturalWidth") > 0
+        # The viewer is given its source by the popover's toggle event, which
+        # arrives after the popover shows — and until then the image has no
+        # src, which already counts as `complete`.
+        pw.expect(full).to_have_attribute("src", f"/artwork/candidate/{ALBUM_ID}/101/original")
+        pw.expect(full).to_have_js_property("complete", True)
+        assert full.evaluate("img => img.naturalWidth") > 0
         pw.expect(viewer.get_by_role("button", name="Close artwork viewer")).to_be_focused()
         assert originals == ["101"]
         browser.close()
