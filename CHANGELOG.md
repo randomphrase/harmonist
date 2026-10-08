@@ -13,7 +13,7 @@ versions follow [semantic versioning](https://semver.org).
 - CD rips matched to digital releases can raise a possible mismatch even without an original UPC tag (#701).
 - **WAV and AIFF are no longer offered as download formats**, since albums downloaded that way never appeared. If either is configured, Harmonist won't start until it's changed to a format it can tag (#627).
 - An album's Origin can be corrected manually, with the same choice used for mismatch and contribution checks (#694).
-- Re-tagging an album whose MusicBrainz release has been deleted adds one Activity entry, not two (#466).
+- Re-tagging an album whose MusicBrainz release has been deleted adds one Activity entry, not two, and so do a failed Bandcamp sync and a failed step through other releases' artwork (#466, #713).
 - **Re-download from Bandcamp** shows "Archiving…" while it zips and removes the album, not "Tagging…" (#259).
 - The album page no longer lists Genre among the album's tags. Harmonist doesn't write genre or compare it with MusicBrainz, and the tag stays in your files untouched (#224).
 - A History entry's **Undo** sits at the right of the entry's first line, instead of against its text or partway across the row (#261).

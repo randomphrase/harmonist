@@ -6676,7 +6676,14 @@ def _register_routes(app: FastAPI) -> None:
                 another = None
                 if more == "step":
                     # Loud: somebody pressed › and is waiting for a picture.
-                    log.warning("could not list another release of %s", mbid, exc_info=True)
+                    # The flash is the feed entry; `_LOG_ONLY` keeps the log
+                    # line out of it (#713).
+                    log.warning(
+                        "could not list another release of %s",
+                        mbid,
+                        exc_info=True,
+                        extra=_LOG_ONLY,
+                    )
                     return _flash_response(
                         "Couldn't look at the album's other releases",
                         str(e),

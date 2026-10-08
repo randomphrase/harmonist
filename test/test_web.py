@@ -7700,6 +7700,24 @@ def _sync_finished_message(monkeypatch, **result_fields) -> str:
     return said[0]
 
 
+def test_a_failed_sync_is_reported_once(client):
+    """#713: `activity.error` names the failure and its reason. The `except`
+    also logged it, and `_ActivityLogHandler` mirrors ERROR log records into the
+    feed, so a failed sync wrote a second, bare "sync failed" beside it."""
+    from harmonist import activity
+    from harmonist.web.sync_runner import SyncRunner
+
+    def boom():
+        raise RuntimeError("Bandcamp said no")
+
+    before = {e.id for e in activity.recent(50)}
+
+    SyncRunner(runner_fn=boom)._run()
+
+    new = [e.message for e in activity.recent(50) if e.id not in before]
+    assert new == ["Bandcamp sync failed — Bandcamp said no"]
+
+
 def test_sync_finish_reports_pre_orders_it_could_not_download(monkeypatch):
     """A pre-order is skipped inside bandcampsync, on a logger we pin to
     WARNING — so a sync that downloads nothing else reports "0 new items" and
@@ -10834,6 +10852,29 @@ def test_stepping_past_the_last_image_lists_the_groups_next_release(client, cfg,
     # The group has nothing further, and knowing so cost no second browse.
     assert 'name="more"' not in stepped
     assert 'name="browsed" value="1"' in stepped
+
+
+def test_a_step_that_cannot_list_another_release_is_reported_once(client, cfg, monkeypatch):
+    """#713: the flash is the feed entry. The route also logged a WARNING,
+    which `_ActivityLogHandler` mirrors into the feed, so one press of › with
+    MusicBrainz down wrote two entries — the second with only the MBID."""
+    from harmonist import activity, mb_lookup
+
+    d, _ = _album_in_a_group(cfg, monkeypatch)
+    aid = _id_for(cfg, d)
+    page = client.get(f"/album/{aid}/artwork").text
+
+    def down(*a, **kw):
+        raise mb_lookup.MBError("MusicBrainz is unreachable")
+
+    monkeypatch.setattr(mb_lookup, "browse_release_group_editions", down)
+    before = {e.id for e in activity.recent(50)}
+
+    body = _step(client, aid, page, "step")
+
+    assert "Couldn&#x27;t look at the album&#x27;s other releases" in body
+    new = [e.message for e in activity.recent(50) if e.id not in before]
+    assert new == ["Couldn't look at the album's other releases — MusicBrainz is unreachable"]
 
 
 def test_later_steps_go_on_from_the_pages_own_browse(client, cfg, monkeypatch):

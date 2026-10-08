@@ -17,6 +17,11 @@ from harmonist import activity
 
 log = logging.getLogger(__name__)
 
+# Keeps a log record out of the Activity feed, which `_ActivityLogHandler`
+# otherwise mirrors every WARNING+ record into — for a failure this module
+# records in the feed itself (#713).
+_LOG_ONLY = {"_activity": True}
+
 
 @dataclass
 class SyncStatus:
@@ -122,7 +127,8 @@ class SyncRunner:
             # without this the sync just reports "0 new items" (#351).
             preorders = int(getattr(result, "deferred_preorders", 0))
         except Exception as e:
-            log.exception("sync failed")
+            # `activity.error` below is the feed entry, with the reason in it.
+            log.exception("sync failed", extra=_LOG_ONLY)
             error = str(e)
         finally:
             with self._lock:
