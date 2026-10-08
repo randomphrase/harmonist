@@ -6,17 +6,36 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
-- On a phone, the header and the album page's Tracks heading fit the screen instead of running off the right edge (#710).
-- On a phone, a History entry's tag changes fit the card, each field's name above its value, instead of running off the right edge (#708).
-- Qobuz albums can get a specific barcode suggestion when only one compatible release links to Qobuz (#704).
-- Bandcamp downloads stop and report a destination conflict instead of mixing files or silently skipping a different purchase with the same folder name (#703).
-- CD rips matched to digital releases can raise a possible mismatch even without an original UPC tag (#701).
-- **WAV and AIFF are no longer offered as download formats**, since albums downloaded that way never appeared. If either is configured, Harmonist won't start until it's changed to a format it can tag (#627).
-- An album's Origin can be corrected manually, with the same choice used for mismatch and contribution checks (#694).
-- Re-tagging an album whose MusicBrainz release has been deleted adds one Activity entry, not two, and so do a failed Bandcamp sync and a failed step through other releases' artwork (#466, #713).
-- **Re-download from Bandcamp** shows "Archiving…" while it zips and removes the album, not "Tagging…" (#259).
-- The album page no longer lists Genre among the album's tags. Harmonist doesn't write genre or compare it with MusicBrainz, and the tag stays in your files untouched (#224).
-- A History entry's **Undo** sits at the right of the entry's first line, instead of against its text or partway across the row (#261).
+## [1.25.0] - 2026-10-08
+
+### Added
+
+- **An album's Origin can be corrected by hand**, with **Change origin** on its
+  page; mismatch and contribution checks use the choice (#694).
+- **Qobuz albums can get a barcode suggestion** when only one compatible
+  release links to Qobuz (#704).
+
+### Changed
+
+- **WAV and AIFF are no longer offered as download formats**, since albums
+  downloaded that way never appeared. If either is configured, Harmonist won't
+  start until it's changed (#627).
+- **The album page no longer lists Genre among its tags**; Harmonist doesn't
+  write it, and it stays in your files untouched (#224).
+
+### Fixed
+
+- **Bandcamp downloads stop at a destination conflict** instead of mixing files
+  into, or skipping, a different purchase with the same folder name (#703).
+- **CD rips matched to digital releases can raise a possible mismatch** without
+  an original UPC tag (#701).
+- **On a phone, the header, the Tracks heading and a History entry's tag
+  changes fit the screen** (#710, #708).
+- **A deleted release on re-tag, a failed Bandcamp sync and a failed artwork
+  step each add one Activity entry**, not two (#466, #713).
+- **Re-download from Bandcamp says "Archiving…"** while it archives the album,
+  not "Tagging…" (#259).
+- **A History entry's Undo sits at the right of its first line** (#261).
 
 ## [1.24.0] - 2026-10-06
 
