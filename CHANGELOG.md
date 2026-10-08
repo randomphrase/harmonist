@@ -6,6 +6,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **Update available has a dropdown to filter by significance**, separating Identity, Structure, Enrichment, Cosmetic and Settings updates (#368).
+
 ### Fixed
 
 - **A Bandcamp download whose page is linked from both a digital and a physical

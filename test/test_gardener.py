@@ -555,6 +555,101 @@ def test_the_filter_chip_is_dead_until_something_has_an_update(engaged):
     assert "filter=update-available" in client.get("/library").text
 
 
+def test_update_categories_partition_the_actionable_queue(engaged, monkeypatch):
+    """Counts and rows share the ignore rules, including Settings and a lapsed
+    bookmark. Search and pagination must not change that partition (#368)."""
+    from harmonist.web import main
+
+    cfg, engage = engaged
+    for level in owned.Significance:
+        for prefix in ("Focus", "Ignored"):
+            title = f"{prefix} {level}"
+            _tagged(cfg.paths.music_dir, _release(title, mbid=title), name=title)
+    _tagged(cfg.paths.music_dir, _release("Quiet", mbid="quiet"), name="Quiet")
+    _tagged(cfg.paths.music_dir, _release("Returned", mbid="returned"), name="Returned")
+    client, runner = engage()
+    ignored = {}
+    for album in runner.albums():
+        if album.title == "Quiet":
+            # A stale significance without a flag must not enter a category.
+            album.update_significance = owned.Significance.IDENTITY
+            continue
+        album.update_available = True
+        album.mb_version = "current"
+        album.update_significance = (
+            owned.Significance.IDENTITY
+            if album.title == "Returned"
+            else owned.Significance(album.title.split()[1])
+        )
+        if album.title.startswith("Ignored") or album.title == "Returned":
+            ignored[album.id] = activity_store.IgnoredUpdate(
+                album.id,
+                "previous" if album.title == "Returned" else "current",
+                datetime.now(UTC),
+            )
+    monkeypatch.setattr(main, "_ignored_updates", lambda: ignored)
+    monkeypatch.setattr(
+        mb_lookup, "fetch_release", lambda *a, **k: pytest.fail("filter fetched MusicBrainz")
+    )
+
+    rollup = client.get("/library?filter=update-available")
+    assert rollup.context["total_shown"] == 7
+    categories = rollup.context["update_filters"]
+    assert {f["significance"] for f in categories} == set(owned.Significance)
+    assert sum(f["count"] for f in categories) == 7
+    seen: list[str] = []
+    for level in owned.Significance:
+        response = client.get(f"/library?filter=update-{level}")
+        titles = {a.title for a in response.context["rows"]}
+        expected = {f"Focus {level}"}
+        if level == owned.Significance.SETTINGS:
+            expected.add("Ignored settings")
+        if level == owned.Significance.IDENTITY:
+            expected.add("Returned")
+        assert titles == expected
+        seen.extend(a.id for a in response.context["rows"])
+    assert len(seen) == len(set(seen)) == 7
+
+    searched = client.get("/library?filter=update-identity&q=Focus&limit=1")
+    assert [a.title for a in searched.context["rows"]] == ["Focus identity"]
+    assert sum(f["count"] for f in searched.context["update_filters"]) == 5
+    assert all(f["count"] == 1 for f in searched.context["update_filters"])
+    assert 'filter=update-structure&q=Focus"' in searched.text
+
+
+def test_update_category_navigation_survives_empty_results_and_paging(engaged):
+    cfg, engage = engaged
+    for i in range(3):
+        title = f"Album {i}"
+        _tagged(cfg.paths.music_dir, _release(title, mbid=f"rel-{i}"), name=title)
+    client, runner = engage()
+    for album in runner.albums():
+        album.update_available = True
+        album.update_significance = owned.Significance.IDENTITY
+
+    body = client.get("/library?filter=update-identity&limit=1&page=2").text
+    assert 'aria-label="Update filters"' in body
+    assert 'hx-get="/library?page=3&limit=1&filter=update-identity"' in body
+    assert 'name="filter" value="update-identity"' in body
+    assert 'from_filter=update-identity"' in body
+    assert 'filter=update-available"' in body  # return to the whole update queue
+    assert 'id="library-update-menu" popover' in client.get("/library").text
+
+    # A saved category URL keeps its menu when its last update has gone away.
+    for album in runner.albums():
+        album.update_available = False
+        album.update_significance = None
+    for path in ("/library", "/?tab=library"):
+        response = client.get(f"{path}{'&' if '?' in path else '?'}filter=update-identity")
+        assert 'aria-label="Update filters"' in response.text
+        assert "No albums match this filter." in response.text
+        assert "Show all 3 albums" in response.text
+        assert re.search(
+            r'<span[^>]*aria-disabled="true">\s*<span[^>]*></span>\s*<span>Cosmetic</span>',
+            response.text,
+        )
+
+
 @pytest.mark.parametrize("mbid", ["rel-aaa"])
 def test_stored_release_reads_the_store_and_never_the_network(tmp_path, monkeypatch, mbid):
     """`stored_release` is the warm-up's whole budget guarantee, so it is worth

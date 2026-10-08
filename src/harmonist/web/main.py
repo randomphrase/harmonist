@@ -227,20 +227,36 @@ def _is_actionable_incomplete(a: Album) -> bool:
     )
 
 
+# URL slugs are explicit; the order puts the widest-reaching updates first.
+_LIBRARY_UPDATE_LEVELS = {
+    "update-identity": owned.Significance.IDENTITY,
+    "update-structure": owned.Significance.STRUCTURE,
+    "update-enrichment": owned.Significance.ENRICHMENT,
+    "update-cosmetic": owned.Significance.COSMETIC,
+    "update-settings": owned.Significance.SETTINGS,
+}
+
+
 def _library_filters(
     ignored: Mapping[str, activity_store.IgnoredUpdate],
 ) -> dict[str, tuple[str, Callable[[Album], bool]]]:
     """The filter chips, in the order the control offers them.
 
-    A function of this render's ignored updates rather than a constant, because
-    one of the five is: an album whose update the user has ignored (#271) is not
-    listed as work until MusicBrainz moves the release again.
+    The roll-up and its significance filters share one ignore predicate: an
+    album ignored at its current MusicBrainz version is not listed as work.
 
     Only the FILTER subtracts them. The tile keeps its Update badge, exactly as
     an album accepted with `tracks_unavailable` keeps its Incomplete one — the
     difference is still a true fact about the album, and hiding a fact is a
     different act from not presenting it as something to do.
     """
+
+    def actionable_update(album: Album) -> bool:
+        return album.update_available and not gardener.is_ignored(album, ignored)
+
+    def at_level(level: owned.Significance) -> Callable[[Album], bool]:
+        return lambda album: actionable_update(album) and album.update_significance == level
+
     return {
         "incomplete": ("Incomplete", _is_actionable_incomplete),
         "partial": ("Partially tagged", lambda a: a.partial_tag_count is not None),
@@ -249,10 +265,11 @@ def _library_filters(
             "Mixed formats",
             lambda a: a.audio_format == scanner.MIXED_FORMAT,
         ),
-        "update-available": (
-            "Update available",
-            lambda a: a.update_available and not gardener.is_ignored(a, ignored),
-        ),
+        "update-available": ("Update available", actionable_update),
+        **{
+            slug: (level.value.capitalize(), at_level(level))
+            for slug, level in _LIBRARY_UPDATE_LEVELS.items()
+        },
         # Release match first (#618): an album is in at most one of these two.
         "possible-mismatch": (
             "Possible mismatch",
@@ -1697,7 +1714,15 @@ def _library_page_vars(
         # searching over. Resolved here so the template doesn't have to hunt through
         # `filters` for the active one (#180).
         "filter_label": _LIBRARY_FILTER_LABELS[filter_] if filter_ else None,
-        "filters": filters,
+        "filters": [f for f in filters if f["slug"] not in _LIBRARY_UPDATE_LEVELS],
+        "update_filters": [
+            {**f, "significance": _LIBRARY_UPDATE_LEVELS[f["slug"]]}
+            for f in filters
+            if f["slug"] in _LIBRARY_UPDATE_LEVELS
+        ],
+        "update_filter_active": (
+            filter_ == "update-available" or filter_ in _LIBRARY_UPDATE_LEVELS
+        ),
         # The search query, normalised — None means no search. Rides in every URL
         # this page builds, and is echoed back into the box (#180).
         "q": q,

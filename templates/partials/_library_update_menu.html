@@ -1,0 +1,42 @@
+{# Native popover: opening takes no layout space, Escape and outside clicks
+   dismiss it. Position from the trigger when opened, including in browsers
+   without CSS anchors. Links retain ordinary navigation without HTMX. #}
+{% set selected = update_filters | selectattr('slug', 'equalto', filter) | first %}
+<button type="button" id="library-update-button" popovertarget="library-update-menu"
+        class="library-update-button {{ chip_on if update_filter_active else chip_off }}"
+        {% if not f.count and not update_filter_active %}disabled{% endif %}>
+    <span>{% if selected %}Updates: {{ selected.significance.value | capitalize }}{% else %}Update available{% endif %}</span>
+    <span class="font-normal tabular-nums">{{ selected.count if selected else f.count }}</span>
+    <span aria-hidden="true">▾</span>
+</button>
+<nav id="library-update-menu" popover aria-label="Update filters" class="library-update-menu"
+     onbeforetoggle="if (event.newState === 'open') {
+         const box = document.getElementById('library-update-button').getBoundingClientRect();
+         this.style.left = Math.max(8, Math.min(box.left, innerWidth - 232)) + 'px';
+         this.style.top = (box.bottom + 4) + 'px';
+         this.style.maxHeight = Math.max(80, innerHeight - box.bottom - 12) + 'px';
+     }">
+    {% for option in [f] + update_filters %}
+    {% set label = 'All updates' if option.slug == 'update-available' else option.significance.value | capitalize %}
+    {% if option.slug == filter %}
+    <span class="library-update-option" aria-current="true">
+        <span class="library-update-check" aria-hidden="true">✓</span>
+        <span>{{ label }}</span><span class="library-update-count">{{ option.count }}</span>
+    </span>
+    {% elif option.count %}
+    <a href="/?tab=library&{{ library_query(none, limit, option.slug, q) }}"
+       hx-get="/library?{{ library_query(none, limit, option.slug, q) }}"
+       hx-target="#library-rows" hx-swap="innerHTML"
+       hx-push-url="/?tab=library&{{ library_query(none, limit, option.slug, q) }}"
+       class="library-update-option">
+        <span class="library-update-check" aria-hidden="true"></span>
+        <span>{{ label }}</span><span class="library-update-count">{{ option.count }}</span>
+    </a>
+    {% else %}
+    <span class="library-update-option" aria-disabled="true">
+        <span class="library-update-check" aria-hidden="true"></span>
+        <span>{{ label }}</span><span class="library-update-count">0</span>
+    </span>
+    {% endif %}
+    {% endfor %}
+</nav>

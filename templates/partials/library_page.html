@@ -123,8 +123,8 @@
    by construction (the pager below is the precedent), so the address bar always
    names what is on screen, the browser's own history does the navigating, JS-off
    and middle-click both work, and there is no form whose default `submit` trigger
-   can be dropped by naming another one (#144's bug). Nothing here needs an event
-   handler, so nothing here has one.
+   can be dropped by naming another one (#144's bug). The update menu only uses
+   a handler to position its native popover; navigation still belongs to HTMX.
 
    Gated on `total_done`, NOT on `rows`: a filter matching nothing still has to
    render its own row, or the only way back to All would be the Back button.
@@ -154,7 +154,9 @@
     {% endif %}
 
     {% for f in filters %}
-    {% if f.slug == filter %}
+    {% if f.slug == 'update-available' %}
+    {% include 'partials/_library_update_menu.html' %}
+    {% elif f.slug == filter %}
     <span class="{{ chip_on }}" aria-current="true">{{ f.label }}
         <span class="font-normal tabular-nums">{{ f.count }}</span></span>
     {% elif f.count %}

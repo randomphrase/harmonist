@@ -355,6 +355,32 @@ button[disabled],
   border-color: color-mix(in srgb, var(--color-mb-purple) 50%, transparent);
 }
 .sev--identity { background: var(--color-mb-purple); color: #fff; border-color: var(--color-mb-purple); }
+/* The button fits its current label. The menu occupies the top layer, so opening
+   it does not add a row or move the Library grid. */
+.library-update-button {
+  display: inline-flex; align-items: center; gap: .35rem;
+  white-space: nowrap;
+}
+.library-update-button:disabled { opacity: .4; cursor: default; }
+.library-update-menu {
+  position: fixed; inset: auto; margin: 0; padding: .25rem;
+  width: 14rem; max-width: calc(100vw - 1rem); overflow-y: auto;
+  border: 1px solid var(--color-line); border-radius: .5rem;
+  background: var(--color-white); color: var(--color-ink);
+  box-shadow: 0 8px 24px #0002; font-size: var(--text-xs);
+}
+.library-update-option {
+  display: flex; align-items: center; gap: .5rem; padding: .5rem;
+  border-radius: .25rem;
+}
+a.library-update-option:hover { background: var(--color-surface); color: var(--color-accent); }
+.library-update-option[aria-current] { background: var(--color-accent-soft); color: var(--color-accent); }
+.library-update-option[aria-disabled] { opacity: .4; }
+.library-update-check { width: .75rem; }
+.library-update-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+@media (pointer: coarse) {
+  .library-update-option { min-height: 44px; }
+}
 /* Artwork has no rank on this scale — it is a fifth level on its own axis — so
    it is marked out by a dashed edge instead of a place in the fill ramp. */
 .sev--artwork {
