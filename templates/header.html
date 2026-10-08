@@ -1,13 +1,18 @@
 {# Settings has its own sticky title / Save row; stacking sticky headers would
-   obscure it when the navigation grows taller on a narrow screen. #}
+   obscure it when the navigation grows taller on a narrow screen.
+
+   The row wraps on every page, not just Settings (#710): on a phone the logo
+   and the nav can't share one line at any spacing, so the nav drops below the
+   logo instead of running off the right edge. Where they fit, nothing wraps
+   and `gap-3` sits inside justify-between's free space. #}
 <header class="bg-white border-b border-line {% if request.url.path != '/settings' %}sticky top-0 {% endif %}z-50">
-    <div class="container mx-auto max-w-7xl flex justify-between items-center px-4 py-3 {% if request.url.path == '/settings' %}flex-wrap gap-3{% endif %}">
+    <div class="container mx-auto max-w-7xl flex flex-wrap justify-between items-center gap-3 px-4 py-3">
         <a href="/" class="flex items-center gap-2.5 group">
             <span class="text-2xl">🎧</span>
             <span class="text-lg font-extrabold text-ink tracking-tight">Harmonist</span>
         </a>
 
-        <nav class="flex items-center gap-5 text-sm">
+        <nav class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
             <a href="/about" class="font-semibold text-muted hover:text-ink transition">About</a>
             <a href="/settings" id="settings-link" class="font-semibold text-muted hover:text-ink transition">Settings</a>
             {% if bandcamp_configured() %}
@@ -23,7 +28,7 @@
                         hx-swap="innerHTML"
                         hx-include="#sync-popover input"
                         {% if globals_off_reason %}disabled title="{{ globals_off_reason }}"{% endif %}
-                        class="px-4 py-1.5 bg-bc-teal-soft hover:bg-bc-teal/25 text-bc-teal-dark border border-bc-teal/30 rounded font-semibold transition{% if globals_off_reason %} opacity-40 cursor-not-allowed{% endif %}">
+                        class="px-4 py-1.5 whitespace-nowrap bg-bc-teal-soft hover:bg-bc-teal/25 text-bc-teal-dark border border-bc-teal/30 rounded font-semibold transition{% if globals_off_reason %} opacity-40 cursor-not-allowed{% endif %}">
                     Sync Bandcamp
                 </button>
                 {# Positioned at top-full with a transparent pt-1 *bridge* (padding, not
@@ -65,7 +70,7 @@
                     hx-target="#modal"
                     hx-swap="innerHTML"
                     {% if globals_off_reason %}disabled title="Use Set up in the Bandcamp sync section below."{% endif %}
-                    class="px-4 py-1.5 border border-bc-teal/30 text-bc-teal-dark hover:bg-bc-teal-soft rounded font-semibold transition{% if globals_off_reason %} opacity-40 cursor-not-allowed{% endif %}">
+                    class="px-4 py-1.5 whitespace-nowrap border border-bc-teal/30 text-bc-teal-dark hover:bg-bc-teal-soft rounded font-semibold transition{% if globals_off_reason %} opacity-40 cursor-not-allowed{% endif %}">
                 Set up Bandcamp sync
             </button>
             {% endif %}

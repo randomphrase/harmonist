@@ -10,7 +10,10 @@
    MusicBrainz track — so an incomplete album read "Tracks · 2" above four rows.
    The note in the album panel states both numbers, and correctly. #}
 <div id="album-track-view" hx-swap-oob="true" class="album-track-view space-y-3">
-    <div class="flex items-center justify-between gap-4">
+    {# Wraps only below `sm` (#710): on a phone Show identifiers would run off
+       the right edge, but from `sm` up the row fits by squeezing, and wrapping
+       there would move the control for no reason. #}
+    <div class="flex max-sm:flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
         {# A required review opens from the comparison, once its refresh finishes.
            The mounted editor remembers opening for this page visit, so replacing
@@ -24,7 +27,10 @@
                 hx-on::before-request="const editor = document.getElementById('album-track-editor'); const automatic = event.detail.requestConfig.triggeringEvent?.type !== 'click'; const opened = editor.dataset.reviewOpened || editor.childElementCount; editor.dataset.reviewOpened = 'true'; if (automatic &amp;&amp; opened) event.preventDefault()"
                 hx-on::after-request="if (event.detail.successful &amp;&amp; event.detail.requestConfig.triggeringEvent?.type === 'click') document.getElementById('album-track-editor').focus()"
                 class="ml-auto px-3 py-1.5 bg-white hover:bg-surface text-muted hover:text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Edit track assignments</button>
-        <span id="album-track-loading" class="htmx-indicator text-xs text-muted" role="status">Loading assignments…</span>
+        {# Where the row wraps, an idle indicator (invisible but still laid out)
+           would hold a blank line of its own above Show identifiers, so below
+           `sm` it takes no space until it's showing. #}
+        <span id="album-track-loading" class="htmx-indicator text-xs text-muted max-sm:hidden max-sm:[&.htmx-request]:block" role="status">Loading assignments…</span>
         {% if tracklist.identifier_columns %}
         {# The identifier columns, and the control that reveals them (#319),
            moved up here in #328 to match History's "Show details" — under the
