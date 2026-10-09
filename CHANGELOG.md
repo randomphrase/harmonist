@@ -8,6 +8,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- Album titles can include release disambiguation only when the library contains multiple releases in the same release group (#722).
 - **Library updates can be filtered by significance**, with matching Identity, Structure, Enrichment, Cosmetic and Settings badges on album covers (#368).
 
 ### Changed

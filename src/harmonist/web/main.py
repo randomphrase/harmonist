@@ -58,6 +58,7 @@ from harmonist import (
     id_registry,
     images,
     library_index,
+    library_titles,
     live_counts,
     match,
     mb_cache,
@@ -95,7 +96,7 @@ from harmonist.models import (
     titles_match,
 )
 from harmonist.tagger import PicardCompatibleTagger, Tagger, tagsets_for
-from harmonist.transforms import NO_CHOICES, TaggingChoices
+from harmonist.transforms import NO_CHOICES, TaggingChoices, TagTransform, album_title
 from harmonist.web import dir_watcher, periodic
 from harmonist.web.reconcile_runner import ReconcileRunner, reconcile_pending_orphans
 from harmonist.web.scan_runner import ScanRunner
@@ -860,7 +861,18 @@ def create_app(
     # under the spelling settings the write would apply (#685) — read off the
     # live config at the moment it looks, since Settings applies without a
     # restart.
-    gardener.configure(lambda: app.state.cfg.tagging.choices())
+    gardener.configure(lambda: library_titles.choices(app.state.cfg.tagging.choices()))
+
+    def titles_changed(before: library_titles.Membership, after: library_titles.Membership) -> None:
+        settings = app.state.cfg.tagging.choices()
+        if TagTransform.ALBUM_DISAMBIGUATION_IF_NEEDED in settings.transforms:
+            _start_settings_recheck(
+                scan_runner,
+                replace(settings, library_releases=before),
+                replace(settings, library_releases=after),
+            )
+
+    library_titles.configure(titles_changed)
     app.state.templates = templates
     app.state.sync_runner = sync_runner
     app.state.reconcile_runner = reconcile_runner
@@ -2843,7 +2855,7 @@ def _folder_cover_policy(request: Request) -> artwork.FolderCoverPolicy:
     return cfg.tagging.folder_cover
 
 
-def _tagging(request: Request) -> TaggingChoices:
+def _tagging(request: Request, album: Album) -> TaggingChoices:
     """The user's spelling settings as they stand right now (#544).
 
     Read per request off `app.state.cfg` for the reason the folder-cover policy
@@ -2851,7 +2863,7 @@ def _tagging(request: Request) -> TaggingChoices:
     no restart.
     """
     cfg: config_mod.Config = request.app.state.cfg
-    return cfg.tagging.choices()
+    return library_titles.choices(cfg.tagging.choices(), excluding=album.folders)
 
 
 def _in_hand(mbid: str | None, listing: cover_art.Candidate) -> cover_art.Front | None:
@@ -3195,7 +3207,9 @@ def _albums(request: Request) -> list[Album]:
     # engaged and we scan synchronously, preserving request-time freshness.
     if runner.is_engaged():
         return runner.albums()
-    return scanner.scan(cfg.paths.music_dir)
+    albums = scanner.scan(cfg.paths.music_dir)
+    library_titles.reset_from(albums)
+    return albums
 
 
 def _periodic_rescan_if_idle(
@@ -4106,16 +4120,20 @@ class _ReplacementUnavailable(Exception):
     """A page-local replacement cannot safely continue its review."""
 
 
-def _release_fingerprint(release: Release, requested_mbid: str) -> str:
+def _release_fingerprint(
+    release: Release, requested_mbid: str, tagging: TaggingChoices = NO_CHOICES
+) -> str:
     # Bind the selected candidate to the canonical snapshot. A merge stores
     # only the surviving ID; continuing review must find that same row locally.
     digest = hashlib.sha256(
         json.dumps([requested_mbid, release], sort_keys=True).encode()
     ).hexdigest()
-    return f"{release['id']}:{digest}"
+    title = album_title(release, tagging.transforms, tagging.library_releases)
+    title_digest = hashlib.sha256(title.encode()).hexdigest()
+    return f"{release['id']}:{digest}:{title_digest}"
 
 
-def _reviewed_release(mbid: str, fingerprint: str) -> Release:
+def _reviewed_release(mbid: str, fingerprint: str, tagging: TaggingChoices = NO_CHOICES) -> Release:
     """Resolve a reviewed snapshot locally; never substitute a different one."""
     canonical, separator, _ = fingerprint.partition(":")
     release = mb_cache.stored_release(canonical) if separator else None
@@ -4123,9 +4141,15 @@ def _reviewed_release(mbid: str, fingerprint: str) -> Release:
         raise _ConfirmationChanged(
             "The reviewed release is no longer available. Refresh MusicBrainz and review again."
         )
-    if _release_fingerprint(release, mbid) != fingerprint:
+    current = _release_fingerprint(release, mbid, tagging)
+    if current != fingerprint:
+        what = (
+            "MusicBrainz"
+            if current.split(":")[1] != fingerprint.split(":")[1]
+            else "The title choice"
+        )
         raise _ConfirmationChanged(
-            "MusicBrainz changed since the preview. Refresh the comparison and review again."
+            f"{what} changed since the preview. Refresh the comparison and review again."
         )
     return release
 
@@ -4224,9 +4248,11 @@ def _tag_with_release(
     # Reviewed actions apply what the user saw. Unreviewed tagging still asks
     # fresh; the exception must not silently spread to automatic operations.
     if expected_release is not None:
-        release = _reviewed_release(mbid, expected_release)
+        tagging = library_titles.choices(cfg.tagging.choices(), excluding=paths or [album_path])
+        release = _reviewed_release(mbid, expected_release, tagging)
     else:
         release = mb_cache.fetch_release(mbid, max_age=mb_cache.FRESH)
+        tagging = library_titles.choices(cfg.tagging.choices(), excluding=paths or [album_path])
     assignment = None
     if assignment_draft is not None:
         assignment = track_assignment.panel(
@@ -4348,7 +4374,7 @@ def _tag_with_release(
         folder_cover=cfg.tagging.folder_cover,
         # …and under these spelling settings, so what this writes is what the
         # page's MusicBrainz column showed (#544).
-        tagging=cfg.tagging.choices(),
+        tagging=tagging,
     )
 
     sc = sidecar_mod.read(album_path)
@@ -5011,7 +5037,9 @@ def _register_routes(app: FastAPI) -> None:
         # from the cache, writing nothing to any file.
         request.app.state.cfg = new_cfg
         mb_lookup.configure(new_cfg.musicbrainz.user_agent)
-        if (before := cfg.tagging.choices()) != (after := new_tagging.choices()):
+        before = library_titles.choices(cfg.tagging.choices())
+        after = library_titles.choices(new_tagging.choices())
+        if before != after:
             _start_settings_recheck(request.app.state.scan_runner, before, after)
         activity.info("Settings updated")
 
@@ -5790,7 +5818,7 @@ def _register_routes(app: FastAPI) -> None:
             release,
             album.folders,
             reads=reads,
-            tagging=_tagging(request),
+            tagging=_tagging(request, album),
         )
         # Opening an album is a look at exactly the question the Library filter
         # asks, against a release already in hand — so answer it here too and
@@ -7298,18 +7326,21 @@ def _register_routes(app: FastAPI) -> None:
         checked_at = None
         assignment_changes = None
         assignment_error = None
+        tagging = _tagging(request, album)
         # Opening the inbox may display many candidates. Only an explicit
         # refresh (or entering an uncached editor) may spend an MB request.
         release = mb_cache.stored_release(candidate.mb_release_id)
         if release is not None or not cancel or reread:
             try:
                 if draft:
-                    release = _reviewed_release(candidate.mb_release_id, release_fingerprint)
+                    release = _reviewed_release(
+                        candidate.mb_release_id, release_fingerprint, tagging
+                    )
                 elif (reread and not request.query_params.get("replacement")) or release is None:
                     release = mb_cache.fetch_release(
                         candidate.mb_release_id, max_age=mb_cache.FRESH if reread else None
                     )
-                current = _release_fingerprint(release, candidate.mb_release_id)
+                current = _release_fingerprint(release, candidate.mb_release_id, tagging)
                 checked_at = mb_cache.fetched_at(release["id"])
                 if draft and current != release_fingerprint:
                     raise track_assignment.AssignmentChanged(
@@ -7353,7 +7384,7 @@ def _register_routes(app: FastAPI) -> None:
                     assignment=panel.mapping(),
                     # The preview is of what the apply will write, so it plans
                     # under the same spelling settings the apply uses (#544).
-                    tagging=_tagging(request),
+                    tagging=tagging,
                 ).changes
             except (ValueError, OSError, tagger_mod.TagMismatchError) as e:
                 log.warning("could not preview assignment tags: %s", e, extra=_LOG_ONLY)
@@ -7464,7 +7495,9 @@ def _register_routes(app: FastAPI) -> None:
         archive_image = None
         release_only = bool(request.query_params.get("replacement"))
         try:
-            release = _reviewed_release(candidate.mb_release_id, release_fingerprint)
+            release = _reviewed_release(
+                candidate.mb_release_id, release_fingerprint, _tagging(request, album)
+            )
             answer = caa_cache.front(
                 release["id"],
                 release_group_mbid=(release.get("release-group") or {}).get("id"),
@@ -7578,7 +7611,9 @@ def _register_routes(app: FastAPI) -> None:
                     "The selected release changed. Review the new suggestion."
                 )
             if release_fingerprint and include_artwork:
-                reviewed = _reviewed_release(candidate.mb_release_id, release_fingerprint)
+                reviewed = _reviewed_release(
+                    candidate.mb_release_id, release_fingerprint, _tagging(request, album)
+                )
                 release_only = bool(request.query_params.get("replacement"))
                 view = _artwork_view(
                     album,

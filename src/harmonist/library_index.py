@@ -23,6 +23,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import library_titles
 from .models import Album, Sidecar
 from .url_recovery import album_slug, store_host
 
@@ -104,6 +105,7 @@ def upsert(album_dir: Path, sc: Sidecar) -> None:
             _deindex(album_dir, old)
         _sidecars[album_dir] = sc
         _index(album_dir, sc)
+    library_titles.upsert(album_dir, sc)
 
 
 def remove(album_dir: Path) -> None:
@@ -112,12 +114,14 @@ def remove(album_dir: Path) -> None:
         old = _sidecars.pop(album_dir, None)
         if old is not None:
             _deindex(album_dir, old)
+    library_titles.upsert(album_dir, None)
 
 
 def clear() -> None:
     """Drop everything (e.g. erase-sidecars before the rescan refills it)."""
     with _lock:
         _clear_locked()
+    library_titles.reset_from([])
 
 
 # ----- lookups (zero disk) -----

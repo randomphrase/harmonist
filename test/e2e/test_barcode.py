@@ -56,7 +56,7 @@ def test_barcode_choices_open_review_without_tagging(barcode_server):
         browser.close()
 
 
-def test_automatic_barcode_outcomes(barcode_outcome_server):
+def test_automatic_barcode_outcomes(barcode_outcome_server, htmx_ready):
     server, root, outcome = barcode_outcome_server
     from harmonist import sidecar
 
@@ -73,7 +73,7 @@ def test_automatic_barcode_outcomes(barcode_outcome_server):
                 page.get_by_role("heading", name="Suggested match:")
             ).to_be_visible()
             assert sidecar.read(folder).mb_match_candidate is not None
-            page.get_by_role("button", name="Dismiss suggestion", exact=True).click()
+            htmx_ready(page.get_by_role("button", name="Dismiss suggestion", exact=True)).click()
             playwright_sync.expect(
                 page.get_by_role("radio", name="Name", exact=True)
             ).to_be_checked()

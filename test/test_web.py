@@ -6154,7 +6154,7 @@ def test_a_transform_that_is_on_warns_what_turning_it_off_offers(client):
 
     warning = _transform_warning(client.get("/settings").text)
 
-    assert warning is not None and "a pending update to remove it" in warning
+    assert warning is not None and "a pending update to remove disambiguation" in warning
 
 
 def test_a_transform_that_is_off_has_nothing_to_warn_about(client):

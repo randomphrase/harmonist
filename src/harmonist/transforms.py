@@ -31,7 +31,7 @@ Two consequences follow, and they are what make it safe to ship:
   announced, never ignorable — rather than the IDENTITY a retitle is. A value
   outside the set keeps its own significance, so nothing MusicBrainz did can
   ride along under the user's setting.
-- **It stays idempotent.** A transform is a function of the RELEASE, never of
+- **It stays idempotent.** A transform reads the release and library membership, never
   what is already on the file, so applying it twice is applying it once. A rule
   that read the existing tag could grow the title a little on every pass.
 
@@ -61,7 +61,7 @@ from .models import Release, title_with_disambiguation
 class TagTransform(StrEnum):
     """A named transform the user may enable. Values are the config spelling.
 
-    One member for now. New members are the output of #284's survey — which
+    New members are the output of #284's survey — which
     Picard transforms occur in real libraries AND can be checked exactly from
     the release Harmonist already holds — rather than a list to fill in.
     """
@@ -71,6 +71,8 @@ class TagTransform(StrEnum):
     #: Volume II (expanded edition)`. Picard's "use release disambiguation
     #: comment in album title", and the tagger script users write for it.
     ALBUM_DISAMBIGUATION = "album_disambiguation"
+    #: The same spelling, only alongside another release in the group (#722).
+    ALBUM_DISAMBIGUATION_IF_NEEDED = "album_disambiguation_if_needed"
 
 
 class ArtistNames(StrEnum):
@@ -106,6 +108,9 @@ class TaggingChoices:
     #: Field names are Picard's option names, like the values.
     standardize_artist_names: ArtistNames = ArtistNames.NONE
     always_standardize_multivalue_artist: bool = False
+    #: Derived (release ID, group ID) pairs, frozen for one plan/write. Never
+    #: persisted; the album being rematched is excluded by its paths.
+    library_releases: frozenset[tuple[str, str]] = frozenset()
 
 
 #: `TaggingChoices()`, once: the default for callers that write MusicBrainz's own
@@ -195,7 +200,11 @@ def artist_spelling(entry: Mapping[str, Any], choices: TaggingChoices) -> Artist
     return ArtistSpelling(name=name, sort_name=sort_name, list_name=list_name)
 
 
-def album_title(release: Release, enabled: Collection[TagTransform]) -> str:
+def album_title(
+    release: Release,
+    enabled: Collection[TagTransform],
+    library_releases: Collection[tuple[str, str]] = (),
+) -> str:
     """The album title a tagging writes — MusicBrainz's, or the user's spelling.
 
     Falls back to MusicBrainz's plain title whenever the transform is off OR the
@@ -204,14 +213,23 @@ def album_title(release: Release, enabled: Collection[TagTransform]) -> str:
     nothing for the setting to choose between.
     """
     title: str = release.get("title", "")
-    if TagTransform.ALBUM_DISAMBIGUATION in enabled:
+    group = (release.get("release-group") or {}).get("id")
+    needed = (
+        TagTransform.ALBUM_DISAMBIGUATION_IF_NEEDED in enabled
+        and bool(group)
+        and any(
+            other_group == group and other_release != release["id"]
+            for other_release, other_group in library_releases
+        )
+    )
+    if TagTransform.ALBUM_DISAMBIGUATION in enabled or needed:
         return title_with_disambiguation(title, release.get("disambiguation")) or title
     return title
 
 
 def every_choice() -> tuple[TaggingChoices, ...]:
-    """Every combination of the spelling settings — the space a library's
-    existing tags may have been written under, by Harmonist or by Picard.
+    """Unconditional choices spanning every supported spelling — the space a
+    library's existing tags may have been written under, by Harmonist or Picard.
 
     What "a spelling the release supports" means (#678): a value some
     combination writes for this release. Derived by running the write under
@@ -226,6 +244,10 @@ def every_choice() -> tuple[TaggingChoices, ...]:
     """
     transform_sets = [frozenset[TagTransform]()]
     for transform in TagTransform:
+        # Conditional disambiguation chooses between the same two spellings;
+        # library membership cannot add a spelling to the accepted set.
+        if transform is TagTransform.ALBUM_DISAMBIGUATION_IF_NEEDED:
+            continue
         transform_sets += [s | {transform} for s in transform_sets]
     return tuple(
         TaggingChoices(

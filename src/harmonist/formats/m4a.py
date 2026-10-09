@@ -287,6 +287,7 @@ def read_scan_fields(path: Path) -> ScanFields:
             for value in _binary_atom_list(audio, key)
         ),
         album_id=_binary_atom_str(audio, ATOM_MB_ALBUM_ID),
+        release_group_id=_binary_atom_str(audio, ATOM_MB_RELEASE_GROUP_ID),
         artist=_text_atom(audio, ATOM_ARTIST),
         codec=codec,
         has_cover=bool(audio.get(ATOM_COVER)),

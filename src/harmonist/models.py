@@ -419,6 +419,9 @@ class Album:
     # sidecar from the tag MBID. Barcode evidence below is the other automatic
     # adoption path; the inbox only kicks reconciliation for these two cases.
     has_tag_mbid: bool = False
+    # Consistent (release ID, group ID) from readable files, for library title
+    # choices. Paired so rematching cannot associate old group tags with a new ID.
+    tagged_release_group: tuple[str, str] | None = None
     # Consistent embedded GTIN, derived during the scan. Drives discovery and
     # the barcode/Harmony controls; never copied into the sidecar.
     barcode: str | None = None

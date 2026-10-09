@@ -45,13 +45,14 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="settings-title py-4">
+            <div class="settings-title py-4" data-conditional="{{ 'true' if 'album_disambiguation_if_needed' in cfg.tagging.transforms else 'false' }}">
                 <div>
                     <label for="album-title" class="block text-xs font-bold text-ink mb-1">Album title</label>
                     {# The handler discards the empty option, clearing the list. #}
                     <select id="album-title" name="transforms" class="w-full bg-white border border-line rounded px-3 py-2 text-sm text-ink focus:border-accent">
-                        <option value="" {{ 'selected' if 'album_disambiguation' not in cfg.tagging.transforms }}>Title only</option>
+                        <option value="" {{ 'selected' if not cfg.tagging.transforms }}>Title only</option>
                         <option value="album_disambiguation" {{ 'selected' if 'album_disambiguation' in cfg.tagging.transforms }}>Title + release disambiguation</option>
+                        <option value="album_disambiguation_if_needed" {{ 'selected' if 'album_disambiguation_if_needed' in cfg.tagging.transforms }}>Title + release disambiguation if needed</option>
                     </select>
                 </div>
                 {# Examples are tables headed by what they compare, so they read
@@ -59,16 +60,26 @@
                    cell holds both spellings; CSS shows the one the control now
                    selects. #}
                 <table class="settings-example">
-                    <caption class="sr-only">Example</caption>
-                    <thead><tr><th scope="col">On the release</th><th scope="col">Written as</th></tr></thead>
-                    <tbody><tr>
-                        <td>Fever Dog</td>
-                        <td><span class="settings-title-plain">Fever Dog</span><span class="settings-title-preview">Fever Dog (Live at the Riot House)</span></td>
-                    </tr></tbody>
+                    <caption class="sr-only">Example library</caption>
+                    <thead><tr><th scope="col">Title</th><th scope="col">Disambiguation</th><th scope="col">Written as</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td>Fever Dog</td><td>live</td>
+                            <td><span class="settings-title-plain">Fever Dog</span><span class="settings-title-preview">Fever Dog (live)</span></td>
+                        </tr>
+                        <tr class="settings-title-multiple">
+                            <td>Paper Moons</td><td>original</td>
+                            <td><span class="settings-title-plain">Paper Moons</span><span class="settings-title-preview">Paper Moons (original)</span></td>
+                        </tr>
+                        <tr class="settings-title-multiple">
+                            <td>Paper Moons</td><td>remaster</td>
+                            <td><span class="settings-title-plain">Paper Moons</span><span class="settings-title-preview">Paper Moons (remaster)</span></td>
+                        </tr>
+                    </tbody>
                 </table>
-                {% if 'album_disambiguation' in cfg.tagging.transforms %}
+                {% if cfg.tagging.transforms %}
                 <p role="note" class="transform-off-warning mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    Turning this off gives every album with the disambiguation in its title a pending update to remove it.
+                    Changing this setting can give albums a pending update to remove disambiguation from their titles.
                 </p>
                 {% endif %}
             </div>

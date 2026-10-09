@@ -93,6 +93,15 @@ def reset_gardener_settings():
     gardener.configure(None)
 
 
+@pytest.fixture(autouse=True)
+def reset_library_titles():
+    from harmonist import library_titles
+
+    library_titles.configure(None)
+    yield
+    library_titles.configure(None)
+
+
 @pytest.fixture
 def album_with_tracks(tmp_path):
     """Factory: build an album dir with N copies of the sine fixture, named NN Title.m4a."""

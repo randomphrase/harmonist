@@ -114,6 +114,9 @@ class ScanFields(NamedTuple):
     # Where the file came from, kept apart from everything above (#632).
     provenance: ProvenanceTags = ProvenanceTags()
 
+    # Group membership for conditional album-title disambiguation (#722).
+    release_group_id: str | None = None
+
 
 @dataclass
 class TagSet:

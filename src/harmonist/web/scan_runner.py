@@ -39,6 +39,7 @@ from harmonist import (
     audit,
     contributions,
     library_index,
+    library_titles,
     live_counts,
     scanner,
 )
@@ -299,6 +300,7 @@ class ScanRunner:
         changed = results != self._albums
         self._scanned = scanned
         self._albums = results
+        library_titles.reset_from(results)
         return results, changed
 
     def status(self) -> dict[str, Any]:

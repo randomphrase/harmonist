@@ -25,14 +25,29 @@ def test_settings_save_round_trips_both_tagging_dropdowns(demo_server: str) -> N
         page.goto(f"{demo_server}/settings")
         title = page.get_by_label("Album title", exact=True)
         cover = page.get_by_label("Create cover.jpg in album folders")
-        preview = page.locator(".settings-title-preview")
-        for title_value, cover_value in [("album_disambiguation", "if_missing"), ("", "never")]:
+        written = page.locator(".settings-title td:last-child span:visible")
+        expected = {
+            "album_disambiguation": [
+                "Fever Dog (live)",
+                "Paper Moons (original)",
+                "Paper Moons (remaster)",
+            ],
+            "album_disambiguation_if_needed": [
+                "Fever Dog",
+                "Paper Moons (original)",
+                "Paper Moons (remaster)",
+            ],
+            "": ["Fever Dog", "Paper Moons", "Paper Moons"],
+        }
+        for title_value, cover_value in [
+            ("album_disambiguation", "if_missing"),
+            ("album_disambiguation_if_needed", "never"),
+            ("", "never"),
+        ]:
             title.select_option(title_value)
             cover.select_option(cover_value)
-            if title_value:
-                playwright_sync.expect(preview).to_be_visible()
-            else:
-                playwright_sync.expect(preview).to_be_hidden()
+            playwright_sync.expect(written).to_have_text(expected[title_value])
+            if not title_value:
                 # The saved transform is on: choosing Title only must retain
                 # main's warning about pending removal updates (#685).
                 warning = page.locator(".transform-off-warning")
@@ -50,6 +65,7 @@ def test_settings_save_round_trips_both_tagging_dropdowns(demo_server: str) -> N
             page.reload()
             playwright_sync.expect(title).to_have_value(title_value)
             playwright_sync.expect(cover).to_have_value(cover_value)
+            playwright_sync.expect(written).to_have_text(expected[title_value])
         browser.close()
 
 

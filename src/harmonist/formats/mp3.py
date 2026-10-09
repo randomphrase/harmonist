@@ -228,6 +228,7 @@ def read_scan_fields(path: Path) -> ScanFields:
             for value in frame.text
         ),
         album_id=_txxx(tags, TXXX_ALBUM_ID),
+        release_group_id=_txxx(tags, TXXX_RELEASE_GROUP_ID),
         artist=_text(tags, "TPE1"),
         codec="MP3",
         has_cover=bool(tags and tags.getall("APIC")),

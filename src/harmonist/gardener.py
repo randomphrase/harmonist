@@ -411,11 +411,13 @@ def recheck_for_settings(
     Records nothing in the Activity feed: the user caused these updates a moment
     ago, and an album with nothing but a Settings change is never announced.
     """
+    changed_groups = {group for _, group in before.library_releases ^ after.library_releases}
     return _refresh_from_cache(
         albums,
         duty=duty,
         wanted=lambda release: (
-            tagger.tagsets_for(release, before) != tagger.tagsets_for(release, after)
+            (release.get("release-group") or {}).get("id") in changed_groups
+            or tagger.tagsets_for(release, before) != tagger.tagsets_for(release, after)
         ),
         what="settings re-check",
     )

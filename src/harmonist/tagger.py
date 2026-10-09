@@ -2187,7 +2187,7 @@ def _build_tagset(
 
     return TagSet(
         mb_album_id=release["id"],
-        album=transforms_mod.album_title(release, tagging.transforms),
+        album=transforms_mod.album_title(release, tagging.transforms, tagging.library_releases),
         album_artist=_artist_phrase(release.get("artist-credit"), tagging),
         title=_track_title(track),
         artist=_artist_phrase(track_artist_credit, tagging),

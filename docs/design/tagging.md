@@ -273,16 +273,32 @@ change that isn't a reason to tag is still written, and still recorded.
 
 A **transform** is a named, user-enabled choice of which accepted spelling a
 tagging *writes*: the exactly derivable equivalent of a Picard option or tagger
-script. One exists: adding the disambiguation to the album title.
+script. Album disambiguation can be applied always or conditionally.
 
 **A transform only chooses among spellings the release has.** The accepted set
 never depends on which transforms are enabled; the setting picks a member of it.
 That's what lets a change be classified Settings at all: the release proves the
 value on disk was one of its own spellings, and the new value is the one the user
 chose. A value that isn't in the set, such as a MusicBrainz retitle arriving at
-the same time, keeps its ordinary significance. A transform is also a function of
-the release, never of what's on the file, so applying it twice is applying it
-once.
+the same time, keeps its ordinary significance. A transform reads the release
+and any library context, never the existing title tag, so unchanged inputs give
+the same result on every application.
+
+Conditional disambiguation (#722) also takes a snapshot of library membership:
+another distinct release in the same group selects the disambiguated spelling.
+Membership chooses between the same two accepted spellings, so it does not
+broaden what counts as a Settings change. Counting release IDs avoids adding an
+identical suffix merely because the same release is held in two encodings.
+Missing or identical comments are allowed; uniqueness is not what the rule
+promises, and independent reviewed updates can temporarily leave equal titles.
+
+Membership comes from scanned tag identities and the latest stored release
+data, never from title similarity or new MusicBrainz requests. It is derived in
+memory, because persisting the decision would go stale when another album
+arrives, leaves or changes its match. A rematch excludes this album's old
+identity while keeping any other copies; its candidate supplies its new group.
+Reviews bind the resulting title as well as the release snapshot, since a
+library change can now change the proposed tags without MusicBrainz changing.
 
 **The library converges on the setting**, existing albums included, whichever
 way the setting points (#685). The update check plans exactly what a re-tag would
@@ -290,7 +306,8 @@ write, under every spelling setting, so an album carrying another supported
 spelling has an update and one carrying the chosen spelling has none. Changing a
 setting re-judges the albums whose stored release would be written differently
 under the new settings, without reading any files to decide or making any
-requests.
+requests. Changes in group membership re-judge the affected groups after the
+scan publishes them, including albums whose own files have not changed.
 
 That replaced "transforms affect future taggings only", which kept the update
 check free of settings and turning a transform on free of consequences, but left

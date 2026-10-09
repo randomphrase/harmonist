@@ -648,6 +648,8 @@ def build_album(
         else _derive_state(sidecar, fields, album_dir, io.video_fields)
     )
 
+    identities = {(f.album_id, f.release_group_id) for f in fields if not f.unreadable}
+    tagged_group = next(iter(identities)) if len(identities) == 1 else (None, None)
     return Album(
         id=_album_id(album_dir, sidecar),
         path=album_dir,
@@ -682,6 +684,9 @@ def build_album(
         # reconcile.reconcile_album reads). Lets the inbox skip kicking
         # reconcile for untagged orphans it could never resolve.
         has_tag_mbid=any(sf.album_id for sf in fields),
+        tagged_release_group=(tagged_group[0], tagged_group[1])
+        if tagged_group[0] and tagged_group[1]
+        else None,
         barcode=barcode_evidence.barcode if barcode_evidence else None,
         source_upc=source_evidence.barcode if source_evidence else None,
         expected_track_count=expected.total,

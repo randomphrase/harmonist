@@ -116,6 +116,48 @@ def test_the_tagset_carries_the_spelling_the_transform_chose():
     assert {t.album for t in transformed} == {"Test Album (expanded edition)"}
 
 
+def test_conditional_disambiguation_follows_other_releases_in_the_group(tmp_path):
+    release = _release("expanded edition")
+    release["release-group"] = {"id": "group"}
+    album_dir = _album(tmp_path)
+    conditional = TaggingChoices(
+        transforms=frozenset({TagTransform.ALBUM_DISAMBIGUATION_IF_NEEDED}),
+    )
+    from dataclasses import replace
+
+    # A duplicate encoding of this release does not distinguish anything.
+    single = replace(conditional, library_releases=frozenset({(release["id"], "group")}))
+    paired = replace(single, library_releases=single.library_releases | {("other", "group")})
+    unrelated = replace(single, library_releases=single.library_releases | {("other", "elsewhere")})
+    assert {t.album for t in tagger.tagsets_for(release, single)} == {"Test Album"}
+    assert {t.album for t in tagger.tagsets_for(release, unrelated)} == {"Test Album"}
+    tagger.tag_album(album_dir, release, tagging=single)
+    plan = tagger.plan_album(album_dir, release, artwork=False, tagging=paired)
+    assert gardener.verdict_for(plan) == owned.Significance.SETTINGS
+    tagger.tag_album(album_dir, release, tagging=paired)
+    assert _album_tags(album_dir) == {"Test Album (expanded edition)"}
+    assert not tagger.plan_album(album_dir, release, artwork=False, tagging=paired).changes
+    assert (
+        gardener.verdict_for(tagger.plan_album(album_dir, release, artwork=False, tagging=single))
+        == owned.Significance.SETTINGS
+    )
+    tagger.tag_album(album_dir, release, tagging=single)
+    assert _album_tags(album_dir) == {"Test Album"}
+    assert not tagger.plan_album(album_dir, release, artwork=False, tagging=single).changes
+
+
+@pytest.mark.parametrize("comment", [None, "", "shared comment"])
+def test_conditional_title_needs_no_unique_comment(comment):
+    release = _release(comment)
+    release["release-group"] = {"id": "group"}
+    choices = TaggingChoices(
+        transforms=frozenset({TagTransform.ALBUM_DISAMBIGUATION_IF_NEEDED}),
+        library_releases=frozenset({("other", "group")}),
+    )
+    expected = "Test Album (shared comment)" if comment else "Test Album"
+    assert {t.album for t in tagger.tagsets_for(release, choices)} == {expected}
+
+
 def _album(tmp_path, n: int = 2) -> Path:
     album_dir = tmp_path / "Test Artist" / "Test Album"
     album_dir.mkdir(parents=True)

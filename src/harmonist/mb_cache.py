@@ -49,7 +49,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import activity_store, mb_lookup, timing
+from . import activity_store, library_titles, mb_lookup, timing
 from .models import Release
 
 log = logging.getLogger(__name__)
@@ -137,6 +137,7 @@ def fetch_release(mbid: str, *, max_age: timedelta | None = None) -> Release:
     inc = _key(mb_lookup.RELEASE_INCLUDES)
     cached = activity_store.cached_release(mbid, inc)
     if cached is not None and _fresh(cached, _ttl if max_age is None else max_age):
+        library_titles.observe(cached.payload)
         return cached.payload
     with timing.warn_if_slow("MusicBrainz release fetch", _SLOW_FETCH, mbid=mbid):
         release = mb_lookup.fetch_release(mbid)
@@ -145,6 +146,7 @@ def fetch_release(mbid: str, *, max_age: timedelta | None = None) -> Release:
     # the surviving release under a dead MBID — served to nobody, and leaving
     # the real id uncached.
     activity_store.store_release(str(release["id"]), inc, release)
+    library_titles.observe(release)
     return release
 
 
@@ -161,6 +163,8 @@ def stored_release(mbid: str) -> Release | None:
     and a None is an answer rather than a reason to go and ask.
     """
     cached = activity_store.cached_release(mbid, _key(mb_lookup.RELEASE_INCLUDES))
+    if cached is not None:
+        library_titles.observe(cached.payload)
     return cached.payload if cached is not None else None
 
 
@@ -170,7 +174,10 @@ def stored_release_snapshot(mbid: str) -> activity_store.CachedRelease | None:
     Contribution warm-up needs both; two separate reads can pair a payload with
     the timestamp of a concurrent refresh, as well as parsing it twice per album.
     """
-    return activity_store.cached_release(mbid, _key(mb_lookup.RELEASE_INCLUDES))
+    cached = activity_store.cached_release(mbid, _key(mb_lookup.RELEASE_INCLUDES))
+    if cached is not None:
+        library_titles.observe(cached.payload)
+    return cached
 
 
 def due(mbid: str) -> bool:

@@ -29,14 +29,17 @@
   font-size: var(--text-2xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
 }
 .settings-example td { padding: .05rem 1rem .05rem 0; }
-.settings-example td + td { color: var(--color-ink); font-weight: 500; }
+.settings-example td:last-child { color: var(--color-ink); font-weight: 500; }
 
 /* The title example follows the current control, including unsaved changes:
    each written-as cell holds both spellings, and the control picks one. */
 .settings-title-preview { display: none; }
-.settings-title:has(option[value="album_disambiguation"]:checked) .settings-title-preview { display: inline; }
+.settings-title:has(option[value="album_disambiguation"]:checked) .settings-title-preview,
+.settings-title:has(option[value="album_disambiguation_if_needed"]:checked) .settings-title-multiple .settings-title-preview { display: inline; }
 .settings-title:has(option[value="album_disambiguation"]:checked) .settings-title-plain,
 .settings-title:has(option[value="album_disambiguation"]:checked) .transform-off-warning { display: none; }
+.settings-title:has(option[value="album_disambiguation_if_needed"]:checked) .settings-title-multiple .settings-title-plain,
+.settings-title[data-conditional="true"]:has(option[value="album_disambiguation_if_needed"]:checked) .transform-off-warning { display: none; }
 
 /* The artist examples follow the current controls the same way (#678): a
    variation is standardized by either standardizing choice, a former name only

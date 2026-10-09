@@ -195,21 +195,26 @@ class TaggingConfig(BaseModel):
 
     #: Which named transforms a tagging applies to the values it writes (#544).
     #:
-    #: A LIST of enabled names rather than a flag per transform, because the
-    #: axis this grows along is *more transforms* (#284's survey), not more
-    #: values per transform — the opposite of `folder_cover` above, whose third
-    #: value is already foreseen. A list also stays readable as the set grows,
-    #: and is the shape a sequence of scripts would take if the named registry
-    #: ever becomes one.
+    #: A list of enabled spelling rules. The two disambiguation rules are
+    #: alternatives: always append it, or append it when another release of the
+    #: same group is in the library (#722). Existing configurations keep their
+    #: meaning without a migration.
     #:
     #: **Empty by default**, so an install that says nothing writes exactly what
     #: MusicBrainz says, as every version before this one did.
     #:
-    #: Duplicates and order are immaterial today — each transform owns a
-    #: different field, and `transforms.py` is handed a set. Order becomes a
-    #: real question the first time two of them touch one field, and this is a
-    #: list so that it can be answered then without breaking a config file.
+    #: Duplicates and order are immaterial; mutually exclusive rules are rejected.
     transforms: list[TagTransform] = Field(default_factory=list)
+
+    @field_validator("transforms")
+    @classmethod
+    def disambiguation_choice(cls, values: list[TagTransform]) -> list[TagTransform]:
+        if {
+            TagTransform.ALBUM_DISAMBIGUATION,
+            TagTransform.ALBUM_DISAMBIGUATION_IF_NEEDED,
+        } <= set(values):
+            raise ValueError("Choose either always or conditional album disambiguation, not both")
+        return values
 
     #: Picard 3.0's "Standardize artist names" (#678), under Picard's own key and
     #: values so a user can match the two tools by name.

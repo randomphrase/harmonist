@@ -288,6 +288,7 @@ class VorbisTagger:
             ),
             barcodes=tuple(str(v) for key in (KEY_BARCODE, "UPC") for v in tags.get(key, [])),
             album_id=first(KEY_ALBUM_ID),
+            release_group_id=first(KEY_RELEASE_GROUP_ID),
             artist=first(KEY_ARTIST),
             codec=codec,
             has_cover=has_cover,

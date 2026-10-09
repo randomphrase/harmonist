@@ -143,6 +143,7 @@ def test_read_scan_fields_matches_individual_reads(tmp_path, ext, fixture):
     sf = formats.read_scan_fields(f)
     assert sf.provenance.comments == ("Visit https://artist.bandcamp.com/album/record",)
     assert sf.album_id == formats.read_album_id(f) == "rel-fmt-1"
+    assert sf.release_group_id == formats.read_owned(f)["mb_release_group_id"] == "rg-1"
     assert sf.album_title == formats.read_album_title(f) == "Format Album"
     assert sf.artist == formats.read_artist(f) == "Format Artist"
     assert sf.codec == formats.describe(f)
