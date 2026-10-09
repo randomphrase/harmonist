@@ -151,7 +151,7 @@ the release version the user is waiting to see change, and any change lapses it.
 That's the point: the change may well be their own edit landing, and Harmonist
 can't tell whose it was.
 
-Ignoring writes nothing to files, and the album keeps its Update badge, because
+Ignoring writes nothing to files, and the album keeps its update badge, because
 the difference is still real. Re-tagging clears the ignore, since there's then
 nothing to wait for. It's stored in `activity.db` rather than the sidecar (see
 [storage](storage.md#activitydb)).

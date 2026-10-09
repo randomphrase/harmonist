@@ -72,24 +72,29 @@
    has three call sites and only one of them exists: this, #273's routing table
    where each level routes to ignore / review / auto-apply, and whatever
    eventually lists updates outside the Library filter. #}
+{% macro severity_icon(significance) -%}
+{% set _s = significance | string %}
+{% if _s == 'cosmetic' %}<span class="sev__aa" aria-hidden="true">Aa</span>
+{% elif _s == 'enrichment' %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+{% elif _s == 'settings' %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2.2" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="2.2" fill="currentColor" stroke="none"/><circle cx="7" cy="18" r="2.2" fill="currentColor" stroke="none"/></svg>
+{% elif _s == 'structure' %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 20V4M7 4L3.5 7.5M7 4l3.5 3.5M17 4v16M17 20l-3.5-3.5M17 20l3.5-3.5"/></svg>
+{% elif _s == 'identity' %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12.5V5a2 2 0 012-2h7.5L21 11.5 12.5 20z"/><circle cx="7.6" cy="7.6" r="1.5" fill="currentColor" stroke="none"/></svg>
+{% endif %}
+{%- endmacro %}
+
 {% macro severity_chip(significance) -%}
 {% set _s = significance | string %}
 {% set _spec = {
-    'settings':   ('Settings',   'sev--settings',   'sliders'),
-    'cosmetic':   ('Cosmetic',   'sev--cosmetic',   'aa'),
-    'enrichment': ('Enrichment', 'sev--enrichment', 'plus'),
-    'structure':  ('Structure',  'sev--structure',  'order'),
-    'identity':   ('Identity',   'sev--identity',   'tag'),
+    'settings':   ('Settings',   'sev--settings'),
+    'cosmetic':   ('Cosmetic',   'sev--cosmetic'),
+    'enrichment': ('Enrichment', 'sev--enrichment'),
+    'structure':  ('Structure',  'sev--structure'),
+    'identity':   ('Identity',   'sev--identity'),
 } %}
 {% if _s in _spec %}
-{% set label, cls, glyph = _spec[_s] %}
+{% set label, cls = _spec[_s] %}
 <span class="sev {{ cls }}" title="How far this update reaches: {{ label|lower }}. Harmonist ranks a change by how much of the album it calls into question.">
-    {% if glyph == 'aa' %}<span class="sev__aa" aria-hidden="true">Aa</span>
-    {% elif glyph == 'plus' %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-    {% elif glyph == 'sliders' %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2.2" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="2.2" fill="currentColor" stroke="none"/><circle cx="7" cy="18" r="2.2" fill="currentColor" stroke="none"/></svg>
-    {% elif glyph == 'order' %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 20V4M7 4L3.5 7.5M7 4l3.5 3.5M17 4v16M17 20l-3.5-3.5M17 20l3.5-3.5"/></svg>
-    {% else %}<svg class="sev__g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12.5V5a2 2 0 012-2h7.5L21 11.5 12.5 20z"/><circle cx="7.6" cy="7.6" r="1.5" fill="currentColor" stroke="none"/></svg>
-    {% endif %}
+    {{ severity_icon(significance) }}
     {{ label }}
 </span>
 {% endif %}

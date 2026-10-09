@@ -362,22 +362,34 @@ button[disabled],
   white-space: nowrap;
 }
 .library-update-button:disabled { opacity: .4; cursor: default; }
+.library-update-chevron { width: .75rem; height: .75rem; flex: none; }
+.library-update-button:has(+ :popover-open) .library-update-chevron { transform: rotate(180deg); }
 .library-update-menu {
   position: fixed; inset: auto; margin: 0; padding: .25rem;
   width: 14rem; max-width: calc(100vw - 1rem); overflow-y: auto;
   border: 1px solid var(--color-line); border-radius: .5rem;
   background: var(--color-white); color: var(--color-ink);
-  box-shadow: 0 8px 24px #0002; font-size: var(--text-xs);
+  box-shadow: 0 8px 24px #0002;
+  font-family: var(--font-sans); font-size: var(--text-xs); line-height: 1.25rem;
 }
 .library-update-option {
-  display: flex; align-items: center; gap: .5rem; padding: .5rem;
+  display: grid; grid-template-columns: 1rem 1fr auto .75rem;
+  align-items: center; gap: .5rem; padding: .375rem .5rem;
   border-radius: .25rem;
 }
-a.library-update-option:hover { background: var(--color-surface); color: var(--color-accent); }
+a.library-update-option:hover,
+a.library-update-option:focus-visible { background: var(--color-surface); color: var(--color-accent); }
 .library-update-option[aria-current] { background: var(--color-accent-soft); color: var(--color-accent); }
 .library-update-option[aria-disabled] { opacity: .4; }
-.library-update-check { width: .75rem; }
-.library-update-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+.library-update-icon { display: flex; align-items: center; justify-content: center; color: var(--color-muted); }
+.library-update-icon svg { width: 1rem; height: 1rem; }
+.library-update-icon .sev__aa { font-size: .75rem; }
+.library-update-label { font-weight: 600; }
+.library-update-count { color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.library-update-option[aria-current] .library-update-icon,
+.library-update-option[aria-current] .library-update-count { color: inherit; }
+.library-update-check { font-weight: 600; text-align: right; }
+.library-update-divider { margin: .25rem .5rem; border-color: var(--color-line); }
 @media (pointer: coarse) {
   .library-update-option { min-height: 44px; }
 }

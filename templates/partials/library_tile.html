@@ -12,6 +12,7 @@
    without this Back would drop the reader into the whole library one album into a
    list they were working through. `from_q` is urlencoded; it is free text, and an
    `&` in an album name would otherwise end this href early. #}
+{% from 'macros.html' import severity_chip %}
 {% set sc = album.sidecar %}
 {% set is_new = sc and sc.downloaded_at and (now - sc.downloaded_at).days < 7 %}
 {% set from_params = [] %}
@@ -25,32 +26,13 @@
         <img loading="lazy" src="/cover/{{ album.id }}"
              onerror="this.style.visibility='hidden'" alt=""
              class="w-full aspect-square object-cover rounded-md border border-line bg-surface group-hover:opacity-90 transition">
-        {% if is_new %}
-        {# Bandcamp-style "New" flag (teal — a reserved badge colour). #}
-        <span class="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-2xs font-bold uppercase tracking-widest rounded bg-bc-teal text-white shadow-sm">New</span>
-        {% endif %}
+        {% if is_new or album.update_available %}
+        {# Share a wrapping row: long severity labels must not overlap New on
+           narrow covers. Both badge palettes are opaque over the artwork. #}
+        <div class="absolute top-1.5 left-1.5 right-1.5 flex flex-wrap items-start justify-between gap-1">
         {% if album.update_available %}
-        {# MusicBrainz purple, because that is already what it means everywhere
-           else in Harmonist — the MB side of a tag comparison, the Reconciling
-           and Tagging pills. This badge reports a MusicBrainz fact, so it says
-           so in Harmonist's existing word for one rather than introducing a
-           fourth colour for the palette to mean something by.
-
-           Tinted rather than solid: amber is "this needs attention" and teal is
-           the New flag, and an available update is neither a defect nor an
-           event. Same weight as the Incomplete badge, so it reads as a note.
-
-           The tint is an OPAQUE token, not `bg-mb-purple/15` as the inbox pills
-           use. Those sit on the page's white ground, where the alpha resolves
-           to this exact colour; a badge sits on album art, where it resolves to
-           whatever the cover is and the artwork shows straight through the
-           word. `bg-amber-50` on the Incomplete badge below is opaque for the
-           same reason.
-
-           Top-left is the last free corner that keeps the two flags on one
-           eye-line: New is top-right, Incomplete bottom-left.
-
-           **The badge is a positive claim only.** `update_available` under-
+        {# The same severity badge as the album page and filter vocabulary.
+           The badge is a positive claim only. `update_available` under-
            reports by design — it is False for an album nothing has compared
            yet — so no badge means "nothing found *or* not looked at", never
            "this one is fine". That is why there is no third, "unchecked" state
@@ -58,10 +40,20 @@
            would mark almost every tile and read as though the whole library
            were broken. What makes the absence close to meaningful is turning
            that check on; see docs/how-it-works.md. #}
-        <span class="absolute top-1.5 left-1.5 px-1.5 py-0.5 text-2xs font-bold rounded bg-mb-purple-soft text-mb-purple border border-mb-purple/40"
-              title="MusicBrainz has something these files don't have yet — open the album to see what, and re-tag to take it">
+        {% if album.update_significance %}
+        {{ severity_chip(album.update_significance) }}
+        {% else %}
+        <span class="px-1.5 py-0.5 text-2xs font-bold rounded bg-mb-purple-soft text-mb-purple border border-mb-purple/40"
+              title="An update is available — open the album to review it">
             Update
         </span>
+        {% endif %}
+        {% endif %}
+        {% if is_new %}
+        {# Bandcamp-style "New" flag (teal — a reserved badge colour). #}
+        <span class="ml-auto px-1.5 py-0.5 text-2xs font-bold uppercase tracking-widest rounded bg-bc-teal text-white shadow-sm">New</span>
+        {% endif %}
+        </div>
         {% endif %}
         {% if album.state == AlbumState.INCOMPLETE or album.unassigned_track_count %}
         <div class="absolute bottom-1.5 left-1.5 right-1.5 flex flex-wrap items-start gap-1">

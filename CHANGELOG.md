@@ -8,7 +8,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
-- **Update available has a dropdown to filter by significance**, separating Identity, Structure, Enrichment, Cosmetic and Settings updates (#368).
+- **Library updates can be filtered by significance**, with matching Identity, Structure, Enrichment, Cosmetic and Settings badges on album covers (#368).
 
 ### Fixed
 

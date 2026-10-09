@@ -499,13 +499,16 @@ def test_the_library_filter_narrows_to_albums_with_an_update(engaged, monkeypatc
     assert "Untouched Album" not in body
 
 
-def test_a_flagged_album_says_so_on_its_tile(engaged):
+@pytest.mark.parametrize("significance", [None, *owned.Significance])
+def test_a_flagged_album_says_so_on_its_tile(engaged, significance):
     """The filter gathers them; the badge means you meet one while browsing
     rather than only when you go looking (#293).
 
     The absence half is asserted because a live path produces it: the very same
     template renders the badge for the album beside this one, so this is "the
     badge is conditional", not "a string is missing from the page"."""
+    from bs4 import BeautifulSoup
+
     cfg, engage = engaged
     _tagged(cfg.paths.music_dir, _release())
     other = _release("Untouched Album") | {"id": "rel-bbb"}
@@ -517,12 +520,20 @@ def test_a_flagged_album_says_so_on_its_tile(engaged):
     client, runner = engage()
     flagged = next(a for a in runner.albums() if a.title == "Test Album")
     flagged.update_available = True
+    flagged.update_significance = significance
 
     body = client.get("/library").text
 
-    assert "Update" in _tile_for(body, "Test Album")
-    assert "bg-mb-purple-soft" in _tile_for(body, "Test Album")
-    assert "bg-mb-purple-soft" not in _tile_for(body, "Untouched Album")
+    flagged_tile = BeautifulSoup(_tile_for(body, "Test Album"), "html.parser")
+    if significance is None:
+        assert flagged_tile.find("span", string=re.compile(r"^\s*Update\s*$")) is not None
+    else:
+        badge = flagged_tile.select_one(f".sev--{significance}")
+        assert badge is not None
+        assert significance.value.capitalize() in badge.get_text()
+    untouched_tile = BeautifulSoup(_tile_for(body, "Untouched Album"), "html.parser")
+    assert untouched_tile.select_one(".sev") is None
+    assert untouched_tile.find("span", string=re.compile(r"^\s*Update\s*$")) is None
 
 
 def _tile_for(body: str, title: str) -> str:
@@ -618,6 +629,8 @@ def test_update_categories_partition_the_actionable_queue(engaged, monkeypatch):
 
 
 def test_update_category_navigation_survives_empty_results_and_paging(engaged):
+    from bs4 import BeautifulSoup
+
     cfg, engage = engaged
     for i in range(3):
         title = f"Album {i}"
@@ -644,10 +657,12 @@ def test_update_category_navigation_survives_empty_results_and_paging(engaged):
         assert 'aria-label="Update filters"' in response.text
         assert "No albums match this filter." in response.text
         assert "Show all 3 albums" in response.text
-        assert re.search(
-            r'<span[^>]*aria-disabled="true">\s*<span[^>]*></span>\s*<span>Cosmetic</span>',
-            response.text,
-        )
+        menu = BeautifulSoup(response.text, "html.parser").select_one("#library-update-menu")
+        assert menu is not None
+        assert {
+            label.get_text(strip=True)
+            for label in menu.select('[aria-disabled="true"] .library-update-label')
+        } == {"All updates", "Structure", "Enrichment", "Cosmetic", "Settings"}
 
 
 @pytest.mark.parametrize("mbid", ["rel-aaa"])
