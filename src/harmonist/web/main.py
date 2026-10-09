@@ -5375,6 +5375,12 @@ def _register_routes(app: FastAPI) -> None:
             from_q=_library_search(from_q),
         )
         ctx["edit_assignments"] = edit_assignments
+        # Format evidence exists before a release is chosen too. Keep the
+        # header's link useful on an unmatched album, using files alone (#720).
+        if not (album.sidecar and album.sidecar.mb_release_id):
+            _, ctx["disk_tracks"] = _album_disk_view(album.path, album.folders)
+            ctx["mb_names"] = {}
+            ctx["mb_credits"] = {}
         return _templates(request).TemplateResponse(request, "album.html", ctx)
 
     @app.get("/library/{album_id}/contributions/editions", response_class=HTMLResponse)
@@ -7691,9 +7697,9 @@ def _register_routes(app: FastAPI) -> None:
         so; nothing accepts by omission.
 
         Deliberately does NOT touch state or files. The album is still
-        INCOMPLETE, its tile still reports the count, and no tag is rewritten;
-        the only thing that changes is that the Library stops listing it as
-        something to fix (#196).
+        INCOMPLETE and no tag is rewritten. The Library hides its completeness
+        badge and stops listing it as something to fix; the album page retains
+        the count as a neutral reminder (#196, #720).
         """
         album = _find_album(request, album_id)
         sc = album.sidecar

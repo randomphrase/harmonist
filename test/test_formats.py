@@ -533,6 +533,9 @@ def test_quality_label_per_format(tmp_path, ext, fixture, expected):
     d = _make_album(tmp_path, fixture)
     f = next(d.glob(f"*{ext}"))
     assert formats.read_scan_fields(f).quality.label == expected
+    read = formats.read_tags(f)
+    assert read.quality.label == expected
+    assert read.codec == formats.read_scan_fields(f).codec
 
 
 def test_a_lossy_stream_reports_no_bit_depth_even_when_mutagen_offers_one(tmp_path):

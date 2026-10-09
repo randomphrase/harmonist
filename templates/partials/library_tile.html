@@ -55,32 +55,30 @@
         {% endif %}
         </div>
         {% endif %}
-        {% if album.state == AlbumState.INCOMPLETE or album.unassigned_track_count %}
+        {% set _warn_incomplete = album.state == AlbumState.INCOMPLETE and not (sc and sc.tracks_unavailable) %}
+        {% if _warn_incomplete or album.unassigned_track_count or album.partial_tag_count %}
         <div class="absolute bottom-1.5 left-1.5 right-1.5 flex flex-wrap items-start gap-1">
-        {% if album.state == AlbumState.INCOMPLETE %}
+        {% if _warn_incomplete %}
         {# The count comes from the files' own tags (#195), and is absent when a
            whole disc is missing — nothing on disk records how long it was. Say
            "Incomplete" then rather than inventing a denominator.
 
-           Amber says "this needs attention". An album the user has accepted as
-           finished (#196) is still short and still says so, but it is no longer
-           work — so it goes neutral. The badge stays rather than disappearing,
-           because hiding it would lose a true fact about the album. #}
-        {% set _accepted = sc and sc.tracks_unavailable %}
-        <span class="px-1.5 py-0.5 text-2xs font-bold rounded {{ 'bg-surface text-muted border border-line' if _accepted else 'bg-amber-50 text-amber-700 border border-amber-300' }}"
-              title="{% if album.expected_track_count %}{{ album.track_count }} of {{ album.expected_track_count }} tracks on disk{% elif album.absent_media %}{{ missing_discs(album.absent_media, album.disc_total) }}{% else %}Fewer tracks on disk than this release has{% endif %}{% if _accepted %} — accepted as complete; the rest aren't available{% endif %}">
+           Muting removes this Library warning; the neutral reminder and its
+           checkbox remain on the album page (#720). Other warnings stay. #}
+        <span class="album-warning__badge"
+              title="{% if album.expected_track_count %}{{ album.track_count - album.unassigned_track_count }} of {{ album.expected_track_count }} tracks {{ 'assigned' if album.unassigned_track_count else 'on disk' }}{% elif album.absent_media %}{{ missing_discs(album.absent_media, album.disc_total) }}{% else %}Fewer tracks on disk than this release has{% endif %}">
             {% if album.expected_track_count %}{{ album.track_count - album.unassigned_track_count }} of {{ album.expected_track_count }}{% else %}Incomplete{% endif %}
         </span>
         {% endif %}
         {% if album.unassigned_track_count %}
-        <span class="px-1.5 py-0.5 text-2xs font-bold rounded bg-amber-50 text-amber-700 border border-amber-300">Tracks unassigned</span>
+        <span class="album-warning__badge">Tracks unassigned</span>
+        {% endif %}
+        {% if album.partial_tag_count %}
+        <span class="album-warning__badge">{{ album.partial_tag_count[0] }}/{{ album.partial_tag_count[1] }} tagged</span>
         {% endif %}
         </div>
         {% endif %}
     </div>
     <div class="mt-1.5 text-sm font-bold text-ink leading-tight line-clamp-2">{{ album.title }}</div>
     <div class="text-xs text-muted truncate">{{ album.artist }}</div>
-    {% if album.partial_tag_count %}
-    <div class="text-2xs text-muted">{{ album.partial_tag_count[0] }}/{{ album.partial_tag_count[1] }} tagged</div>
-    {% endif %}
 </a>

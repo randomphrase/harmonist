@@ -338,7 +338,10 @@ def read_tags(path: Path) -> TrackTags:
         return TrackTags(unreadable=True)
     trkn = audio.get(ATOM_TRACK_NUM) or []
     disk = audio.get(ATOM_DISC_NUM) or []
+    codec = _codec_label(audio)
     return TrackTags(
+        codec=codec,
+        quality=quality.read(audio.info, lossless=codec == "ALAC"),
         album=_text_atom(audio, ATOM_ALBUM),
         album_artist=_text_atom(audio, ATOM_ALBUM_ARTIST),
         date=_text_atom(audio, ATOM_DATE),

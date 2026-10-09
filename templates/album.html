@@ -177,6 +177,11 @@
              {% if edit_assignments %}data-review-opened="true" hx-get="/assignments/{{ album.id }}?album_tracks=true&amp;on_album_page=true"
              hx-trigger="load" hx-swap="innerHTML settle:0ms"{% endif %}></div>
     </section>
+    {% elif disk_tracks %}
+    <section id="album-tracks" class="border border-line rounded-lg p-4 space-y-3">
+        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Tracks</h2>
+        {% with tracklist = disk_tracks %}{% include 'partials/_track_list.html' %}{% endwith %}
+    </section>
     {% endif %}
 
     {% with info = additional_info(album) %}{% include 'partials/_additional_info.html' %}{% endwith %}

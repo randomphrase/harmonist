@@ -67,6 +67,8 @@
 /* Keep numeric columns compact and both title columns equal, including when
  * movement controls appear. Long names wrap instead of stretching the table. */
 .assignment-table { table-layout: fixed; min-width: 760px; }
+/* Format/warning links land below the sticky navigation, including mobile. */
+#album-tracks { scroll-margin-top: 8rem; }
 #album-tracks:has(#album-track-editor .assignment-content) > .album-track-view,
 #album-track-editor:empty { display: none; }
 .assignment-number { width: 3.5rem; }
@@ -522,6 +524,20 @@ a.library-update-option:focus-visible { background: var(--color-surface); color:
 .album-identity__fields dd button { vertical-align: middle; }
 .album-identity__dates { flex-shrink: 0; grid-template-columns: auto auto; text-align: right; }
 .album-identity__dates dd { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.album-warning { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem .75rem; margin-top: .75rem; }
+.album-warning__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: .125rem .375rem;
+  border: 1px solid var(--color-amber-300);
+  border-radius: .25rem;
+  background: var(--color-amber-50);
+  color: var(--color-amber-700);
+  font-size: .6875rem;
+  line-height: 1rem;
+  font-weight: 700;
+}
+.album-warning__badge--muted { background: var(--color-surface); color: var(--color-muted); border-color: var(--color-line); }
 @media (max-width: 48rem) {
   .album-identity__metadata { flex-direction: column; gap: 1rem; }
   .album-identity__metadata > dl { align-self: end; }

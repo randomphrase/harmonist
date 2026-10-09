@@ -302,12 +302,13 @@ class VorbisTagger:
             quality=stream,
         )
 
-    def read_tags(self, path: Path) -> TrackTags:
+    def read_tags(self, path: Path, codec: str, *, lossless: bool) -> TrackTags:
         """Everything the album comparison needs from one file, in one open."""
         audio = self._open(path)
         if audio is None:
             return TrackTags(unreadable=True)
         duration = round(audio.info.length * 1000) if audio.info.length else None
+        stream = quality.read(audio.info, lossless=lossless)
         # Before the untagged early-return below, and deliberately: a FLAC keeps
         # its picture in a metadata block of its own, so a file with no comment
         # block can still carry artwork, and returning early used to drop it.
@@ -316,7 +317,7 @@ class VorbisTagger:
         if tags is None:
             # Opened fine, carries no tag block: genuinely untagged, not
             # unreadable. The duration is still real.
-            return TrackTags(duration_ms=duration, art=art)
+            return TrackTags(duration_ms=duration, art=art, codec=codec, quality=stream)
 
         def first(key: str) -> str | None:
             values = tags.get(key)
@@ -330,6 +331,8 @@ class VorbisTagger:
         track_num = first(KEY_TRACK_NUMBER)
         disc_num = first(KEY_DISC_NUMBER)
         return TrackTags(
+            codec=codec,
+            quality=stream,
             album=first(KEY_ALBUM),
             album_artist=first(KEY_ALBUM_ARTIST),
             date=first(KEY_DATE),

@@ -106,10 +106,8 @@ class ScanFields(NamedTuple):
     # What the audio stream itself is — sample rate, bit depth, bitrate (#130).
     # Read from the same handle as everything above, so it costs no extra open.
     #
-    # Here rather than in `read_tags` because the album panel states the format
-    # beside the path, which is scanner-derived and rendered before the tag
-    # comparison is fetched. Empty for a file that wouldn't open, like every
-    # other field on an unreadable one.
+    # The scan supplies the header before the comparison loads; read_tags also
+    # supplies it for the individual track rows. Empty for an unreadable file.
     quality: AudioQuality = AudioQuality()
     # Preserve every alias/value until album-wide consistency is checked.
     barcodes: tuple[str, ...] = ()
@@ -339,6 +337,11 @@ class TrackTags:
     #: halves of the album against each other.
     disc_num: int | None = None
     duration_ms: int | None = None
+
+    #: Read-only stream facts, from the same handle as the tags. They place
+    #: format in the track view without making it an owned/writable tag (#720).
+    codec: str | None = None
+    quality: AudioQuality = field(default_factory=AudioQuality)
 
     #: Harmonist-owned. Carries the recovered Bandcamp URL, so MusicBrainz has
     #: no counterpart and it must never be rendered as a difference.

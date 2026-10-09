@@ -10,6 +10,10 @@ versions follow [semantic versioning](https://semver.org).
 
 - **Library updates can be filtered by significance**, with matching Identity, Structure, Enrichment, Cosmetic and Settings badges on album covers (#368).
 
+### Changed
+
+- **Audio format differences appear beside their tracks**, and album warnings sit below the header facts; muted completeness badges disappear from the Library (#720).
+
 ### Fixed
 
 - **A Bandcamp download whose page is linked from both a digital and a physical

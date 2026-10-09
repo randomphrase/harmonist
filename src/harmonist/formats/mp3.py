@@ -250,6 +250,8 @@ def read_tags(path: Path) -> TrackTags:
     tags = audio.tags
     track_num = _text(tags, "TRCK")
     return TrackTags(
+        codec="MP3",
+        quality=quality.read(audio.info, lossless=False),
         album=_text(tags, "TALB"),
         album_artist=_text(tags, "TPE2"),
         date=_text(tags, "TDRC"),

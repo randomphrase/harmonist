@@ -1,0 +1,30 @@
+{# One warning area beneath the identity facts, within the metadata column.
+   The Library uses the same badges. Only completeness can be muted; the other
+   findings retain their own remedies and remain visible (#720). #}
+{% include 'partials/_completeness.html' %}
+{% if album.sidecar and album.sidecar.mb_release_id and album.unassigned_track_count %}
+<div class="album-warning">
+    <span class="album-warning__badge">Tracks unassigned · {{ album.unassigned_track_count }}</span>
+    <a href="#album-tracks" class="text-xs text-muted underline underline-offset-2 hover:text-ink">View tracks ↓</a>
+</div>
+{% endif %}
+{% if album.partial_tag_count %}
+<div class="album-warning">
+    <span class="album-warning__badge"
+          title="Re-tagging writes the MusicBrainz Album Id to the {{ album.partial_tag_count[1] - album.partial_tag_count[0] }} file(s) missing it.">
+        MusicBrainz id on {{ album.partial_tag_count[0] }} of {{ album.partial_tag_count[1] }} tracks
+    </span>
+    {# A missing album id is outside the ordinary tag comparison, so this
+       remedy must stay beside the finding even when there are no updates.
+       Keep the additions fingerprint: this action must not apply artwork
+       replacements from the combined update control (#366, #482). #}
+    <button hx-post="/retag/{{ album.id }}"
+            hx-include="#art-plan-{{ album.id }}"
+            hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
+            class="px-2 py-1 rounded text-2xs font-bold uppercase tracking-widest
+                   bg-white hover:bg-surface text-ink border border-line transition"
+            title="Re-tag from MusicBrainz, which writes the MusicBrainz Album Id to the {{ album.partial_tag_count[1] - album.partial_tag_count[0] }} file(s) missing it. Your artwork is left alone.">
+        Write it to those files
+    </button>
+</div>
+{% endif %}

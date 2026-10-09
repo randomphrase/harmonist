@@ -60,4 +60,4 @@ def read_scan_fields(path: Path) -> ScanFields:
 
 
 def read_tags(path: Path) -> TrackTags:
-    return _impl.read_tags(path)
+    return _impl.read_tags(path, "FLAC", lossless=True)

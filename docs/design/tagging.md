@@ -24,6 +24,12 @@ album-level change is listed once, not once per track.
 data a re-tag must not destroy, and clearing artwork with the other owned fields
 would erase them. Artwork has its own rules (see [artwork](artwork.md)).
 
+**Audio format is read-only file evidence.** It follows the track view's scope:
+one value when the files agree, individual readings when they differ, so the
+reader can locate a different encode beside its track. It has no MusicBrainz
+counterpart and never counts as a tag change. Ordinary variable-bitrate
+variation is part of one encode, not evidence of inconsistent formats (#720).
+
 **The comment is the user's.** It carries the Bandcamp URL that matching depends
 on, and other tools use it too. Picard puts the release's disambiguation there;
 Harmonist shows that on the album page instead.

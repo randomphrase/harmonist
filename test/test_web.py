@@ -3075,10 +3075,8 @@ def test_album_page_format_row_says_what_the_format_actually_is(client, cfg):
     assert "44.1 kHz · 16 bit" in row.group(1)
 
 
-def test_album_page_format_row_names_the_file_that_differs(client, cfg):
-    """#541. "Mixed" said something in the folder was unlike the rest and then
-    declined to say which — the one question it prompts. The row now carries the
-    tag comparison's pill, and the popover names the file and what it is."""
+def test_album_page_format_row_links_to_the_tracks_that_differ(client, cfg):
+    """#720: locate differing formats beside their tracks via a compact link."""
     import re
     from datetime import datetime
 
@@ -3087,10 +3085,8 @@ def test_album_page_format_row_names_the_file_that_differs(client, cfg):
     row = re.search(r"<dt>Format</dt>\s*<dd>(.*?)</dd>", r.text, re.DOTALL)
     assert row is not None
     assert "Mixed" in row.group(1)  # unchanged: the album-level answer
-    # The pill states the finding, and its popover answers "which one?".
     assert "1 track differs" in row.group(1)
-    assert "02 Track.mp3" in row.group(1)
-    assert "MP3 · 44.1 kHz · 128 kbps CBR" in row.group(1)
+    assert 'href="#album-tracks"' in row.group(1)
 
 
 def test_album_page_format_row_has_no_pill_when_the_files_agree(client, cfg):
@@ -5479,9 +5475,11 @@ def test_confirm_incomplete_400_without_candidate(client, cfg):
 
 def test_library_shows_partial_tag_badge(client, cfg):
     """An album with some files missing the MBID atom surfaces a
-    '{N}/{M} tagged' badge alongside the title in the library row.
+    '{N}/{M} tagged' badge, even when the completeness warning is muted.
     """
     from datetime import datetime
+
+    from test.helpers import write_track_totals
 
     d = _make_album(cfg, "PartiallyTagged")
     # Add a second file
@@ -5491,6 +5489,7 @@ def test_library_shows_partial_tag_badge(client, cfg):
     audio = MP4(d / "01 Track.m4a")
     audio[ATOM_MB_ALBUM_ID] = [b"rel-aaa"]
     audio.save()
+    write_track_totals(d, track_total=4)
     sc.write(
         d,
         Sidecar(
@@ -5502,6 +5501,8 @@ def test_library_shows_partial_tag_badge(client, cfg):
     assert r.status_code == 200
     assert "PartiallyTagged" in r.text
     assert "1/2 tagged" in r.text
+    assert _accept(client, _id_for(cfg, d)).status_code == 200
+    assert "1/2 tagged" in client.get("/library").text
 
 
 def test_library_includes_incomplete_albums(client, cfg):
@@ -8749,17 +8750,40 @@ def test_an_album_missing_a_whole_disc_names_the_disc(client, cfg):
 
 def test_accepting_demotes_the_badge_instead_of_removing_it(client, cfg):
     """The album really is short — that stays true once accepted. It stops being
-    a warning (amber) and becomes a statement (neutral), the same distinction the
-    tile makes."""
+    a warning and becomes a neutral statement on the album page."""
     d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
     aid = _id_for(cfg, d)
-    assert "amber" in _badge(client.get(f"/album/{aid}").text)
+    assert "album-warning__badge--muted" not in _badge(client.get(f"/album/{aid}").text)
 
     _accept(client, aid)
 
     badge = _badge(client.get(f"/album/{aid}").text)
     assert "1 of 4 tracks on disk" in badge, "still says what is missing"
-    assert "amber" not in badge, "no longer a defect to fix"
+    assert "album-warning__badge--muted" in badge, "no longer a defect to fix"
+
+
+def test_muting_completeness_hides_the_library_badge_but_keeps_the_album_reminder(client, cfg):
+    d = _make_incomplete_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    aid = _id_for(cfg, d)
+    assert "1 of 4" in client.get("/library").text
+
+    _accept(client, aid)
+
+    assert "1 of 4" not in client.get("/library").text
+    assert "1 of 4 tracks on disk" in client.get(f"/album/{aid}").text
+    _accept(client, aid, accept=False)
+    assert "1 of 4" in client.get("/library").text
+
+
+def test_unmatched_album_has_a_file_only_track_view(client, cfg):
+    d = _make_album(cfg, "UnmatchedFormats")
+    response = client.get(f"/album/{_id_for(cfg, d)}")
+    assert response.status_code == 200
+    page = response.text
+
+    assert 'id="album-tracks"' in page
+    assert "The same on every track" in page
+    assert "ALAC · 44.1 kHz · 16 bit" in page
 
 
 def _badge(page):
@@ -8779,7 +8803,7 @@ def test_ticking_the_box_re_states_the_badge_in_the_same_response(client, cfg):
 
     assert 'hx-swap-oob="true"' in body
     assert f'id="album-completeness-{aid}"' in body
-    assert "amber" not in body, "swapped back demoted, matching what was just written"
+    assert "album-warning__badge--muted" in body, "swapped back demoted"
 
 
 def test_taking_the_acceptance_back_re_states_the_badge_too(client, cfg):
@@ -8790,7 +8814,7 @@ def test_taking_the_acceptance_back_re_states_the_badge_too(client, cfg):
     body = _accept(client, aid, accept=False).text
 
     assert 'hx-swap-oob="true"' in body
-    assert "amber" in body, "back to being something to fix"
+    assert "album-warning__badge--muted" not in body, "back to being something to fix"
 
 
 def test_a_double_submit_still_re_states_the_badge(client, cfg):
@@ -8805,7 +8829,7 @@ def test_a_double_submit_still_re_states_the_badge(client, cfg):
 
     assert "No change" in body
     assert f'id="album-completeness-{aid}"' in body
-    assert "amber" not in body
+    assert "album-warning__badge--muted" in body
 
 
 # ---------------------------------------------------------------------------

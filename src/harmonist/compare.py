@@ -1,6 +1,6 @@
 """Comparing an album's on-disk tags against its MusicBrainz release (#106).
 
-Pure functions over values — no I/O, no mutagen, no MusicBrainz client. The web
+Pure functions over values — no I/O, no file parsing, no MusicBrainz client. The web
 layer gathers the values and renders the result; the audit log (#86) wants the
 same comparison rendered differently, so the model lives here rather than inside
 either of them.
@@ -39,9 +39,11 @@ from typing import TYPE_CHECKING
 # values, like `compare`" — already imports it the same way.
 from .formats.owned import ALBUM_FIELDS, LABELS, TRACK_FIELDS, Owned
 
-if TYPE_CHECKING:  # `types` stays type-only: importing it at runtime pulls mutagen in
-    # `artwork` is type-only for the same reason, one module further out: it
-    # imports `formats`, and nothing here opens a file or parses a tag. The mark
+# This only averages already-read stream values; comparison never opens files.
+from .formats.quality import average
+
+if TYPE_CHECKING:
+    # Keep the file-reading and artwork APIs out of comparison. The mark
     # is decided there — an artwork fact, rendered in the tracklist (#404) — and
     # only travels through here on the row it belongs to.
     from .artwork import TrackMark
@@ -2544,7 +2546,7 @@ def tracklist(
     if any(f.advisory for r in rows for f in r.fields):
         columns = (*columns, MB_LENGTH_COLUMN)
         rows = [replace(r, fields=(*r.fields, _mb_length_cell(r.fields))) for r in rows]
-    return TracklistComparison(
+    view = TracklistComparison(
         tracks=tuple(
             replace(
                 r,
@@ -2564,6 +2566,7 @@ def tracklist(
         collapsed=collapsed,
         headings=headings,
     )
+    return _with_formats(view, tracks)
 
 
 def disk_tracklist(
@@ -2610,10 +2613,61 @@ def disk_tracklist(
         )
         for name, tags in tracks
     ]
-    return TracklistComparison(
+    view = TracklistComparison(
         tracks=tuple(rows),
         columns=_columns(kept, multi_disc, absorbed),
         collapsed=collapsed,
+    )
+    return _with_formats(view, tracks)
+
+
+def _audio_label(codec: str | None, quality: str | None) -> str | None:
+    return " · ".join(part for part in (codec, quality) if part) or None
+
+
+def _with_formats(
+    view: TracklistComparison, tracks: Sequence[tuple[str, TrackTags]]
+) -> TracklistComparison:
+    """Place stream facts beside their files, or once below a uniform album.
+
+    No owned-field key or MusicBrainz counterpart: format must never become a
+    change a re-tag could apply. Compare the same quality keys as the scanner,
+    so ordinary VBR bitrate variation doesn't earn a column. Unknown/unreadable
+    audio prevents a claim that every file agrees; absent release tracks and
+    video have no audio-format reading at all.
+    """
+    audio = {name: tags for name, tags in tracks if not tags.video}
+    keys = [
+        (name, None if tags.unreadable else _audio_label(tags.codec, tags.quality.key))
+        for name, tags in audio.items()
+    ]
+    c = consensus(keys)
+    if not c.distinct:
+        return view
+    if c.is_unanimous:
+        first = next(iter(audio.values()))
+        value = _audio_label(first.codec, average([t.quality for t in audio.values()]).label)
+        return replace(view, collapsed=(*view.collapsed, CollapsedField("Format", value)))
+
+    # Insert before Length, preserving the existing positional alignment of
+    # headings and every row, including absent tracks and unassigned files.
+    index = next(i for i, column in enumerate(view.columns) if column.label == "Length")
+    rows = []
+    for row in view.tracks:
+        tags = audio.get(row.file_name or "")
+        value = (
+            _audio_label(tags.codec, tags.quality.label) or "Unknown"
+            if tags and not tags.unreadable
+            else None
+        )
+        cell = replace(
+            compare_value("Format", kind=Kind.SCALAR, disk=value, mb=None), comparable=False
+        )
+        rows.append(replace(row, fields=(*row.fields[:index], cell, *row.fields[index:])))
+    return replace(
+        view,
+        tracks=tuple(rows),
+        columns=(*view.columns[:index], TrackColumn("Format"), *view.columns[index:]),
     )
 
 
