@@ -29,13 +29,13 @@ def test_settings_save_round_trips_both_tagging_dropdowns(demo_server: str) -> N
         expected = {
             "album_disambiguation": [
                 "Fever Dog (live)",
-                "Paper Moons (original)",
-                "Paper Moons (remaster)",
+                "Paper Moons (Japanese Release)",
+                "Paper Moons (2025 Remaster)",
             ],
             "album_disambiguation_if_needed": [
                 "Fever Dog",
-                "Paper Moons (original)",
-                "Paper Moons (remaster)",
+                "Paper Moons (Japanese Release)",
+                "Paper Moons (2025 Remaster)",
             ],
             "": ["Fever Dog", "Paper Moons", "Paper Moons"],
         }
