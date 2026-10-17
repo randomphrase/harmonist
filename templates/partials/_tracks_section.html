@@ -19,13 +19,14 @@
             {# A required review opens from the comparison, once its refresh finishes.
                The mounted editor remembers opening for this page visit, so replacing
                this view cannot reset a draft or undo Cancel. Manual clicks still work.
+               album.html decides that, not an hx-on here, which HTMX attaches too
+               late to see the `load` request (#776).
                The assignments endpoint uses the release this comparison just cached. #}
             <button type="button" hx-get="/assignments/{{ album.id }}?album_tracks=true&amp;on_album_page=true"
                     {% if assignment_review and assignment_review.required and not refreshing %}hx-trigger="click, load"{% endif %}
                     hx-target="#album-track-editor" hx-swap="innerHTML settle:0ms" hx-disabled-elt="this"
                     hx-sync="#album-track-editor:drop"
                     hx-indicator="#album-track-loading" aria-controls="album-track-editor"
-                    hx-on::before-request="const editor = document.getElementById('album-track-editor'); const automatic = event.detail.requestConfig.triggeringEvent?.type !== 'click'; const opened = editor.dataset.reviewOpened || editor.childElementCount; editor.dataset.reviewOpened = 'true'; if (automatic &amp;&amp; opened) event.preventDefault()"
                     hx-on::after-request="if (event.detail.successful &amp;&amp; event.detail.requestConfig.triggeringEvent?.type === 'click') document.getElementById('album-track-editor').focus()"
                     title="Edit track assignments" aria-label="Edit track assignments"
                     class="inline-flex items-center justify-center w-5 h-5 rounded-full text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">

@@ -387,6 +387,19 @@
             }
         }
     });
+    // A required review opens the assignment editor once per page visit. The
+    // editor remembers any open, and Cancel, so a later comparison must not open
+    // it again. This decides for the Tracks header's edit button rather than an
+    // hx-on there: HTMX 2.0.0 sends a `load` request while processing the
+    // swapped-in button, before attaching its hx-on handlers (#776).
+    document.body.addEventListener('htmx:beforeRequest', function (event) {
+        const editor = event.detail.target;
+        if (editor.id !== 'album-track-editor' || !event.detail.elt.closest('#album-track-view')) return;
+        const automatic = event.detail.requestConfig.triggeringEvent?.type !== 'click';
+        const opened = editor.dataset.reviewOpened || editor.childElementCount;
+        editor.dataset.reviewOpened = 'true';
+        if (automatic && opened) event.preventDefault();
+    });
     // The Tracks comparison arrives out of band, where HTMX 2.0.0 does not
     // preserve the display controls. Carry the current choice into the new
     // fragment before insertion; a slow refresh must keep the latest choice.

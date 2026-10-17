@@ -28,15 +28,36 @@ def test_changed_track_count_opens_review_and_cancel_preserves_finding(reset_dem
         )
         pw.expect(editor.get_by_role("checkbox", name="Use artwork")).to_have_count(0)
         pw.expect(page.get_by_role("dialog")).not_to_be_visible()
+        # The automatic open counts as this visit's open, as a click would.
+        pw.expect(editor).to_have_attribute("data-review-opened", "true")
         editor.get_by_role("button", name="Cancel", exact=True).click()
         pw.expect(page.locator("#album-tracks .tracklist")).to_be_visible()
-        # A comparison refresh must respect Cancel instead of opening again.
-        with page.expect_response(lambda r: "/compare" in r.url):
-            page.evaluate(
-                """id => htmx.ajax('GET', '/library/' + id + '/compare',
-                {target: '#compare-' + id, swap: 'innerHTML'})""",
+        # A comparison refresh must respect Cancel instead of opening again (#776).
+        # The automatic open is issued while HTMX processes the refreshed Tracks
+        # view, so once that refresh has settled it has either been sent or not.
+        # Asserting on the editor alone raced the reopen and usually won.
+        with page.expect_response(lambda r: "/compare" in r.url) as refreshed:
+            opens = page.evaluate(
+                """id => new Promise(resolve => {
+                    let opens = 0;
+                    const count = event => {
+                        if (event.detail.target.id === 'album-track-editor') opens++;
+                    };
+                    document.body.addEventListener('htmx:beforeSend', count);
+                    document.body.addEventListener('htmx:afterSettle', function settled(event) {
+                        if (event.detail.target.id !== 'compare-' + id) return;
+                        document.body.removeEventListener('htmx:afterSettle', settled);
+                        document.body.removeEventListener('htmx:beforeSend', count);
+                        resolve(opens);
+                    });
+                    htmx.ajax('GET', '/library/' + id + '/compare',
+                        {target: '#compare-' + id, swap: 'innerHTML'});
+                })""",
                 ALBUM_ID,
             )
+        # The refresh still asks for the automatic open; Cancel is what refuses it.
+        assert 'hx-trigger="click, load' in refreshed.value.text()
+        assert opens == 0
         pw.expect(page.locator("#album-tracks .tracklist")).to_be_visible()
         pw.expect(editor.locator(".assignment-content")).to_have_count(0)
         pw.expect(review).to_be_enabled()
