@@ -6,7 +6,7 @@
 #
 # Built for linux/amd64 and linux/arm64; published to GHCR by CI. To build
 # locally: docker build -t harmonist:latest .
-FROM node:24-bookworm-slim AS browser-assets
+FROM node:26-bookworm-slim AS browser-assets
 WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
