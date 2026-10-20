@@ -47,12 +47,11 @@ def test_slow_apply_blocks_competing_requests_and_refreshes_album(reset_demo_ser
         pw.expect(top).to_have_text("Apply updates", use_inner_text=True, ignore_case=True)
         pw.expect(bottom).to_have_text("Apply artwork", use_inner_text=True, ignore_case=True)
         assert page.locator("#album-artwork button:disabled").count() == unavailable
+        # Hold the request before it reaches the server, and forward it only on
+        # release. Fetching inside the handler appended only once the real apply
+        # returned, so the count below raced the server's write (#824).
         held = []
-
-        def hold(route):
-            held.append((route, route.fetch()))
-
-        page.route("**/artwork/update", hold)
+        page.route("**/artwork/update", lambda route: held.append(route))
         requests = []
         page.on("request", lambda request: requests.append(request.url))
         (top if primary else bottom).click()
@@ -76,9 +75,9 @@ def test_slow_apply_blocks_competing_requests_and_refreshes_album(reset_demo_ser
         page.wait_for_timeout(100)
         assert len([url for url in requests if "/artwork" in url]) == 1
         assert len(held) == 1
-        route, response = held.pop()
+        route = held.pop()
         with page.expect_navigation():
-            route.fulfill(response=response)
+            route.fulfill(response=route.fetch())
         page.wait_for_selector("#album-artwork .art-row")
         page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
         pw.expect(cover).to_be_visible()
