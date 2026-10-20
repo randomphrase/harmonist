@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS node
+FROM node:26-bookworm-slim AS node
 FROM mcr.microsoft.com/devcontainers/python:3.14-bookworm
 
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
