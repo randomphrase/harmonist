@@ -13,7 +13,7 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY scripts/build_browser_assets.sh ./scripts/
 RUN npm run build
 
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 ENV HARMONIST_MUSIC_DIR=/music \
     HARMONIST_CONFIG_DIR=/config \
