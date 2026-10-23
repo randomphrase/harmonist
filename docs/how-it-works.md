@@ -65,6 +65,36 @@ The reverse is fine: **one album can span several folders**, such as per-disc
 subfolders. If the folders are tagged to the same release and hold different
 tracks of it, Harmonist treats them as one album. It doesn't move anything.
 
+## Artists and local metadata
+
+Artists come from the Library's embedded **album-artist credits**, including
+separate collaborators. MusicBrainz artist IDs keep different people with the
+same name apart and let one collaborative album appear under each artist. A name
+without a usable ID stays an unidentified credit scoped to its album; it does
+not silently become the same person as another credit with that spelling.
+
+When only some tracks lack artist IDs, consistent artist credits on the other
+tracks can identify the album's artist if all tracks name the same release.
+The artist remains a single entry, with an **Unidentified credit** badge naming
+the affected album. The badge reflects the files and clears when their missing
+IDs are filled in; browsing does not write them.
+
+Existing Kodi/Jellyfin `artist.nfo` files can supply a biography, dates, sort
+name and other artist information. Their artist ID must match the embedded
+album-artist ID. They can live above the audio files or in a separate
+[Artist Information Folder](configuration.md#paths), without imposing an audio
+directory layout. Multiple matching files require a source choice. A source
+choice belongs to the page URL, so it can be bookmarked without modifying music
+or metadata files.
+
+Artist browsing reads local tags, NFOs and local raster artwork. It makes no
+MusicBrainz or image-provider requests, does not generate NFOs and never changes
+tags based on them. Remote image URLs in an NFO are not downloaded. With local
+NFOs and image files, the artist pages remain available offline. The MusicBrainz
+link opens the artist's page separately. NFO discographies do not count as owned
+albums. **Read again** reloads the local metadata; an external edit is also
+noticed on the next visit.
+
 ## The Inbox
 
 Harmonist works out each album's state from its files and sidecar every time it

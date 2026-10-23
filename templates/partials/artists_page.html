@@ -1,0 +1,68 @@
+<div id="artists-page" data-page="{{ artists_view.page }}" data-total="{{ artists_view.total }}">
+    <div hidden hx-get="/artists?artist_page={{ artists_view.page }}&artist_q={{ artists_view.q | urlencode }}"
+         hx-trigger="library-refresh from:body, tasks-changed from:body"
+         hx-sync="#artists-rows:abort" hx-target="#artists-rows" hx-swap="innerHTML"></div>
+
+    {% if artists_view.count %}
+    <form method="get" action="/" hx-get="/artists" hx-trigger="submit, search"
+          hx-target="#artists-rows" hx-swap="innerHTML"
+          hx-headers='{"X-Harmonist-Push-Url": "1"}'
+          class="mb-3 flex items-baseline gap-2">
+        <input type="hidden" name="tab" value="artists">
+        <label for="artists-search" class="sr-only">Search artists</label>
+        <input type="search" id="artists-search" name="artist_q" value="{{ artists_view.q }}"
+               hx-preserve="true" autocomplete="off" placeholder="Search artists"
+               class="flex-1 min-w-0 bg-white border border-line rounded px-2 py-1 text-sm text-ink placeholder:text-muted focus:border-accent outline-none">
+        <button type="submit" class="w-20 shrink-0 px-3 py-1 rounded border border-line bg-surface hover:bg-line text-sm font-bold text-ink transition">Search</button>
+    </form>
+    {% endif %}
+
+    <ul aria-label="Artists" class="grid auto-rows-fr grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    {% for artist in artists_view.rows %}
+        <li>
+            <a href="/artist/{{ artist.key }}?artist_page={{ artists_view.page }}&artist_q={{ artists_view.q | urlencode }}"
+               class="flex items-start gap-3 h-full border border-line rounded-md p-3 hover:border-accent transition">
+                <span aria-hidden="true" class="relative flex items-center justify-center w-20 h-20 shrink-0 rounded border border-line bg-surface text-muted">
+                    <svg class="w-9 h-9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="8" r="4"/>
+                        <path d="M4 21v-2a8 8 0 0 1 16 0v2"/>
+                    </svg>
+                    {% if artist.mbid %}
+                    <img src="/artist/{{ artist.key }}/image" alt="" loading="lazy"
+                         onerror="this.style.visibility='hidden'"
+                         class="absolute inset-0 w-full h-full object-cover rounded bg-surface">
+                    {% endif %}
+                </span>
+                <span class="block min-w-0 flex-1">
+                    <span class="block text-sm font-bold text-ink break-words">{{ artist.name }}</span>
+                    <span class="block text-xs text-muted mt-1">{{ artist.albums | length }} {{ 'album' if artist.albums | length == 1 else 'albums' }}</span>
+                    {% include 'partials/_artist_credit_warnings.html' %}
+                </span>
+            </a>
+        </li>
+    {% else %}
+        <li class="text-muted italic">{{ 'No artists match this search.' if artists_view.q else 'No artists in the library yet.' }}</li>
+    {% endfor %}
+    </ul>
+
+    {% if artists_view.pages > 1 %}
+    <nav class="mt-5 flex items-center justify-between gap-4" aria-label="Artist pages">
+        {% set nav_class = 'px-3 py-1.5 rounded border border-line text-sm font-bold transition' %}
+        {% if artists_view.previous %}
+        <a href="{{ artists_view.previous }}" hx-get="/artists?{{ artists_view.previous.split('?')[1] }}"
+           hx-push-url="{{ artists_view.previous }}" hx-target="#artists-rows" hx-swap="innerHTML"
+           class="{{ nav_class }} bg-surface hover:bg-line text-ink">← Previous</a>
+        {% else %}
+        <span class="{{ nav_class }} text-muted opacity-40" aria-disabled="true">← Previous</span>
+        {% endif %}
+        <span class="text-xs text-muted tabular-nums">{{ artists_view.total }} artists · page {{ artists_view.page }} of {{ artists_view.pages }}</span>
+        {% if artists_view.next %}
+        <a href="{{ artists_view.next }}" hx-get="/artists?{{ artists_view.next.split('?')[1] }}"
+           hx-push-url="{{ artists_view.next }}" hx-target="#artists-rows" hx-swap="innerHTML"
+           class="{{ nav_class }} bg-surface hover:bg-line text-ink">Next →</a>
+        {% else %}
+        <span class="{{ nav_class }} text-muted opacity-40" aria-disabled="true">Next →</span>
+        {% endif %}
+    </nav>
+    {% endif %}
+</div>

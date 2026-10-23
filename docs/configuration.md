@@ -13,9 +13,22 @@ the file. Every setting is optional.
 | Key | Env | Default | |
 |---|---|---|---|
 | `music_dir` | `HARMONIST_MUSIC_DIR` | `/music` in Docker | Your music library, as an absolute path. |
+| `artist_info_dir` | `HARMONIST_ARTIST_INFO_DIR` | Unset | Optional read-only Artist Information Folder, containing one subfolder per artist with an `artist.nfo`. Independent of the audio folder layout. |
 | | `HARMONIST_CONFIG_DIR` | `/config` in Docker | Where `harmonist.toml`, the Bandcamp cookies, `ignores.txt`, the activity history and kept artwork live. |
 
 Needs a restart.
+
+`artist.nfo` files can also live in an album folder or any ancestor inside the
+music library. Artist IDs in the NFO and the embedded album-artist tags establish
+the association; matching directory names alone do not. The separate information
+folder can be outside the music library, provided Harmonist can read it. Docker
+needs that folder mounted too; a read-only mount is sufficient. Demo mode ignores
+this setting and reads only its sandbox.
+
+Local artist pictures can be named `artist.jpg` or `artist.png` beside the
+associated `artist.nfo`. A local `<thumb>` reference takes precedence, followed
+by `folder.jpg` / `folder.png`. The Artists list and artist page share this
+artwork; remote image URLs are not downloaded.
 
 ## `[bandcamp]`
 

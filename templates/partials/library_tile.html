@@ -16,9 +16,13 @@
 {% set sc = album.sidecar %}
 {% set is_new = album.id in new_album_ids %}
 {% set from_params = [] %}
+{% if artist_album_query %}
+{% set _ = from_params.append(artist_album_query) %}
+{% else %}
 {% if page > 1 %}{% set _ = from_params.append('from_page=' ~ page) %}{% endif %}
 {% if filter %}{% set _ = from_params.append('from_filter=' ~ filter) %}{% endif %}
 {% if q %}{% set _ = from_params.append('from_q=' ~ (q | urlencode)) %}{% endif %}
+{% endif %}
 <a id="lib-{{ album.id }}"
    href="/album/{{ album.id }}{% if from_params %}?{{ from_params | join('&') }}{% endif %}"
    class="lib-tile group cursor-pointer select-none block">

@@ -1,5 +1,27 @@
 # The model
 
+## Artist identity belongs to the credits
+
+Artists are a view of the same local album snapshot, not a second database
+catalogue to reconcile with the files. Separate album-artist names and their
+aligned MusicBrainz IDs identify collaborators; a joined display name cannot
+safely be split. Agreement across the album's files is required before an ID
+can associate external artist information. Missing IDs do not contradict the
+remaining files' aligned IDs when every file carries the same release ID and
+agrees on the artist names. Such albums stay with their identified artist and
+retain an unidentified-credit warning; conflicting IDs never take this path.
+Homonyms stay separate and credits
+without verified IDs remain scoped to their album, because a repeated name is
+not evidence of a shared identity.
+
+An artist information folder separates metadata placement from audio placement.
+Its NFOs enrich an already identified artist without claiming which album
+folders belong to them. Requiring an ID match also keeps a collaboration from
+inheriting whichever artist happens to name its parent directory. Conflicting
+NFO sources remain a page-level choice: browsing needs no durable association,
+and creating one would turn an optional read into another user decision to
+preserve and audit. Artist metadata never changes canonical music tags.
+
 ## An album is its release, not its folder
 
 A library assembled over decades keeps one release in several places:

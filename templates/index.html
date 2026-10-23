@@ -35,10 +35,10 @@
     </script>
     {% endif %}
 
-    {# Bandcamp-style text tabs: Inbox / Library. Both panels stay mounted so
+    {# Bandcamp-style text tabs. Panels stay mounted so
        their HTMX polling/triggers keep firing; the tabs only toggle which is
        visible. Counts are filled in by JS after each panel loads. #}
-    <nav class="flex gap-6 border-b border-line text-base" role="tablist">
+    <nav class="flex gap-4 sm:gap-6 border-b border-line text-base overflow-x-auto whitespace-nowrap" role="tablist">
         <button type="button" data-tab="inbox" onclick="harmonistTab('inbox')"
                 class="hmt-tab pb-2 -mb-px font-semibold border-b-2 transition">
             Inbox <span id="inbox-count" class="font-normal text-muted"></span>
@@ -46,6 +46,10 @@
         <button type="button" data-tab="library" onclick="harmonistTab('library')"
                 class="hmt-tab pb-2 -mb-px font-semibold border-b-2 transition">
             Library <span id="library-count" class="font-normal text-muted"></span>
+        </button>
+        <button type="button" data-tab="artists" onclick="harmonistTab('artists')"
+                class="hmt-tab pb-2 -mb-px font-semibold border-b-2 transition">
+            Artists
         </button>
         <button type="button" data-tab="activity" onclick="harmonistTab('activity')"
                 class="hmt-tab pb-2 -mb-px font-semibold border-b-2 transition">
@@ -101,6 +105,12 @@
            The refresh element opts into abort instead, so it yields to navigation. #}
         <div id="library-rows" hx-sync="#library-rows:replace">
             {% include 'partials/library_page.html' %}
+        </div>
+    </div>
+
+    <div id="panel-artists" class="hidden">
+        <div id="artists-rows" hx-sync="#artists-rows:replace">
+            {% include 'partials/artists_page.html' %}
         </div>
     </div>
 
@@ -198,6 +208,7 @@ document.body.addEventListener('htmx:afterSwap', function (event) {
 // following a link from Activity doesn't silently move where they land next
 // time (and closing the modal returns them to their own preference on reload).
 function harmonistTab(name, persist = true) {
+    if (!['inbox', 'library', 'artists', 'activity'].includes(name)) name = 'inbox';
     document.querySelectorAll('.hmt-tab').forEach(t => {
         const active = t.dataset.tab === name;
         t.classList.toggle('text-ink', active);

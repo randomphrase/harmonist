@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="space-y-5">
+    <a href="{{ artist_back_url }}" class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">← Back to artists</a>
+
+    <header class="flex flex-col sm:flex-row items-start gap-5">
+        {% if artist_image %}
+        <img src="{{ artist_image_url }}" alt="{{ artist.name }}" class="w-40 h-40 object-cover rounded-md border border-line bg-surface">
+        {% endif %}
+        <div class="min-w-0 space-y-2">
+            <h1 class="text-2xl font-bold text-ink break-words">{{ artist.name }}</h1>
+            {% if artist.sort_name %}<p class="text-sm text-muted">{{ artist.sort_name }}</p>{% endif %}
+            {% if artist.mbid %}
+            <a href="https://musicbrainz.org/artist/{{ artist.mbid }}" target="_blank" rel="noopener noreferrer"
+               class="inline-block text-sm font-bold text-mb-purple hover:underline">MusicBrainz ↗</a>
+            {% endif %}
+            {% include 'partials/_artist_credit_warnings.html' %}
+        </div>
+    </header>
+
+    {% if nfo.profile or nfo.errors %}
+    <section class="border border-line rounded-lg p-4 space-y-3" aria-label="Artist metadata">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+                <h2 class="text-sm font-bold text-ink">Artist NFO</h2>
+                {% if nfo.profile %}
+                <p class="text-xs text-muted break-all">{{ display_path(nfo.profile.path) }}</p>
+                <p class="text-xs text-muted" title="{{ nfo_modified.isoformat() }}">Modified {{ ago(nfo_modified) }}</p>
+                {% endif %}
+            </div>
+            <a href="{{ artist_reload_url }}" class="px-3 py-1 rounded border border-line bg-surface hover:bg-line text-xs font-bold text-ink transition">Read again</a>
+        </div>
+        {% for error in nfo.errors %}
+        <p role="alert" class="text-sm text-amber-800 break-words">{{ error }}</p>
+        {% endfor %}
+        {% if nfo.candidates | length > 1 %}
+        <ul aria-label="NFO sources" class="space-y-1">
+            {% for path, url in nfo_choices %}
+            <li><a href="{{ url }}" class="text-xs font-bold text-accent hover:underline break-all">{{ display_path(path) }}</a></li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% if nfo.profile %}
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            {% if nfo.profile.name and nfo.profile.name != artist.name %}
+            <div><dt class="text-xs text-muted">NFO name</dt><dd class="text-ink">{{ nfo.profile.name }}</dd></div>
+            {% endif %}
+            {% if nfo.profile.sort_name %}
+            <div><dt class="text-xs text-muted">Sort name</dt><dd class="text-ink">{{ nfo.profile.sort_name }}</dd></div>
+            {% endif %}
+            {% for label, value in nfo.profile.facts %}
+            <div><dt class="text-xs text-muted">{{ label }}</dt><dd class="text-ink">{{ value }}</dd></div>
+            {% endfor %}
+        </dl>
+        {% if nfo.profile.biography %}<p class="text-sm text-ink whitespace-pre-line">{{ nfo.profile.biography }}</p>{% endif %}
+        {% endif %}
+    </section>
+    {% endif %}
+
+    <section aria-labelledby="artist-albums-heading" class="space-y-3">
+        <h2 id="artist-albums-heading" class="text-sm font-bold text-ink">Albums <span class="font-normal text-muted">{{ total_done }}</span></h2>
+        <div id="library-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {% for album in rows %}{% include 'partials/library_tile.html' %}{% endfor %}
+        </div>
+        {% if total_pages > 1 %}
+        <nav class="flex items-center justify-between gap-4" aria-label="Artist album pages">
+            {% if artist_previous %}<a href="{{ artist_previous }}" class="text-sm font-bold text-accent hover:underline">← Previous</a>{% else %}<span></span>{% endif %}
+            <span class="text-xs text-muted tabular-nums">{{ first_row }}–{{ last_row }} of {{ total_shown }} · page {{ page }} of {{ total_pages }}</span>
+            {% if artist_next %}<a href="{{ artist_next }}" class="text-sm font-bold text-accent hover:underline">Next →</a>{% else %}<span></span>{% endif %}
+        </nav>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

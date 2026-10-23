@@ -2745,12 +2745,16 @@ def test_library_filter_rides_in_the_index_url(client, cfg):
     same view rather than painting the whole library and correcting it."""
     from datetime import datetime
 
+    from bs4 import BeautifulSoup
+
     base = datetime.now(UTC)
     _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=base)
     _make_incomplete_album(cfg, "Short", mbid="rel-short", tagged_at=base)
     body = client.get("/?tab=library&filter=incomplete").text
-    assert "Short" in body
-    assert "Whole" not in body
+    grid = BeautifulSoup(body, "html.parser").select_one("#library-grid")
+    assert grid is not None
+    assert "Short" in grid.get_text()
+    assert "Whole" not in grid.get_text()
 
 
 def test_library_filter_survives_the_trip_out_to_an_album_and_back(client, cfg):
@@ -4837,6 +4841,8 @@ def test_index_renders_the_grid_inline_on_the_page_the_url_names(client, cfg, mo
     """The index renders the grid itself rather than fetching it on load, so a
     `?page=` link is answered by the HTML — no follow-up request that would have
     to be told which page it is on, and nothing to drift on a reload or a Back."""
+    from bs4 import BeautifulSoup
+
     from harmonist.web import main as web_main
 
     monkeypatch.setattr(web_main, "_LIBRARY_PAGE_SIZE", 2)
@@ -4844,7 +4850,9 @@ def test_index_renders_the_grid_inline_on_the_page_the_url_names(client, cfg, mo
 
     body = client.get("/?tab=library&page=2").text
     assert 'data-page="2"' in body
-    assert "Album2" in body and "Album0" not in body
+    grid = BeautifulSoup(body, "html.parser").select_one("#library-grid")
+    assert grid is not None
+    assert "Album2" in grid.get_text() and "Album0" not in grid.get_text()
     assert 'harmonistTab("library")' in body
 
 

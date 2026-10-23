@@ -322,6 +322,9 @@
             <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                 <div><dt class="text-xs text-muted mb-1">Music library</dt><dd class="font-mono text-ink break-all" title="{{ cfg.paths.music_dir }}">{{ display_path(cfg.paths.music_dir) }}</dd></div>
                 <div><dt class="text-xs text-muted mb-1">Config directory</dt><dd class="font-mono text-ink break-all" title="{{ cfg.paths.config_dir }}">{{ display_path(cfg.paths.config_dir) }}</dd></div>
+                {% if cfg.paths.artist_info_dir %}
+                <div><dt class="text-xs text-muted mb-1">Artist information folder</dt><dd class="font-mono text-ink break-all" title="{{ cfg.paths.artist_info_dir }}">{{ display_path(cfg.paths.artist_info_dir) }}</dd></div>
+                {% endif %}
                 <div><dt class="text-xs text-muted mb-1">Server</dt><dd class="font-mono text-ink break-all">{{ cfg.server.host }}:{{ cfg.server.port }}</dd></div>
             </dl>
             <p class="text-xs text-muted">Paths and server address are set in configuration and require a restart.</p>

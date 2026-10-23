@@ -123,6 +123,12 @@ class ScanFields(NamedTuple):
     # Read from the same audio handle; scopes a combined-pregap decision to this rip.
     duration_ms: int | None = None
 
+    # Separate album credits, kept aligned with their IDs in the same file open.
+    # Joined display strings cannot identify collaborators individually.
+    album_artist_names: tuple[str, ...] = ()
+    album_artist_ids: tuple[str, ...] = ()
+    album_artist_sort: str | None = None
+
 
 @dataclass
 class TagSet:
