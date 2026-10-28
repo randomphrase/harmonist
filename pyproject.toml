@@ -25,7 +25,7 @@ e2e = ["pytest-playwright==0.10.0", "playwright==1.64.0", "pytest-xdist==3.8.0"]
 find = {where = ["src"], include = ["harmonist*"]}
 
 [build-system]
-requires = ["setuptools>=84.0.0"]
+requires = ["setuptools>=84.2.1"]
 build-backend = "setuptools.build_meta"
 
 # ---------------------------------------------------------------------------
