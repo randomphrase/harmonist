@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:0.13.0 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 # Matches the release image's Python 3.15 on trixie. "dev-" tags are unreleased
 # builds of devcontainers/images; move to "3.15-trixie" once it is published.
 FROM mcr.microsoft.com/devcontainers/python:dev-3.15-trixie
