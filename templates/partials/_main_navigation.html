@@ -1,0 +1,16 @@
+<nav class="flex gap-4 sm:gap-6 border-b border-line text-base overflow-x-auto whitespace-nowrap" aria-label="Main navigation">
+    {% for key, label in [('inbox', 'Inbox'), ('library', 'Library'), ('artists', 'Artists'), ('activity', 'Activity')] %}
+    {% if key == 'artists' or standalone_artists | default(false) %}
+    <a href="{{ '/artists' if key == 'artists' else '/?tab=' ~ key }}"
+       {% if key == 'artists' and standalone_artists | default(false) %}aria-current="page"{% endif %}
+       class="pb-2 -mb-px font-semibold border-b-2 transition {{ 'text-ink border-accent' if key == 'artists' and standalone_artists | default(false) else 'text-muted border-transparent' }}">
+        {{ label }}{% if key != 'activity' %} <span id="{{ key }}-count" class="font-normal text-muted">{{ artist_count if key == 'artists' else '' }}</span>{% endif %}
+    </a>
+    {% else %}
+    <button type="button" data-tab="{{ key }}" onclick="harmonistTab('{{ key }}')"
+            class="hmt-tab pb-2 -mb-px font-semibold border-b-2 transition">
+        {{ label }}{% if key != 'activity' %} <span id="{{ key }}-count" class="font-normal text-muted"></span>{% endif %}
+    </button>
+    {% endif %}
+    {% endfor %}
+</nav>

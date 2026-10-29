@@ -1,0 +1,51 @@
+{% set chip = "px-2 py-0.5 rounded-full border text-xs font-bold transition" %}
+{% set chip_on = chip ~ " bg-accent border-accent text-white" %}
+{% set chip_off = chip ~ " bg-surface border-line text-muted hover:text-accent hover:border-accent" %}
+<nav class="mb-3 flex flex-wrap items-center gap-1.5" aria-label="Artist filters">
+    {% for facet in artists_view.facets %}
+    {% set selected = facet.choices | selectattr('active') | first %}
+    <button type="button" id="artists-{{ facet.key }}-button" popovertarget="artists-{{ facet.key }}-menu"
+            aria-label="{{ facet.title }} filters" class="library-update-button {{ chip_on if selected else chip_off }}">
+        <span>{{ selected.label if selected else facet.title }}</span>
+        {% if selected %}<span class="font-normal tabular-nums">{{ selected.count }}</span>{% endif %}
+        <svg class="library-update-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+    </button>
+    <nav id="artists-{{ facet.key }}-menu" popover aria-label="{{ facet.title }} options" class="library-update-menu"
+         onbeforetoggle="if (event.newState === 'open') {
+             const box = document.getElementById('artists-{{ facet.key }}-button').getBoundingClientRect();
+             this.style.left = Math.max(8, Math.min(box.left, innerWidth - 232)) + 'px';
+             this.style.top = (box.bottom + 4) + 'px';
+             this.style.maxHeight = Math.max(80, innerHeight - box.bottom - 12) + 'px';
+         }">
+        <a href="{{ facet.clear_url }}" hx-get="{{ facet.clear_url }}" hx-target="#artists-rows" hx-swap="innerHTML"
+           hx-push-url="{{ facet.clear_url }}" class="library-update-option library-origin-option">Any {{ facet.title }} status</a>
+        <hr class="library-update-divider">
+        {% for option in facet.choices %}
+        {% if option.active %}<span class="library-update-option library-origin-option" aria-current="true">
+        {% elif option.count %}
+        <a href="{{ option.url }}" hx-get="{{ option.url }}" hx-target="#artists-rows" hx-swap="innerHTML"
+           hx-push-url="{{ option.url }}" class="library-update-option library-origin-option">
+        {% else %}<span class="library-update-option library-origin-option" aria-disabled="true">{% endif %}
+            <span class="library-update-label">{{ option.label }}</span>
+            <span class="library-update-count">{{ option.count }}</span>
+            <span class="library-update-check" aria-hidden="true">{% if option.active %}✓{% endif %}</span>
+        {% if option.active or not option.count %}</span>{% else %}</a>{% endif %}
+        {% endfor %}
+    </nav>
+    {% endfor %}
+    <form method="get" action="/artists" hx-get="{{ artists_view.new_url }}" hx-params="none"
+          hx-target="#artists-rows" hx-swap="innerHTML" hx-push-url="{{ artists_view.new_url }}">
+        <input type="hidden" name="artist_q" value="{{ artists_view.q }}">
+        {% if artists_view.nfo %}<input type="hidden" name="nfo" value="{{ artists_view.nfo }}">{% endif %}
+        {% if artists_view.artwork %}<input type="hidden" name="artwork" value="{{ artists_view.artwork }}">{% endif %}
+        {% if not artists_view.new %}<input type="hidden" name="new" value="true">{% endif %}
+        <button type="submit" aria-pressed="{{ 'true' if artists_view.new else 'false' }}" title="At least one album added in the last 7 days"
+                class="{{ chip_on if artists_view.new else chip_off }}"{% if not artists_view.new_count and not artists_view.new %} disabled{% endif %}>
+            {% if artists_view.new %}✓ {% endif %}New <span class="font-normal tabular-nums">{{ artists_view.new_count }}</span>
+        </button>
+    </form>
+    {% if artists_view.filtered %}
+    <a href="{{ artists_view.clear_url }}" hx-get="{{ artists_view.clear_url }}" hx-target="#artists-rows"
+       hx-swap="innerHTML" hx-push-url="{{ artists_view.clear_url }}" class="text-xs font-bold text-accent hover:underline">Clear filters</a>
+    {% endif %}
+</nav>

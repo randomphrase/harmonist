@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Artists :: Harmonist{% endblock %}
+{% block content %}
+<div class="space-y-5">
+    {% include 'partials/_main_navigation.html' %}
+    <h1 class="sr-only">Artists</h1>
+    <div id="artists-rows" hx-sync="#artists-rows:replace">
+        {% include 'partials/artists_page.html' %}
+    </div>
+</div>
+<script>
+{% with menu_root='artists-rows', refresh_marker='[data-artists-refresh]' %}
+{% include 'partials/_preserve_filter_menu.js' %}
+{% endwith %}
+</script>
+{% endblock %}

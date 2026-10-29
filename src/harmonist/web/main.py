@@ -48,6 +48,8 @@ from harmonist import (
     activity_store,
     album_files,
     archive,
+    artist_nfo,
+    artists,
     artwork,
     artwork_store,
     artwork_updates,
@@ -1976,6 +1978,7 @@ def _library_page_vars(
     rows = done[start : start + limit]
     return {
         "rows": rows,
+        "album_artist_ids": {artist.key for artist in artists.build_index(rows)},
         "new_album_ids": new_album_ids,
         "artwork_operations": artwork_operations,
         "page": page,
@@ -3163,6 +3166,49 @@ def _albums(request: Request) -> list[Album]:
     return albums
 
 
+def _artist_for(request: Request, key: str) -> artists.Artist:
+    key = artists.mbid(key) or ""
+    eligible = [a for a in _albums(request) if a.state in _TERMINAL_STATES]
+    found = next((a for a in artists.build_index(eligible) if a.key == key), None)
+    if found is None:
+        raise HTTPException(status_code=404, detail="artist not found in the library")
+    return found
+
+
+def _nfo_inventory(request: Request) -> artist_nfo.Inventory:
+    runner: ScanRunner = request.app.state.scan_runner
+    if runner.is_engaged():
+        return runner.nfo_inventory()
+    return artist_nfo.scan(request.app.state.cfg.paths.music_dir)
+
+
+def _artists_view(
+    request: Request,
+    albums: list[Album],
+    page: int,
+    q: str | None,
+    *,
+    nfo: str | None = None,
+    artwork: str | None = None,
+    new: bool = False,
+) -> dict[str, object]:
+    inventory = _nfo_inventory(request)
+    return {
+        **artists.page_vars(
+            [a for a in albums if a.state in _TERMINAL_STATES],
+            page,
+            q,
+            inventory=inventory,
+            nfo=nfo,
+            artwork=artwork,
+            new=new,
+        ),
+        "nfo_orphans": inventory.orphans(albums),
+        "nfo_conflicts": inventory.conflicts,
+        "nfo_errors": (*inventory.walk_errors, *inventory.errors),
+    }
+
+
 def _periodic_rescan_if_idle(
     sync_runner: SyncRunner, reconcile_runner: ReconcileRunner, scan_runner: ScanRunner
 ) -> None:
@@ -4304,7 +4350,22 @@ class _ReplacementUnavailable(Exception):
 def _album_location(request: Request, album_id: str, *, edit_assignments: bool = False) -> str:
     """Keep the Library return context when review replaces the album page."""
     query = request.headers.get("HX-Current-URL", "").partition("?")[2].split("#", 1)[0]
-    context = {k: v for k, v in parse_qsl(query) if k in {"from_page", "from_filter", "from_q"}}
+    context = {
+        k: v
+        for k, v in parse_qsl(query)
+        if k
+        in {
+            "from_page",
+            "from_filter",
+            "from_q",
+            "from_artist",
+            "artist_page",
+            "artist_q",
+            "artist_nfo",
+            "artist_artwork",
+            "artist_new",
+        }
+    }
     if edit_assignments:
         context["edit_assignments"] = "true"
     location = "/album/" + quote(album_id, safe="")
@@ -4489,7 +4550,11 @@ def _register_routes(app: FastAPI) -> None:
         # this function has any use for.
         filter: str | None = None,
         q: str | None = None,
+        artist_page: int = 1,
+        artist_q: str | None = None,
     ) -> Response:
+        if tab == "artists":
+            return RedirectResponse(artists.index_url(artist_page, artist_q or ""), status_code=303)
         albums = _albums(request)
         # `?album=<id>` was the deep link before there was an album page (#65).
         # Now there is one, so redirect rather than opening a modal — links
@@ -4521,6 +4586,7 @@ def _register_routes(app: FastAPI) -> None:
             # carries them. Unrecognised tab → None, and the script falls back to
             # the remembered one, so a mangled link still lands somewhere sane.
             initial_tab=tab if tab in _INDEX_TABS else None,
+            artist_count=artists.library_count(albums),
             # The Library grid renders inline, so `?page=` / `?limit=` / `?filter=` /
             # `?q=` are honoured by the HTML itself rather than by a follow-up fetch
             # that would have to be told which page it's on.
@@ -4536,6 +4602,126 @@ def _register_routes(app: FastAPI) -> None:
         response = _templates(request).TemplateResponse(request, "index.html", ctx)
         _remember_library_limit(response, limit)
         return response
+
+    @app.get("/artists", response_class=HTMLResponse)
+    def artist_list(
+        request: Request,
+        artist_page: int = 1,
+        artist_q: str | None = None,
+        nfo: str | None = None,
+        artwork: str | None = None,
+        new: bool = False,
+    ) -> Response:
+        view = _artists_view(
+            request, _albums(request), artist_page, artist_q, nfo=nfo, artwork=artwork, new=new
+        )
+        headers = (
+            {"HX-Push-Url": str(view["url"])} if request.headers.get("X-Harmonist-Push-Url") else {}
+        )
+        return _templates(request).TemplateResponse(
+            request,
+            "partials/artists_page.html"
+            if request.headers.get("HX-Target") == "artists-rows"
+            and request.headers.get("HX-History-Restore-Request") != "true"
+            else "artists.html",
+            _ctx(request, artists_view=view, artist_count=view["count"], standalone_artists=True),
+            headers={**headers, "Vary": "HX-Target, HX-History-Restore-Request"},
+        )
+
+    @app.get("/artist/{artist_key}", response_class=HTMLResponse)
+    def artist_page(
+        request: Request,
+        artist_key: str,
+        page: int = 1,
+        artist_page: int = 1,
+        artist_q: str = "",
+        artist_nfo: str | None = None,
+        artist_artwork: str | None = None,
+        artist_new: bool = False,
+    ) -> Response:
+        artist = _artist_for(request, artist_key)
+        inventory = _nfo_inventory(request)
+        result = inventory.for_artist(artist.mbid)
+        image = inventory.image_for(artist.mbid)
+        artist = replace(artist, nfo_paths=result.candidates, artwork_path=image)
+        grid = _library_page_vars(list(artist.albums), page, _library_limit(request, None))
+        # The same tiles retain the return context for this artist and album page.
+        query = {
+            "from_artist": artist.key,
+            "from_page": str(grid["page"]),
+            "artist_page": str(max(1, artist_page)),
+            "artist_q": artist_q[:100],
+        }
+        if artist_nfo:
+            query["artist_nfo"] = artist_nfo
+        if artist_artwork:
+            query["artist_artwork"] = artist_artwork
+        if artist_new:
+            query["artist_new"] = "true"
+
+        def location(number: int) -> str:
+            return artists.detail_url(
+                artist.key,
+                page=number,
+                artist_page=max(1, artist_page),
+                artist_q=artist_q[:100],
+                artist_nfo=artist_nfo,
+                artist_artwork=artist_artwork,
+                artist_new=artist_new,
+            )
+
+        return _templates(request).TemplateResponse(
+            request,
+            "artist.html",
+            _ctx(
+                request,
+                **grid,
+                artist=artist,
+                nfo=result,
+                artist_image=image is not None,
+                artist_image_url=inventory.image_url(artist.mbid),
+                artist_back_url=artists.index_url(
+                    max(1, artist_page),
+                    artist_q[:100],
+                    nfo=artist_nfo,
+                    artwork=artist_artwork,
+                    new=artist_new,
+                ),
+                artist_album_query=urlencode(query),
+                artist_previous=location(grid["prev_page"]) if grid["prev_page"] else None,
+                artist_next=location(grid["next_page"]) if grid["next_page"] else None,
+                artist_refresh_url=location(grid["page"]),
+                nfo_modified=(
+                    datetime.fromtimestamp(result.profile.modified_ns / 1e9, UTC)
+                    if result.profile
+                    else None
+                ),
+            ),
+        )
+
+    @app.get("/artist/{artist_key}/image")
+    def artist_image(request: Request, artist_key: str) -> Response:
+        artist = _artist_for(request, artist_key)
+        inventory = _nfo_inventory(request)
+        try:
+            image = inventory.image_for(artist.mbid)
+            if image is None:
+                raise HTTPException(status_code=404, detail="local artist artwork not found")
+            if image.stat().st_size > 20 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="artist artwork exceeds 20 MiB")
+            info = image.stat()
+            response = FileResponse(
+                image,
+                stat_result=info,
+                headers={
+                    **_REVALIDATE,
+                    "ETag": f'"{info.st_mtime_ns}-{info.st_ctime_ns}-{info.st_size}-{info.st_ino}"',
+                },
+            )
+            return _not_modified(request, response.headers["etag"]) or response
+        except OSError as exc:
+            log.exception("Could not serve local artist artwork")
+            raise HTTPException(status_code=503, detail="local artist artwork unavailable") from exc
 
     @app.get("/tasks", response_class=HTMLResponse)
     def tasks(request: Request) -> Response:
@@ -5012,6 +5198,7 @@ def _register_routes(app: FastAPI) -> None:
         # poll from the snapshot's flags, which move without a state transition
         # for live_counts to see.
         albums = _albums(request)
+        counts["artists"] = artists.library_count(albums)
         counts["inbox"] += len(_review_updates(request, albums))
         # And the artwork updates routed to it (#852), each its own card: an
         # album with both a tag and an artwork update has two things to look at.
@@ -5215,6 +5402,12 @@ def _register_routes(app: FastAPI) -> None:
         from_page: int = 1,
         from_filter: str | None = None,
         from_q: str | None = None,
+        from_artist: str | None = None,
+        artist_page: int = 1,
+        artist_q: str = "",
+        artist_nfo: str | None = None,
+        artist_artwork: str | None = None,
+        artist_new: bool = False,
         edit_assignments: bool = False,
     ) -> Response:
         """The standalone album page (#103) — full tracklist plus the album's
@@ -5305,6 +5498,7 @@ def _register_routes(app: FastAPI) -> None:
             and _cleared_release(album) is not None
             else None
         )
+        albums = _albums(request)
         ctx = _ctx(
             request,
             album=album,
@@ -5353,13 +5547,32 @@ def _register_routes(app: FastAPI) -> None:
             # is not applied: this album's own suggestion is wanted whatever
             # group it would or wouldn't be filed under.
             surrender_suggestions=_reconcile_suggestions(
-                _albums(request),
+                albums,
                 pending_downloads.all_pending(),
                 request.app.state.cfg.paths.music_dir,
             )[1],
             from_page=max(1, from_page),
             from_filter=_library_filter(from_filter),
             from_q=_library_search(from_q),
+            album_artist_ids={
+                artist.key
+                for artist in artists.build_index(
+                    [a for a in albums if a.state in _TERMINAL_STATES]
+                )
+            },
+            artist_back_url=(
+                artists.detail_url(
+                    from_artist,
+                    page=max(1, from_page),
+                    artist_page=max(1, artist_page),
+                    artist_q=artist_q[:100],
+                    artist_nfo=artist_nfo,
+                    artist_artwork=artist_artwork,
+                    artist_new=artist_new,
+                )
+                if from_artist and artists.mbid(from_artist)
+                else None
+            ),
         )
         ctx["edit_assignments"] = edit_assignments
         # Format evidence exists before a release is chosen too. Keep the

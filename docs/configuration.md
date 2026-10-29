@@ -17,6 +17,21 @@ the file. Every setting is optional.
 
 Needs a restart.
 
+`artist.nfo` files are discovered anywhere inside `music_dir`, even in folders
+without audio. Artist IDs in the NFO and embedded album-artist tags establish
+the association; directory names alone do not. No separate metadata-folder
+setting is needed. Demo mode reads only its sandbox.
+
+An NFO's local `<thumb>` reference takes precedence. Relative paths start at
+the NFO's directory; absolute paths can also name files inside `music_dir`.
+When the reference is absent or its file is missing, `artist.jpg` / `artist.png`
+beside the NFO take precedence over generic names. `thumb.jpg` / `thumb.png`
+and then `folder.jpg` / `folder.png` are fallbacks only in a verified artist
+directory: its descendant albums must credit the NFO's artist ID, and it must
+not be an album or disc container. JPEG and WebP variants are also supported.
+An ambiguous directory leaves the artist without a picture. An explicit
+`<thumb>` can still name a folder cover. Remote image URLs are not downloaded.
+
 ## `[bandcamp]`
 
 | Key | Env | Default | |

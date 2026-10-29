@@ -65,6 +65,39 @@ The reverse is fine: **one album can span several folders**, such as per-disc
 subfolders. If the folders are tagged to the same release and hold different
 tracks of it, Harmonist treats them as one album. It doesn't move anything.
 
+## Artists and local metadata
+
+Artists come from the Library's embedded **album-artist credits**, including
+separate collaborators. MusicBrainz artist IDs keep different people with the
+same name apart and let one collaborative album appear under each artist. A name
+without a usable ID does not create an artist page. Albums with missing or
+inconsistent artist IDs are listed separately with links to their album pages.
+MusicBrainz's special-purpose artists, including Various Artists, do not have
+artist pages; other collaborators remain listed under their own IDs.
+
+When only some tracks lack artist IDs, consistent artist credits on the other
+tracks can identify the album's artist if all tracks name the same release.
+The artist remains a single entry, and the affected album also appears in the
+list of albums with missing artist IDs. That list reflects the files and clears
+when their missing IDs are filled in; browsing does not write them.
+
+Existing Kodi/Jellyfin `artist.nfo` files can supply a biography, dates, sort
+name and other artist information. Their artist ID must match the embedded
+album-artist ID. They can live anywhere inside the music library, including
+directories without audio. Two NFOs naming the same artist ID are shown as a
+conflict, with both paths. NFOs with no artist ID or no credited artist appear
+separately by path. Albums in the Inbox count when checking for these orphans.
+Unreadable NFOs are reported as errors rather than treated as absent.
+
+Artist browsing reads local tags, NFOs and local raster artwork. It makes no
+MusicBrainz or image-provider requests, does not generate NFOs and never changes
+tags based on them. Remote image URLs in an NFO are not downloaded. With local
+NFOs and image files, the artist pages remain available offline. The MusicBrainz
+link opens the artist's page separately. NFO discographies do not count as owned
+albums. The file watcher updates the inventory after local changes settle;
+the hourly rescan covers missed notifications, including on network mounts.
+Open artist pages and the artist list follow those updates automatically.
+
 ## The Inbox
 
 Harmonist works out each album's state from its files and sidecar every time it

@@ -1,4 +1,4 @@
-{# One album tile in the Library grid — an ordinary link to the album's page.
+{# One album tile in the Library grid — separate native album and artist links.
 
    It used to open a dialog holding a smaller version of that page (#129). A
    plain <a> gives every click a real URL: shareable, bookmarkable, and
@@ -16,12 +16,17 @@
 {% set sc = album.sidecar %}
 {% set is_new = album.id in new_album_ids %}
 {% set from_params = [] %}
+{% if artist_album_query %}
+{% set _ = from_params.append(artist_album_query) %}
+{% else %}
 {% if page > 1 %}{% set _ = from_params.append('from_page=' ~ page) %}{% endif %}
 {% if filter %}{% set _ = from_params.append('from_filter=' ~ filter) %}{% endif %}
 {% if q %}{% set _ = from_params.append('from_q=' ~ (q | urlencode)) %}{% endif %}
+{% endif %}
+<div class="lib-tile select-none">
 <a id="lib-{{ album.id }}"
    href="/album/{{ album.id }}{% if from_params %}?{{ from_params | join('&') }}{% endif %}"
-   class="lib-tile group cursor-pointer select-none block">
+   class="group block">
     <div class="relative">
         <img loading="lazy" src="/cover/{{ album.id }}"
              onerror="this.style.visibility='hidden'" alt=""
@@ -82,5 +87,6 @@
         {% endif %}
     </div>
     <div class="mt-1.5 text-sm font-bold text-ink leading-tight line-clamp-2">{{ album.title }}</div>
-    <div class="text-xs text-muted truncate">{{ album.artist }}</div>
 </a>
+    <div class="text-xs text-muted truncate">{% if album.artist_credits %}{% for credit in album.artist_credits %}{% if not loop.first %} &amp; {% endif %}{% if credit.mbid in album_artist_ids %}<a href="/artist/{{ credit.mbid }}" class="library-artist-link text-muted hover:text-accent focus-visible:text-accent underline decoration-dotted underline-offset-2 hover:decoration-solid">{{ credit.name }}</a>{% else %}{{ credit.name }}{% endif %}{% endfor %}{% else %}{{ album.artist }}{% endif %}</div>
+</div>

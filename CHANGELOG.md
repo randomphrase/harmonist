@@ -8,6 +8,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- **Artists has its own page**, with search, NFO and artwork filters, and New for artists with an album added in the last seven days (#813).
+- **Artist NFOs are discovered throughout the library**, with conflicting and orphaned files shown by path and automatic updates after file changes (#813).
+- **Artist pictures prefer the NFO's local thumbnail**, with generic folder pictures used only in verified artist directories (#813).
+- **Artist names in album headings and Library cards link directly to their artist pages** (#813).
+- **Artist pages separate NFO details, genres, collapsible biographies and discographies from the albums in your library** (#813).
 - **Artwork an album already has over the 20 MB limit is offered reduced to
   fit**, as an artwork Replacement, so Navidrome reads it (#893).
 - **A folder cover named for the wrong image type is offered a rename**, such

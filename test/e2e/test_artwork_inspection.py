@@ -28,6 +28,9 @@ def _open(page, base, review):
 
 
 def _assert_fitted(viewer):
+    # Decoding alone does not wait for the popover's queued toggle event,
+    # which applies the fit size and updates this output after opening.
+    pw.expect(viewer.locator("output")).to_contain_text("fit to viewer")
     image = viewer.locator("img")
     image.evaluate("e => e.decode()")
     geometry = image.evaluate("""e => {

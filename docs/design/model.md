@@ -1,5 +1,68 @@
 # The model
 
+## Artist identity belongs to the credits
+
+Artists are a view of the same local album snapshot, not a second database
+catalogue to reconcile with the files. Separate album-artist names and their
+aligned MusicBrainz IDs identify collaborators; a joined display name cannot
+safely be split. Agreement across the album's files is required before an ID
+can associate external artist information. Missing IDs do not contradict the
+remaining files' aligned IDs when every file carries the same release ID and
+agrees on the artist names. Such albums stay with their identified artist;
+conflicting IDs never take this path. Artist pages require an MBID: a repeated
+name is not evidence of a shared identity, and an album-scoped key would change
+when the album is matched. Albums with absent or inconsistent artist IDs are
+listed separately so their tags can be reviewed on the album page. Special-purpose
+MusicBrainz identities do not represent people or groups to browse, so their
+MBIDs are excluded without excluding other collaborators on the same album.
+
+NFO placement does not establish artist identity. The library scan discovers
+NFOs even in directories without audio, because moving metadata within the
+library must not change who it describes. Requiring the ID inside the NFO to
+match also keeps a collaboration from inheriting whichever artist happens to
+name its parent directory. Two files with one MBID are conflicting evidence,
+not a source choice to remember in a URL. Artist metadata never changes tags.
+
+The NFO inventory is an in-memory snapshot published with the album scan, not
+another durable catalogue. Changed file events refresh its evidence, and the
+hourly rescan covers missed events and directory moves. A cached parse includes
+the inode change time, so restoring a modification timestamp cannot conceal an
+edit. Pages consume the snapshot instead of walking a NAS on every request.
+The artist detail carries the matching paths alongside the tag-derived name
+and MBID; nothing about that association is written to disk.
+
+Orphanhood is checked against every scanned album, including the Inbox, because
+a pending album is still evidence of an artist in the library. An NFO with no
+MBID or no credited artist remains visible by path. Malformed or unreadable
+files are errors, not orphans; an incomplete directory walk cannot establish
+uniqueness or absence, so it withholds associations and reports its failure.
+
+Artists have their own addressable collection: album-origin and audio-format
+filters describe albums, while NFO presence, conflicting sources and artist
+pictures describe artists. Search and those selections belong in the URL so a
+bookmark, reload or round trip through an album preserves the same collection.
+The New filter derives from at least one album added in the last seven days;
+there is no separate artist arrival timestamp to persist or reconcile.
+
+Picture availability is observed in the scan alongside the NFOs, so filtering
+does not stat every image on a NAS per request. `Profile.image_ref` keeps the
+declared thumb and `Profile.image_path` holds the resolved picture; the latter
+is rebuilt independently of the cached XML, since a photo can change without
+the NFO changing. Its file fingerprint makes such a replacement observable.
+
+An explicit local thumb outranks filenames, followed by an explicit artist
+picture. Generic thumb/folder names require positive folder evidence: every
+descendant album credits the NFO's MBID, while audio, album metadata and disc
+structure exclude album containers. Absence of audio alone is not evidence of
+an artist directory. An explicit NFO reference can still name a folder cover;
+it states the owner's choice rather than a fallback guess. Stable artist-image
+URLs revalidate rather than relying on the browser's guess at freshness. The
+rendered image URL also carries a version of the observed file: a browser can
+reuse a decoded image within a document without making an HTTP request, so a
+changed selection needs a changed `src`. Unchanged files keep the same version
+and use normal ETag revalidation. A late image refresh cannot replace a newer
+scan's folder evidence.
+
 ## An album is its release, not its folder
 
 A library assembled over decades keeps one release in several places:

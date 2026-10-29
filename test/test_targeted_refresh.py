@@ -46,9 +46,9 @@ def test_retag_refreshes_only_its_album(client, cfg, monkeypatch):
     requested = []
     original = scanner.iter_album_dirs
 
-    def walk(root):
+    def walk(root, **kwargs):
         walks.append(root)
-        yield from original(root)
+        yield from original(root, **kwargs)
 
     monkeypatch.setattr(scanner, "iter_album_dirs", walk)
     monkeypatch.setattr(runner, "request_scan", lambda: requested.append(True))
@@ -79,9 +79,9 @@ def test_watcher_refreshes_known_album_and_preserves_later_external_edits(tmp_pa
     reads = []
     original_read = formats.read_scan_fields
 
-    def walk(root):
+    def walk(root, **kwargs):
         walks.append(root)
-        yield from original_walk(root)
+        yield from original_walk(root, **kwargs)
 
     def read(path):
         reads.append(path)
@@ -191,9 +191,9 @@ def test_confirmation_updates_state_and_counts_without_full_scan(client, cfg, mo
     requests = []
     original = scanner.iter_album_dirs
 
-    def walk(root):
+    def walk(root, **kwargs):
         walks.append(root)
-        yield from original(root)
+        yield from original(root, **kwargs)
 
     monkeypatch.setattr(scanner, "iter_album_dirs", walk)
     monkeypatch.setattr(runner, "request_scan", lambda: requests.append(True))
@@ -270,8 +270,8 @@ def test_full_scan_cannot_overwrite_a_more_recent_album_refresh(tmp_path, monkey
     original = scanner.resolve_dir
     original_walk = scanner.iter_album_dirs
 
-    def ordered_walk(root):
-        yield from sorted(original_walk(root), key=lambda item: item[0])
+    def ordered_walk(root, **kwargs):
+        yield from sorted(original_walk(root, **kwargs), key=lambda item: item[0])
 
     def resolve(path, *args):
         if path == other:
@@ -307,9 +307,9 @@ def test_real_watcher_delivers_paths_to_targeted_refresh(tmp_path, monkeypatch):
     walks = []
     original = scanner.iter_album_dirs
 
-    def walk(root):
+    def walk(root, **kwargs):
         walks.append(root)
-        yield from original(root)
+        yield from original(root, **kwargs)
 
     async def run():
         runner.attach_loop()

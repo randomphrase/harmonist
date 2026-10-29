@@ -31,7 +31,7 @@
     <div class="flex items-center justify-between gap-3 px-4 py-2.5 bg-line/50 border-b border-line">
         <h1 class="text-lg break-words min-w-0">
             <span class="font-bold text-ink">{{ album.title }}</span>
-            <span class="text-muted font-normal">&mdash; {{ album.artist }}</span>
+            <span class="text-muted font-normal">&mdash; {% if album.artist_credits %}{% for credit in album.artist_credits %}{% if not loop.first %} &amp; {% endif %}{% if credit.mbid in album_artist_ids %}<a href="/artist/{{ credit.mbid }}" class="underline decoration-dotted underline-offset-2 hover:decoration-solid">{{ credit.name }}</a>{% else %}{{ credit.name }}{% endif %}{% endfor %}{% else %}{{ album.artist }}{% endif %}</span>
         </h1>
     </div>
 

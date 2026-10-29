@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% block content %}
+<div id="artist-detail" class="space-y-5"
+     hx-get="{{ artist_refresh_url }}" hx-trigger="tasks-changed from:body"
+     hx-select="#artist-detail" hx-target="this" hx-swap="outerHTML" hx-sync="this:replace">
+    <a href="{{ artist_back_url }}" class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">← Back to artists</a>
+
+    <header class="flex flex-col sm:flex-row items-start gap-5">
+        {% if artist_image %}
+        <img src="{{ artist_image_url }}" alt="{{ artist.name }}" class="w-40 h-40 object-cover rounded-md border border-line bg-surface">
+        {% endif %}
+        <div class="min-w-0 space-y-2">
+            <h1 class="text-2xl font-bold text-ink break-words">{{ artist.name }}</h1>
+            {% if artist.sort_name %}<p class="text-sm text-muted">{{ artist.sort_name }}</p>{% endif %}
+            {% if artist.mbid %}
+            <a href="https://musicbrainz.org/artist/{{ artist.mbid }}" target="_blank" rel="noopener noreferrer"
+               class="inline-block text-sm font-bold text-mb-purple hover:underline">MusicBrainz ↗</a>
+            {% endif %}
+        </div>
+    </header>
+
+    {% if nfo.profile or nfo.errors %}
+    <section class="border border-line rounded-lg p-4 space-y-3" aria-label="Artist metadata">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+                <h2 class="text-sm font-bold text-ink">Artist NFO</h2>
+                {% if nfo.profile %}
+                <p class="text-xs text-muted break-all">{{ display_path(nfo.profile.path) }}</p>
+                <p class="text-xs text-muted" title="{{ nfo_modified.isoformat() }}">Modified {{ ago(nfo_modified) }}</p>
+                {% endif %}
+            </div>
+        </div>
+        {% for error in nfo.errors %}
+        <p role="alert" class="text-sm text-amber-800 break-words">{{ error }}</p>
+        {% endfor %}
+        {% if nfo.candidates | length > 1 %}
+        <ul aria-label="Conflicting NFO files" class="space-y-1">
+            {% for path in artist.nfo_paths %}
+            <li class="text-xs text-muted break-all">{{ display_path(path) }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% if nfo.profile %}
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            {% if nfo.profile.name and nfo.profile.name != artist.name %}
+            <div><dt class="text-xs text-muted">NFO name</dt><dd class="text-ink">{{ nfo.profile.name }}</dd></div>
+            {% endif %}
+            {% if nfo.profile.sort_name %}
+            <div><dt class="text-xs text-muted">Sort name</dt><dd class="text-ink">{{ nfo.profile.sort_name }}</dd></div>
+            {% endif %}
+            {% for label, value in nfo.profile.main_facts %}
+            <div><dt class="text-xs text-muted">{{ label }}</dt><dd class="text-ink">{{ value }}</dd></div>
+            {% endfor %}
+        </dl>
+        {% if nfo.profile.genres %}
+        <ul aria-label="Artist genres" class="flex flex-wrap gap-2">
+            {% for genre in nfo.profile.genres %}
+            <li class="px-2 py-1 rounded-full border border-line bg-surface text-xs font-semibold text-ink">{{ genre }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% endif %}
+    </section>
+    {% endif %}
+
+    {% if nfo.profile and nfo.profile.biography %}
+    <details id="artist-biography" class="hmt-group border border-line rounded-lg p-4">
+        <summary class="cursor-pointer text-sm font-bold text-ink"><h2 class="inline">Biography</h2></summary>
+        <p class="mt-3 text-sm text-ink whitespace-pre-line break-words">{{ nfo.profile.biography }}</p>
+    </details>
+    {% endif %}
+
+    <section aria-labelledby="artist-albums-heading" class="space-y-3">
+        <h2 id="artist-albums-heading" class="text-sm font-bold text-ink">Albums <span class="font-normal text-muted">{{ total_done }}</span></h2>
+        <div id="library-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {% for album in rows %}{% include 'partials/library_tile.html' %}{% endfor %}
+        </div>
+        {% if total_pages > 1 %}
+        <nav class="flex items-center justify-between gap-4" aria-label="Artist album pages">
+            {% if artist_previous %}<a href="{{ artist_previous }}" class="text-sm font-bold text-accent hover:underline">← Previous</a>{% else %}<span></span>{% endif %}
+            <span class="text-xs text-muted tabular-nums">{{ first_row }}–{{ last_row }} of {{ total_shown }} · page {{ page }} of {{ total_pages }}</span>
+            {% if artist_next %}<a href="{{ artist_next }}" class="text-sm font-bold text-accent hover:underline">Next →</a>{% else %}<span></span>{% endif %}
+        </nav>
+        {% endif %}
+    </section>
+
+    {% if nfo.profile and nfo.profile.additional_facts %}
+    <section aria-labelledby="artist-additional-heading" class="border border-line rounded-lg p-4 space-y-3">
+        <h2 id="artist-additional-heading" class="text-sm font-bold text-ink">Additional information</h2>
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            {% for label, value in nfo.profile.additional_facts %}
+            <div><dt class="text-xs text-muted">{{ label }}</dt><dd class="text-ink break-words">{{ value }}</dd></div>
+            {% endfor %}
+        </dl>
+    </section>
+    {% endif %}
+
+    {% if nfo.profile and nfo.profile.discography %}
+    <details id="artist-discography" class="hmt-group border border-line rounded-lg p-4">
+        <summary class="cursor-pointer text-sm font-bold text-ink"><h2 class="inline">Discography from NFO <span class="font-normal text-muted">{{ nfo.profile.discography | length }}</span></h2></summary>
+        <ul aria-label="NFO discography" class="mt-3 divide-y divide-line text-sm">
+            {% for release in nfo.profile.discography %}
+            <li class="flex items-baseline justify-between gap-4 py-2">
+                {% if release.release_group_id %}
+                <a href="https://musicbrainz.org/release-group/{{ release.release_group_id }}" target="_blank" rel="noopener noreferrer" class="min-w-0 break-words text-mb-purple hover:underline">{{ release.title }} ↗</a>
+                {% else %}<span class="min-w-0 break-words text-ink">{{ release.title }}</span>{% endif %}
+                {% if release.year %}<span class="shrink-0 text-xs text-muted">{{ release.year }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+</div>
+{% endblock %}

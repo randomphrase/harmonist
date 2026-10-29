@@ -68,6 +68,8 @@
     document.body.addEventListener('htmx:historyRestore', function () {
         const search = document.getElementById('library-search');
         if (search) search.value = new URL(window.location.href).searchParams.get('q') || '';
+        const artistSearch = document.getElementById('artists-search');
+        if (artistSearch) artistSearch.value = new URL(window.location.href).searchParams.get('artist_q') || '';
     });
 
     // Last string actually written, so an unchanged status isn't re-rendered.
@@ -107,7 +109,10 @@
         const tid = evt.detail.target.id;
         // 'activity-feed' included so the per-entry "what changed" disclosures
         // (#84) survive the feed's 2s re-poll — otherwise reading one is a race.
-        if (tid !== 'task-list' && tid !== 'pending-section' && tid !== 'activity-feed') return;
+        // Artist biographies and NFO discographies follow the same local
+        // disclosure state when the watcher refreshes their page.
+        if (tid !== 'task-list' && tid !== 'pending-section' && tid !== 'activity-feed'
+                && tid !== 'artist-detail') return;
         _openGroups.forEach(function (id) {
             const d = document.getElementById(id);
             if (d) d.open = true;
@@ -189,6 +194,7 @@
         if (data.counts) {
             const ib = document.getElementById('inbox-count');
             const lb = document.getElementById('library-count');
+            const ab = document.getElementById('artists-count');
             // Only write when the number actually changed — assigning textContent
             // replaces the text node even when the value is identical, and this
             // runs every 1.5s (#93).
@@ -197,6 +203,9 @@
             }
             if (lb && lb.textContent !== String(data.counts.library)) {
                 lb.textContent = data.counts.library;
+            }
+            if (ab && ab.textContent !== String(data.counts.artists)) {
+                ab.textContent = data.counts.artists;
             }
             // Link-only default derives from the live inbox (see the popover block).
             const cb = document.getElementById('sync-link-only');

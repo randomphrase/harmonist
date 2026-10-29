@@ -18,6 +18,8 @@ from typing import NamedTuple
 
 from . import (
     album_files,
+    artist_nfo,
+    artists,
     artwork_updates,
     barcodes,
     compare,
@@ -73,7 +75,12 @@ def scan(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[Albu
     return merge_by_identity(scan_dirs(music_dir, album_cache=album_cache))
 
 
-def scan_dirs(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list[ScannedDir]:
+def scan_dirs(
+    music_dir: Path,
+    *,
+    album_cache: AlbumCache | None = None,
+    nfos: artist_nfo.Discovery | None = None,
+) -> list[ScannedDir]:
     """The per-DIRECTORY half of `scan`: walk, resolve, prune — but stop before
     folding directories into albums.
 
@@ -84,7 +91,8 @@ def scan_dirs(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list
     `scan`.
     """
     scanned: list[ScannedDir] = []
-    for album_dir, audio, videos, signature in iter_album_dirs(music_dir):
+    walk = iter_album_dirs(music_dir) if nfos is None else iter_album_dirs(music_dir, nfos=nfos)
+    for album_dir, audio, videos, signature in walk:
         entry = resolve_dir(album_dir, audio, videos, signature, album_cache)
         if entry is not None:
             scanned.append(entry)
@@ -93,7 +101,11 @@ def scan_dirs(music_dir: Path, *, album_cache: AlbumCache | None = None) -> list
     return scanned
 
 
-def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], AlbumSignature]]:
+def iter_album_dirs(
+    root: Path,
+    *,
+    nfos: artist_nfo.Discovery | None = None,
+) -> Iterator[tuple[Path, list[Path], list[Path], AlbumSignature]]:
     """Yield (album_dir, audio_files, video_files, signature) for every album
     directory under `root`, ONE DIRECTORY AT A TIME.
 
@@ -113,11 +125,17 @@ def iter_album_dirs(root: Path) -> Iterator[tuple[Path, list[Path], list[Path], 
     """
     if not root.exists():
         return
-    for dirpath, _dirnames, filenames in os.walk(root):
+    for dirpath, _dirnames, filenames in os.walk(root, onerror=nfos.on_error if nfos else None):
         d = Path(dirpath)
+        if nfos is not None:
+            nfos.paths.extend(d / name for name in filenames if name.lower() == "artist.nfo")
+            if any(name.lower() in {"album.nfo", ".harmonist.json"} for name in filenames):
+                nfos.album_dirs.add(d.resolve())
         contents = read_dir(d, filenames)
         if contents is None:
             continue  # not an album directory
+        if nfos is not None:
+            nfos.album_dirs.add(d.resolve())
         yield d, contents.files, contents.videos, contents.signature
 
 
@@ -735,6 +753,7 @@ def build_album(
         path=album_dir,
         title=title,
         artist=artist,
+        artist_credits=artists.album_credits(fields),
         track_count=len(audio_files),
         state=state,
         sidecar=sidecar,
