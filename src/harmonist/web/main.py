@@ -8536,7 +8536,14 @@ def _register_routes(app: FastAPI) -> None:
                     return Response(status_code=status.HTTP_204_NO_CONTENT)
                 release = mb_cache.fetch_release(extracted)
                 current = sidecar_mod.read(album.path)
-                if current is None or current.mb_release_id:
+                if current is None:
+                    if album.sidecar is not None:
+                        raise mb_lookup.MBError("Album was forgotten while the lookup ran")
+                    # Forget retains embedded IDs but removes the sidecar. A
+                    # manual choice can create a suggestion without adopting
+                    # those old IDs or touching the files before confirmation.
+                    current = Sidecar(added_at=datetime.now(UTC))
+                if current.mb_release_id:
                     raise mb_lookup.MBError("Album was matched while the lookup ran")
                 if current.mb_match_candidate is not None:
                     return Response(status_code=status.HTTP_204_NO_CONTENT)

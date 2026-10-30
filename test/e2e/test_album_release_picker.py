@@ -4,10 +4,70 @@ import os
 
 import pytest
 
-from harmonist import formats
+from harmonist import formats, sidecar
 
 pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e disabled")
 pw_api = pytest.importorskip("playwright.sync_api")
+
+
+@pytest.mark.parametrize("on_album,width", [(True, 1280), (False, 390)])
+def test_forget_then_choose_another_release(
+    browser_factory, release_picker_server, htmx_ready, tmp_path, on_album, width
+):
+    page = browser_factory("chromium").new_page(viewport={"width": width, "height": 900})
+    base = release_picker_server
+    folder = (
+        tmp_path
+        / "harmonist-demo"
+        / "Dingoes Ate My Baby"
+        / "Little Bit o' Hoot, Whole Lotta Nanny"
+    )
+    originals = {p: p.read_bytes() for p in folder.glob("*.m4a")}
+    assert len(originals) == 3
+    dialogs = []
+
+    def capture_dialog(dialog):
+        dialogs.append(dialog.message)
+        dialog.accept()
+
+    page.on("dialog", capture_dialog)
+    page.goto(f"{base}/album/demo-rel-dingoes")
+    with page.expect_response(lambda r: r.url.endswith("/forget/demo-rel-dingoes") and r.ok):
+        htmx_ready(page.get_by_role("button", name="Forget", exact=True)).click()
+    page.wait_for_url(f"{base}/")
+    assert dialogs == []
+    card = page.locator('div[id^="task-"].relative').filter(has_text="Little Bit o' Hoot")
+    pw_api.expect(card).to_have_count(1)
+    aid = card.get_attribute("id").removeprefix("task-")
+    assert sidecar.read(folder) is None
+    assert {p: p.read_bytes() for p in originals} == originals
+    if on_album:
+        page.goto(f"{base}/album/{aid}")
+    panel = page.locator("#album-inbox-actions") if on_album else card
+    htmx_ready(panel.get_by_role("radio", name="By name", exact=True)).check()
+    panel.get_by_placeholder("Album", exact=True).fill("Another release")
+    with page.expect_response(lambda r: r.url.endswith(f"/manual/{aid}/search") and r.ok):
+        htmx_ready(panel.get_by_role("button", name="Search", exact=True)).click()
+    choices = panel.get_by_role("list", name="Release candidates")
+    pw_api.expect(choices).to_contain_text("Another release")
+    with page.expect_response(lambda r: r.url.endswith(f"/manual/{aid}/assign") and r.ok):
+        htmx_ready(choices.get_by_role("button", name="Use", exact=True)).click()
+    confirm = panel.get_by_role("button", name="Confirm suggestion", exact=True)
+    pw_api.expect(confirm).to_be_visible()
+    pw_api.expect(panel).to_contain_text("Another release")
+    assert sidecar.read(folder).mb_match_candidate.mb_release_id == "demo-rel-picker-other"
+    assert {p: p.read_bytes() for p in originals} == originals
+    with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept") and r.ok):
+        htmx_ready(confirm).click()
+    if on_album:
+        page.wait_for_url(f"{base}/album/demo-rel-picker-other")
+        pw_api.expect(page.locator("#album-identity")).to_contain_text("Another release")
+    else:
+        pw_api.expect(card).to_have_count(0)
+    assert sidecar.read(folder).mb_release_id == "demo-rel-picker-other"
+    assert all(formats.read_album_id(p) == "demo-rel-picker-other" for p in originals)
+    assert dialogs == []
+    page.context.close()
 
 
 def _open_picker(page, server, ready):

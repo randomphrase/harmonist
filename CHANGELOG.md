@@ -16,6 +16,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **Forget returns an album to the Inbox with one click**, without a confirmation dialog (#915).
 - **After Apply says an image over the limit "will be reduced to fit"**, since
   "reduced to fit" beside its size read as the size after reducing (#893).
 - **The album page reads each file once, and not at all on a repeat view of an
@@ -26,6 +27,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **Choosing a MusicBrainz release after Forget opens review correctly**, even when the files still carry their previous release ID (#915).
 - **The album page's sections are evenly spaced**, without a double gap above
   the album panel and below Possible mismatch, nor extra padding under a
   dismissed Possible mismatch (#902).

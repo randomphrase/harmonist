@@ -260,14 +260,11 @@
            `ml-auto` rather than reordering with flex, so the DOM order matches
            the reading order and the tab order reaches it last too. #}
         {# Forget deletes the sidecar, so it needs one to delete (#150). A NEW
-           album has none — it is already what forgetting would make it — and the
-           button's own confirm text ("the album reverts to NEW") is the giveaway
-           that it had nothing to say there. #}
+           album has none — it is already what forgetting would make it. #}
         {% if album.sidecar %}
         <button hx-post="/forget/{{ album.id }}"
                 hx-swap="none" hx-disabled-elt="this"
                 hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
-                hx-confirm="Forget this album? The sidecar is deleted and the album reverts to NEW. Files are not touched."
                 class="ml-auto px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">
             Forget
         </button>

@@ -5504,6 +5504,93 @@ def test_forget_adds_path_to_exemption_set(client, cfg):
     assert d in client.app.state.forgotten_paths
 
 
+@pytest.mark.parametrize("on_album_page", [False, True])
+def test_forgotten_album_can_review_another_release(client, cfg, monkeypatch, on_album_page):
+    """Forget retains embedded IDs; choosing a different release must still work."""
+    from harmonist import formats
+    from harmonist.models import FoundBy
+
+    d = _make_tagged_album(cfg, "ChooseAfterForget", mbid="rel-old", tagged_at=datetime.now(UTC))
+    audio = d / "01 Track.m4a"
+    original = audio.read_bytes()
+    client.post(f"/forget/{_id_for(cfg, d)}")
+    assert sc.read(d) is None
+    aid = _id_for(cfg, d)
+    calls = []
+
+    def fetch(mbid):
+        calls.append(mbid)
+        return _release_for_match(mbid, n_tracks=1)
+
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fetch)
+    result = client.post(
+        f"/manual/{aid}/assign",
+        data={
+            "mbid": _ASSIGN_MBID,
+            "found_by": FoundBy.NAME_SEARCH.value,
+            "on_album_page": on_album_page,
+        },
+    )
+    assert "Needs review" in result.text
+    current = sc.read(d)
+    assert current is not None and current.mb_release_id is None
+    assert current.mb_match_candidate.mb_release_id == _ASSIGN_MBID
+    assert current.mb_match_candidate.found_by == FoundBy.NAME_SEARCH
+    assert audio.read_bytes() == original
+    assert formats.read_album_id(audio) == "rel-old"
+    assert calls == [_ASSIGN_MBID]
+
+    # A repeated Use must leave the pending choice alone, without another fetch.
+    before = sc.sidecar_path(d).read_bytes()
+    repeated = client.post(f"/manual/{aid}/assign", data={"mbid": _ASSIGN_MBID})
+    assert repeated.status_code == 204
+    assert sc.sidecar_path(d).read_bytes() == before
+    assert calls == [_ASSIGN_MBID]
+
+
+@pytest.mark.parametrize("change", ["match", "suggestion", "forget"])
+def test_tagged_manual_choice_preserves_changes_during_lookup(client, cfg, monkeypatch, change):
+    from harmonist.models import MatchCandidate
+
+    d = _make_album(cfg, "CompetingChoice", mbid="rel-old")
+    sc.write(d, Sidecar(added_at=datetime.now(UTC), notes="Keep this metadata"))
+    aid = _id_for(cfg, d)
+    original = (d / "01 Track.m4a").read_bytes()
+    concurrent = Sidecar(
+        mb_release_id="rel-concurrent" if change == "match" else None,
+        mb_match_candidate=(
+            MatchCandidate(
+                mb_release_id="rel-concurrent", confidence="no_match", file_count=1, track_count=1
+            )
+            if change == "suggestion"
+            else None
+        ),
+        notes="Written during lookup",
+    )
+    after_change = []
+
+    def fetch(mbid):
+        if change == "forget":
+            sc.sidecar_path(d).unlink()
+            client.app.state.forgotten_paths.add(d)
+        else:
+            sc.write(d, concurrent)
+            after_change.append(sc.sidecar_path(d).read_bytes())
+        return _release_for_match(mbid, n_tracks=1)
+
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fetch)
+    result = client.post(f"/manual/{aid}/assign", data={"mbid": _ASSIGN_MBID})
+    if change == "suggestion":
+        assert result.status_code == 204
+    else:
+        assert "MB lookup failed" in result.text
+    if change == "forget":
+        assert sc.read(d) is None
+    else:
+        assert sc.sidecar_path(d).read_bytes() == after_change[0]
+    assert (d / "01 Track.m4a").read_bytes() == original
+
+
 def test_explicit_reconcile_clears_exemption(client, cfg):
     """Explicit /reconcile/{id} should discard any prior Forget exemption —
     the user's most-recent intent wins.
