@@ -43,42 +43,59 @@
           describe_image(image), image.size, options or [(prefix ~ image.digest[:12], who)]) }}
 {% endmacro %}
 
-{# One full-size view. `options` are its gallery's viewers, (id, caption) each,
-   for the image select. `lazy` holds the image back until the viewer first
-   opens: an archive candidate's original is a download, and a page offering a
-   dozen must not fetch them all to show none (#659).
+{# A chevron, for every control that steps through artwork (#918): the
+   viewer's ‹ ›, and the picker's rows and images, at either size. One shape
+   for all of them, so a press that moves to another image looks the same
+   wherever it is. #}
+{% macro arrow(direction) -%}
+<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     ><path d="{{ {'up': 'M4 10l4-4 4 4', 'down': 'M4 6l4 4 4-4', 'left': 'M10 4l-4 4 4 4', 'right': 'M6 4l4 4-4 4'}[direction] }}"/></svg>
+{%- endmacro %}
+
+{# The scale control: Fit, or the image's own pixels. Its words are the
+   script's, since they say what the window makes of the image. Clicking the
+   image does the same. #}
+{% macro zoom_button() -%}
+<button type="button" class="art-zoom" data-art-zoom>Fit</button>
+{%- endmacro %}
+
+{# One full-size view. `options` are its gallery's viewers, (id, caption) each:
+   ‹ and › step to the one before and after, and stop at either end.
 
    The Close button is the one focused on opening, but by `data-autofocus` and
    artwork-viewer.js rather than `autofocus`: HTMX focuses an inserted
    `autofocus` after every swap of the section, closed viewer or not, and
    the script then had to win focus back from it (#659). #}
-{% macro viewer(id, gallery_id, src, who, meta, size=none, options=(), lazy=false) %}
-<div id="{{ id }}" popover class="art-full"
+{% macro viewer(id, gallery_id, src, who, meta, size=none, options=()) %}
+{% set nav = namespace(at=0) %}
+{% for value, caption in options %}{% if value == id %}{% set nav.at = loop.index0 %}{% endif %}{% endfor %}
+{% set ids = options|map('first')|list %}
+<div id="{{ id }}" popover class="art-full" data-zoom="fit"
      role="dialog" aria-label="Artwork viewer" data-art-gallery="{{ gallery_id }}">
-    <div class="art-full__controls">
-        <label class="art-full__choice">Image
-            <select aria-label="Artwork image" class="art-full__image-choice">
-                {% for value, caption in options %}
-                <option value="{{ value }}"{% if value == id %} selected{% endif %}>{{ caption }}</option>
-                {% endfor %}
-            </select>
-        </label>
-        <label>Scale
-            <select aria-label="Viewing scale" class="art-full__mode">
-                <option value="fit">Fit</option>
-                <option value="native">100% (1:1)</option>
-            </select>
-        </label>
-        <button type="button" aria-label="Close artwork viewer" data-autofocus
-                onclick="this.closest('[popover]').hidePopover()">Close</button>
+    <div class="art-full__bar">
+        {% if ids|length > 1 %}
+        <span class="art-full__nav">
+            <button type="button" class="art-arrow" data-art-view="{{ ids[nav.at - 1] if nav.at > 0 else '' }}"
+                    aria-label="Previous image"{% if nav.at == 0 %} disabled{% endif %}>{{ arrow('left') }}</button>
+            <span class="art-full__count">{{ nav.at + 1 }} of {{ ids|length }}</span>
+            <button type="button" class="art-arrow" data-art-view="{{ ids[nav.at + 1] if nav.at + 1 < ids|length else '' }}"
+                    aria-label="Next image"{% if nav.at + 1 == ids|length %} disabled{% endif %}>{{ arrow('right') }}</button>
+        </span>
+        {% endif %}
+        <span class="art-full__who">{{ who }}</span>
+        <span class="art-full__meta">{{ meta or '' }}</span>
+        {{ zoom_button() }}
+        <button type="button" class="art-full__close" aria-label="Close artwork viewer" data-autofocus
+                onclick="this.closest('[popover]').hidePopover()"><svg viewBox="0 0 16 16" width="14" height="14"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"
+            ><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
     </div>
     <div class="art-full__stage" role="region" aria-label="Artwork detail" tabindex="0">
         <div class="art-full__canvas">
-            <img {% if lazy %}data-src{% else %}src{% endif %}="{{ src }}" alt="{{ who }}"
+            <img src="{{ src }}" alt="{{ who }}"
                  {% if size %}width="{{ size.width }}" height="{{ size.height }}"{% endif %}>
         </div>
     </div>
-    <p class="art-full__meta">{{ meta or '' }}</p>
-    <output class="art-full__scale" aria-live="polite">Fit</output>
 </div>
 {% endmacro %}

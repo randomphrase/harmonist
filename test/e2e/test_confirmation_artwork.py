@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from urllib.parse import parse_qs
 
 import pytest
@@ -207,9 +208,11 @@ def test_inbox_refresh_preserves_artwork_inspection(
     thumb.click()
     viewer = page.locator(".art-full:popover-open")
     # Inspect a different image, while Escape still belongs to the opener.
-    selected = viewer.locator(".art-full__image-choice option").nth(1).get_attribute("value")
-    viewer.get_by_role("combobox", name="Artwork image").select_option(selected)
-    viewer.get_by_role("combobox", name="Viewing scale").select_option("native")
+    on = viewer.get_by_role("button", name="Next image")
+    selected = on.get_attribute("data-art-view")
+    on.click()
+    pw.expect(viewer).to_have_attribute("id", selected)
+    viewer.locator("[data-art-zoom]").click()
     stage = viewer.get_by_role("region", name="Artwork detail")
     stage.evaluate("e => { e.scrollLeft = 200; e.scrollTop = 150; }")
     stage.focus()
@@ -243,7 +246,7 @@ def test_inbox_refresh_preserves_artwork_inspection(
             pw.expect(viewer).to_have_count(0)
         else:
             pw.expect(viewer).to_have_attribute("id", selected)
-            pw.expect(viewer.get_by_role("combobox", name="Viewing scale")).to_have_value("native")
+            pw.expect(viewer.locator("[data-art-zoom]")).to_have_attribute("aria-pressed", "true")
             pw.expect(stage).to_be_focused()
             assert stage.evaluate("e => [e.scrollLeft, e.scrollTop]") == [200, 150]
     if not dismiss:
@@ -439,7 +442,14 @@ def test_current_artwork_keeps_actions_in_place_while_loading(
     page.keyboard.press("Enter")
     viewer = page.locator(f"#{thumb.get_attribute('popovertarget')}")
     pw.expect(viewer).to_be_visible()
-    viewer.get_by_role("combobox", name="Viewing scale").select_option("native")
+    # At 100% where the image is larger than the window; where it already
+    # fits, there is no other scale to keep.
+    zoom = viewer.locator("[data-art-zoom]")
+    pw.expect(viewer.locator(".art-full__stage")).to_have_attribute("data-zoom", re.compile("."))
+    native = "false" if zoom.is_disabled() else "true"
+    if native == "true":
+        zoom.click()
+    pw.expect(zoom).to_have_attribute("aria-pressed", native)
     # Current artwork is usable before HTMX starts the archive request.
     # Wait for the request we will release, not for unrelated UI work to
     # happen to give its load trigger enough time on a busy runner.
@@ -450,7 +460,7 @@ def test_current_artwork_keeps_actions_in_place_while_loading(
     pw.expect(artwork.get_by_alt_text("Artwork for selected release")).to_be_visible()
     pw.expect(artwork).to_contain_text("CAA checked")
     pw.expect(viewer).to_be_visible()
-    pw.expect(viewer.get_by_role("combobox", name="Viewing scale")).to_have_value("native")
+    pw.expect(zoom).to_have_attribute("aria-pressed", native)
     page.keyboard.press("Escape")
     pw.expect(thumb).to_be_focused()
     after = actions.evaluate("e => e.getBoundingClientRect().top + window.scrollY")

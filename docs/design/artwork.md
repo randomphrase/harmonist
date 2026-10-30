@@ -111,7 +111,8 @@ when it was chosen.
 
 The carousel shows the archive's thumbnails, fetched through Harmonist like
 every other image on the page. The original is fetched only when the user
-presses Use, since that's when the plan needs its bytes. Its size, type and
+presses Use, since that's when the plan needs its bytes, or looks at it full
+size, since that's asking to see it. Its size, type and
 weight are what a choice is weighed by, though, so each image is measured the
 first time the carousel shows it, off the original's first 64 KB as the archive
 check measures its front. That's one small request per image someone looks at,
@@ -119,6 +120,16 @@ never per image listed. An archive image id names one upload for good, so a
 measurement never needs repeating. A request names an
 image by the id the archive's listing gave it, never by URL, so nothing a page
 sends can point a fetch anywhere the archive didn't.
+
+**Full size is the picker, maximized** (#918). The choice is nearly always
+between two renderings of one cover, a small embedded copy against a large scan,
+and one image at a time left the comparison to memory. So the row's image and
+the archive's are side by side, drawn at one size so a spot on one lines up with
+the same spot on the other, and at 100% the smaller is scaled up to match, which
+is where its softness shows. It is the picker's own panel in the top layer
+rather than a viewer of its own: the controls are the page's, so nothing is kept
+in step between two copies, and putting it back leaves the picker where the user
+moved it. A separate viewer remains for images with nothing to compare against.
 
 **A choice that changes nothing says so.** Choosing an image a row already
 carries, byte for byte, is a no-op, and once the original is in hand the row

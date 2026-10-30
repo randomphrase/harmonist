@@ -17,6 +17,9 @@ versions follow [semantic versioning](https://semver.org).
 ### Changed
 
 - **Forget returns an album to the Inbox with one click**, without a confirmation dialog (#915).
+- **The artwork picker maximizes to show a row's image and an archive image
+  side by side**, zooming and panning together; the image viewer steps with ‹ ›
+  and a click on the image switches between Fit and 100% (#918).
 - **After Apply says an image over the limit "will be reduced to fit"**, since
   "reduced to fit" beside its size read as the size after reducing (#893).
 - **The album page reads each file once, and not at all on a repeat view of an

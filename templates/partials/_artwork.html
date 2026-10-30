@@ -1,4 +1,4 @@
-{% from 'partials/_artwork_images.html' import thumbnail, full_size, viewer, facts_line with context %}
+{% from 'partials/_artwork_images.html' import thumbnail, full_size, facts_line, arrow, zoom_button with context %}
 {% from 'macros.html' import artwork_chip %}
 {# What artwork this album carries, and what applying it would do (#155).
 
@@ -162,7 +162,8 @@
     other's picker. Per row: where the picker sits, and which row's Use is
     shown. Per row and image that would change nothing — the row already has
     it, or is already getting it (#659): a ✓ in place of Use, and Unchanged
-    in place of the row's empty slot. -#}
+    in place of the row's empty slot. Per row and per image, which of each the
+    maximized picker shows (#918). -#}
 {% set form = '#art-pick-' ~ album.id %}
 <style>
 {% for r in artwork.rows %}
@@ -170,12 +171,16 @@
 {{ row }} .art-pick__picker { --art-pick-row: {{ loop.index + 1 }}; }
 {{ row }} .art-pick__for[data-row="{{ loop.index }}"] { display: block; }
 {% set row_index = loop.index %}
+{{ row }} .art-max [data-row="{{ loop.index }}"] { display: block; }
 {% for c in picker if artwork.unchanged(r, c) %}
 {{ row }}:has(#art-cand-{{ album.id }}-{{ c.image_id }}:checked) .art-pick__for[data-row="{{ row_index }}"] .art-pick__use--go { display: none; }
 {{ row }}:has(#art-cand-{{ album.id }}-{{ c.image_id }}:checked) .art-pick__for[data-row="{{ row_index }}"] .art-pick__use--done { display: block; }
 {{ row }}:has(#art-cand-{{ album.id }}-{{ c.image_id }}:checked) #{{ r.anchor }} .art-row__slot { display: none; }
 {{ row }}:has(#art-cand-{{ album.id }}-{{ c.image_id }}:checked) #{{ r.anchor }} .art-row__unchanged { display: flex; }
 {% endfor %}
+{% endfor %}
+{% for c in picker %}
+{{ form }}:has(#art-cand-{{ album.id }}-{{ c.image_id }}:checked) .art-max [data-cand="{{ c.image_id }}"] { display: block; }
 {% endfor %}
 </style>
 {% endif %}
@@ -359,12 +364,19 @@
 {% endmacro %}
 {% if steppable %}
 <span class="art-pick__head">Available</span>
-<div class="art-pick__picker">
+{# Maximized (#918), the panel is a popover: the same element, so the same
+   controls — rows, images, Use, Front only — in a larger layout, with the
+   checked row's image and the shown one side by side. The picker is wherever
+   it was left when it is put back, because nothing was copied. A dialog only
+   while it is one: artwork-viewer.js says so as it opens. #}
+<div class="art-pick__picker"{% if picker %} id="art-pick-panel-{{ album.id }}" popover
+     data-zoom="fit"{% endif %}>
     {% if picker %}
     {# Outside the panel's edge, facing the rows: previous row, the arrow that
        sends this image to the checked row, next row. The arrow IS the Use
        button, so the direction it points is the thing it does — into the
-       checked row's After Apply.
+       checked row's After Apply. Maximized, it sits between the two images'
+       headings, pointing from the shown image into the row's.
 
        One arrow per row, and the generated rules above show the checked row's:
        its accessible name says which row it writes to. Use sends the image the
@@ -373,14 +385,13 @@
        already coming to it: a Use there would be a press that changes nothing
        (*Far & Off*, #659).
 
-       ↑ and ↓ are quiet on purpose: clicking a row does the same. They move
-       the check between radios, which is a script's job (artwork-viewer.js) —
-       no request, and no `onclick` (web-ui rule 2a). #}
+       ↑ and ↓ look like ‹ and ›, at either size: maximized, the rows are out
+       of sight and these are the way to them. They move the check between
+       radios, which is a script's job (artwork-viewer.js) — no request, and no
+       `onclick` (web-ui rule 2a). #}
     <div class="art-pick__ctl">
-        <button type="button" class="art-pick__step" data-art-step="-1" data-art-group="row"
-                aria-label="Previous row"><svg viewBox="0 0 16 16" width="12" height="12"
-            fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"
-            ><path d="M4 10l4-4 4 4"/></svg></button>
+        <button type="button" class="art-arrow art-pick__step" data-art-step="-1" data-art-group="row"
+                aria-label="Previous row">{{ arrow('up') }}</button>
         {% for r in artwork.rows %}
         <div class="art-pick__for" data-row="{{ loop.index }}">
             <button type="submit" name="pick" value="1" class="art-pick__use art-pick__use--go"
@@ -391,11 +402,49 @@
                   title="{{ r.label }} already has this image">✓</span>
         </div>
         {% endfor %}
-        <button type="button" class="art-pick__step" data-art-step="1" data-art-group="row"
-                aria-label="Next row"><svg viewBox="0 0 16 16" width="12" height="12"
-            fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"
-            ><path d="M4 6l4 4 4-4"/></svg></button>
+        <button type="button" class="art-arrow art-pick__step" data-art-step="1" data-art-group="row"
+                aria-label="Next row">{{ arrow('down') }}</button>
     </div>
+    {# Maximized only: the checked row — its name and facts above its image —
+       and the shown image, each in a pane that scrolls at 100%. One element
+       per row and per image, and the generated rules above show the checked
+       ones. The archive's images start as the carousel's thumbnail and become
+       the original once it arrives, which artwork-viewer.js fetches only when
+       an image is shown here. #}
+    <div class="art-max art-max__head art-max__head--now">
+        {% for r in artwork.rows %}
+        <div data-row="{{ loop.index }}">
+            <div class="art-row__facts">
+                <span class="art-row__who">{{ r.label }}</span>
+                {% if r.title %}<span class="art-row__title">{{ r.title }}</span>{% endif %}
+                {% if r.image %}{{ image_meta(r.image) }}{% elif r.absent %}<span class="art-row__meta-plain">not in the folder</span>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="art-max art-max__stage art-max__stage--now" role="region" aria-label="Current artwork" tabindex="0">
+        <div class="art-max__canvas">
+            {% for r in artwork.rows %}
+            {% if r.image %}
+            <img data-row="{{ loop.index }}" src="/artwork/image/{{ album.id }}/{{ r.image.digest }}" alt="{{ r.label }}"
+                 loading="lazy"{% if r.image.size %} width="{{ r.image.size.width }}" height="{{ r.image.size.height }}"{% endif %}>
+            {% else %}
+            <span data-row="{{ loop.index }}" class="art-max__none">none</span>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    <div class="art-max art-max__stage art-max__stage--cand" role="region" aria-label="Available artwork" tabindex="0">
+        <div class="art-max__canvas">
+            {% for c in picker %}
+            <img data-cand="{{ c.image_id }}" src="/artwork/candidate/{{ album.id }}/{{ c.image_id }}"
+                 data-original="/artwork/candidate/{{ album.id }}/{{ c.image_id }}/original"
+                 alt="{{ candidate_caption(c) }}" loading="lazy">
+            {% endfor %}
+        </div>
+    </div>
+    <div class="art-max art-max__status" role="status"></div>
+    <div class="art-max art-max__zoom">{{ zoom_button() }}</div>
     {# The carousel: one image at a time, ‹ and › stepping through them — and
        through the fronts only while that box is ticked, which it is unless
        there are none (Picard's default). Each image is a radio, as the rows
@@ -408,10 +457,10 @@
             <input type="radio" name="candidate" value="{{ c.image_id }}"
                    id="art-cand-{{ album.id }}-{{ c.image_id }}" class="art-row__radio"
                    {% if c.image_id == shown.id %}checked{% endif %}>
-            {# The image opens its full-size view, as a row's does: a button
-               inside the label, so pressing it does not also pick the slide. #}
+            {# The image maximizes the picker on itself (#918): full size is
+               where it is compared with the row's. #}
             <button type="button" class="art-row__art art-pick__image"
-                    popovertarget="art-cand-full-{{ album.id }}-{{ c.image_id }}"
+                    popovertarget="art-pick-panel-{{ album.id }}" popovertargetaction="show"
                     aria-label="View {{ candidate_caption(c) }} full size">
                 <img src="/artwork/candidate/{{ album.id }}/{{ c.image_id }}" alt="" loading="lazy">
             </button>
@@ -430,12 +479,27 @@
             {% endif %}
         </div>
         {% endfor %}
-        {% if picker|length > 1 or artwork.other_releases %}
-        <button type="button" class="art-pick__turn art-pick__turn--back" data-art-step="-1"
-                data-art-group="candidate" aria-label="Previous image">‹</button>
-        <button type="button" class="art-pick__turn art-pick__turn--on" data-art-step="1"
-                data-art-group="candidate" aria-label="Next image">›</button>
-        {% endif %}
+        {# ‹ and ›, beside the image rather than over it, with where the shown
+           image is among those Front only lets it show (artwork-viewer.js
+           counts them). Then the toggle that maximizes the picker and puts it
+           back. #}
+        <div class="art-pick__nav">
+            {% if picker|length > 1 or artwork.other_releases %}
+            <button type="button" class="art-arrow art-pick__turn art-pick__turn--back" data-art-step="-1"
+                    data-art-group="candidate" aria-label="Previous image">{{ arrow('left') }}</button>
+            <span class="art-pick__count"></span>
+            <button type="button" class="art-arrow art-pick__turn art-pick__turn--on" data-art-step="1"
+                    data-art-group="candidate" aria-label="Next image">{{ arrow('right') }}</button>
+            {% endif %}
+            <button type="button" class="art-pick__size" popovertarget="art-pick-panel-{{ album.id }}"
+                    aria-label="Maximize the artwork picker" title="Compare full size"><svg
+                class="art-pick__size--max" viewBox="0 0 16 16" width="14" height="14" fill="none"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9"/></svg><svg
+                class="art-pick__size--min" viewBox="0 0 16 16" width="14" height="14" fill="none"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                aria-hidden="true"><path d="M13.5 6.5h-4v-4M9.5 6.5L14 2M2.5 9.5h4v4M6.5 9.5L2 14"/></svg></button>
+        </div>
         {# Past the last image, the next release in the group (#659). The
            script presses these: `step` when › finds nothing further, so the
            response shows the new release's first image; `ahead` on arriving at
@@ -489,6 +553,7 @@
                 {% for c in picker %}{{ candidate_facts(c, measure=false) }}{% endfor %}
             </div>
         </div>
+        <div class="art-pick__nav"><span class="art-arrow"></span></div>
     </div>
     {% if picker|selectattr('front')|list and picker|rejectattr('front')|list %}
     <span class="art-pick__front-only">Front only</span>
@@ -542,16 +607,8 @@
 {% for image, who in artwork.distinct %}
 {{ full_size(image, album.id, who, gallery=artwork.distinct) }}
 {% endfor %}
-{# …and one per image the picker offers, a gallery of their own, each holding
-   its original back until it is opened (#659). Opening one fetches it, and so
-   puts it in hand: its facts and Unchanged are then the original's. #}
-{% set offered = [] %}
-{% for c in artwork.candidates %}{% set _ = offered.append(('art-cand-full-' ~ album.id ~ '-' ~ c.image_id, candidate_caption(c))) %}{% endfor %}
-{% for c in artwork.candidates %}
-{{ viewer('art-cand-full-' ~ album.id ~ '-' ~ c.image_id, 'art-cand-' ~ album.id,
-          '/artwork/candidate/' ~ album.id ~ '/' ~ c.image_id ~ '/original',
-          candidate_caption(c), c.meta, none, offered, lazy=true) }}
-{% endfor %}
+{# The picker's images are seen full size in the picker itself, maximized
+   (#918). #}
 
 {% if artwork.unreadable %}
 <p class="text-2xs text-muted italic">

@@ -1459,6 +1459,14 @@ dialog::backdrop {
   grid-column: 1;
   grid-row: calc(var(--art-pick-row, 2) + 1);
   position: relative;
+  /* A popover, for maximizing (#918) — and until then an ordinary box, not
+     the floating one the browser's popover defaults would make it. */
+  display: block;
+  inset: auto;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  color: inherit;
 }
 /* The panel's box — and its invisible double's, which has to be exactly as
    tall, and which only the wide layout needs (below). */
@@ -1512,26 +1520,73 @@ dialog::backdrop {
   display: none;
 }
 .art-pick__image img { display: block; width: 100%; height: 100%; object-fit: contain; }
-/* ‹ and ›, over the image's edges: the image is what they change. */
-.art-pick__turn {
-  position: absolute;
-  top: 2.25rem;
-  width: 1.6rem;
-  height: 2rem;
+/* Every control that steps through artwork — the picker's rows and images,
+   the viewer's images — is one of these, at either size (#918): plainly a
+   button, and the same button wherever it is. */
+.art-arrow {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.art-arrow:hover { border-color: var(--color-accent); background: var(--color-surface); }
+/* At either end, where it would go nowhere (artwork-viewer.js decides). */
+.art-arrow:disabled { visibility: hidden; }
+/* ‹, where the shown image is, ›, and the toggle that maximizes: under the
+   image, beside it rather than over it. */
+.art-pick__nav { display: flex; align-items: center; gap: .35rem; margin-top: .5rem; }
+.art-pick__count,
+.art-full__count {
+  min-width: 3.2rem;
+  font-size: .72rem;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+.art-pick__size {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-left: auto;
   padding: 0;
   border: 0;
   border-radius: 4px;
-  background: color-mix(in srgb, #fff 82%, transparent);
-  color: var(--color-ink);
-  font-size: 1.1rem;
-  line-height: 2rem;
+  background: none;
+  color: var(--color-muted);
   cursor: pointer;
 }
-.art-pick__turn:hover { background: #fff; }
-/* At either end, where it would go nowhere (artwork-viewer.js decides). */
-.art-pick__turn:disabled { visibility: hidden; }
-.art-pick__turn--back { left: .2rem; }
-.art-pick__turn--on { left: calc(6.5rem - 1.8rem); }
+.art-pick__size:hover { background: var(--color-surface); color: var(--color-ink); }
+.art-pick__size--min,
+.art-pick__picker:popover-open .art-pick__size--max { display: none; }
+.art-pick__picker:popover-open .art-pick__size--min { display: block; }
+/* The scale control, here and in the viewer: Fit and how far it shrinks the
+   image, or 100%. */
+.art-zoom {
+  flex: none;
+  height: 1.75rem;
+  padding: 0 .7rem;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-ink);
+  font-size: .72rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.art-zoom:hover:not(:disabled) { border-color: var(--color-accent); }
+.art-zoom:disabled { color: var(--color-muted); cursor: default; }
 .art-pick__front-only {
   display: flex;
   align-items: center;
@@ -1638,22 +1693,6 @@ dialog::backdrop {
   cursor: default;
 }
 .art-pick__use--done:hover { background: var(--color-line); }
-/* Quiet, because clicking a row does the same. */
-.art-pick__step {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.6rem;
-  height: 1.4rem;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  color: var(--color-muted);
-  opacity: .55;
-  cursor: pointer;
-}
-.art-pick__step:hover { opacity: 1; background: var(--color-surface); color: var(--color-ink); }
 
 @media (min-width: 64rem) {
   /* Beside, where three images and three sets of facts fit — with a gutter
@@ -1711,18 +1750,14 @@ dialog::backdrop {
   .art-pick__slide:has(input[name="candidate"]:checked),
   .art-pick__ghost .art-pick__slide { display: flex; flex-direction: column; gap: .5rem; }
   .art-pick__carousel .art-pick__image { width: 100%; height: auto; aspect-ratio: 1; }
-  /* Centred on the image, which is as tall as the panel is wide. */
-  .art-pick__turn { top: calc(50cqw - 1rem); }
-  .art-pick__turn--on { left: auto; right: .2rem; }
   .art-pick__ctl {
     position: absolute;
     top: .35rem;
     right: calc(100% + .6rem);
     flex-direction: column;
-    align-items: flex-end;
+    align-items: center;
     margin: 0;
   }
-  .art-pick__step { margin-right: .4rem; }
   /* The arrow IS the Use button, pointing into the checked row's After Apply:
      the direction it points is the thing it does. */
   .art-pick__use {
@@ -1743,6 +1778,123 @@ dialog::backdrop {
     font-weight: 700;
     color: var(--color-muted);
   }
+}
+
+/* The picker, maximized (#918): the same panel in the top layer, laid out as
+   two panes — the checked row's image on the left, the shown one on the
+   right — with their headings above them and Use between the headings,
+   pointing from the one into the other. The panel's own controls are placed
+   into this grid; `display: contents` lifts them out of the boxes that lay
+   them out on the page. */
+.art-max { display: none; }
+.art-max [data-row],
+.art-max [data-cand] { display: none; }
+.art-pick__picker:popover-open {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  width: min(80rem, 96vw);
+  height: 92dvh;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 6px 24px rgb(0 0 0 / .14);
+  overflow: hidden;
+}
+.art-pick__picker::backdrop { background: rgb(0 0 0 / .55); }
+.art-pick__picker:popover-open .art-max { display: block; }
+.art-pick__picker:popover-open .art-pick__carousel,
+.art-pick__picker:popover-open .art-pick__slide:has(input[name="candidate"]:checked) { display: contents; }
+.art-pick__picker:popover-open .art-pick__image { display: none; }
+/* Headings: the row's name and facts over the left pane, ‹ › and the shown
+   image's facts over the right — each kept clear of Use in the middle. */
+.art-max__head--now {
+  grid-area: 1 / 1 / 3 / 2;
+  padding: .6rem 3.5rem .6rem .85rem;
+  border-bottom: 1px solid var(--color-line);
+}
+.art-pick__picker:popover-open .art-pick__nav {
+  grid-area: 1 / 2;
+  margin: 0;
+  padding: .45rem .6rem 0 3.5rem;
+}
+.art-pick__picker:popover-open .art-pick__slide > .art-row__facts {
+  grid-area: 2 / 2;
+  padding: .3rem .85rem .6rem 3.5rem;
+  border-bottom: 1px solid var(--color-line);
+}
+.art-pick__picker:popover-open .art-pick__ctl {
+  position: static;
+  grid-area: 1 / 1 / 3 / 3;
+  z-index: 1;
+  align-self: center;
+  justify-self: center;
+  flex-direction: column;
+  align-items: center;
+  margin: 0;
+}
+.art-pick__picker:popover-open .art-pick__use {
+  padding: 0 .7rem 0 1.15rem;
+  border-radius: 0 4px 4px 0;
+  clip-path: polygon(.8rem 0, 100% 0, 100% 100%, .8rem 100%, 0 50%);
+}
+/* The panes: each scrolls at 100%, and the two scroll together. */
+.art-max__stage {
+  grid-row: 3;
+  min-height: 0;
+  overflow: auto;
+  background: var(--color-surface);
+}
+.art-max__stage--now { grid-column: 1; border-right: 1px solid var(--color-line); }
+.art-max__stage--cand { grid-column: 2; }
+.art-max__canvas { display: grid; place-items: center; width: max-content; min-width: 100%; min-height: 100%; }
+.art-max__canvas img { max-width: none; max-height: none; }
+.art-max__stage[data-zoom="fit"] img { cursor: zoom-in; }
+.art-max__stage[data-zoom="native"] img { cursor: zoom-out; }
+.art-max__none {
+  padding: 2rem 3rem;
+  border: 1px dashed var(--color-line);
+  border-radius: 4px;
+  font-size: .75rem;
+  color: var(--color-muted);
+}
+/* What the right pane is waiting on, at the foot of it. */
+.art-pick__picker:popover-open .art-max__status:not(:empty) {
+  display: flex;
+  grid-area: 3 / 2;
+  align-self: end;
+  justify-self: center;
+  align-items: center;
+  gap: .6rem;
+  margin-bottom: .85rem;
+  padding: .35rem .8rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / .7);
+  color: #fff;
+  font-size: .75rem;
+}
+.art-pick__picker:popover-open .art-max__status:empty { display: none; }
+.art-max__status button { text-decoration: underline; cursor: pointer; }
+/* The foot: the scale under the left pane, Don't suggest and Front only
+   under the right. */
+.art-max__zoom { grid-area: 4 / 1; padding: .5rem .85rem; border-top: 1px solid var(--color-line); }
+.art-pick__picker:popover-open .art-pick__slide > label,
+.art-pick__picker:popover-open .art-pick__front-only {
+  grid-area: 4 / 2;
+  align-self: center;
+  margin: 0;
+}
+.art-pick__picker:popover-open .art-pick__slide > label { justify-self: start; padding-left: .85rem; }
+.art-pick__picker:popover-open .art-pick__front-only { justify-self: end; padding-right: .85rem; }
+.art-pick__picker:popover-open::after {
+  content: "";
+  grid-area: 4 / 2;
+  border-top: 1px solid var(--color-line);
+  pointer-events: none;
 }
 
 /* What the row is now, and what a re-tag would make it (#413). The second half
@@ -1941,30 +2093,56 @@ button.art-row__art--absent:hover {
   box-shadow: 0 6px 24px rgb(0 0 0 / .14);
   overflow: hidden;
 }
-.art-full:popover-open { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; }
+.art-full:popover-open { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .art-full::backdrop { background: rgb(0 0 0 / .55); }
-.art-full__controls { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem; padding: .6rem .85rem; }
-.art-full__controls label { display: grid; gap: .2rem; font-size: .75rem; min-width: 0; }
-.art-full__choice { flex: 1 1 12rem; }
-.art-full__controls select, .art-full__controls button {
+/* One line over the image (#918): ‹ where it is ›, what it is, its facts,
+   the scale, and Close. */
+.art-full__bar {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
   min-width: 0;
-  max-width: 100%;
-  padding: .35rem .5rem;
-  border: 1px solid var(--color-line);
-  border-radius: 4px;
-  background: var(--color-surface);
-  color: var(--color-ink);
-  font-size: .75rem;
+  padding: .45rem .5rem .45rem .85rem;
+  border-bottom: 1px solid var(--color-line);
+  background: #fff;
 }
+.art-full__nav { display: flex; flex: none; align-items: center; gap: .3rem; }
+.art-full__who {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: .85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.art-full__meta {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.art-full__close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.art-full__close:hover { background: var(--color-surface); color: var(--color-ink); }
 .art-full__stage { overflow: auto; min-height: 0; background: var(--color-surface); }
 .art-full__canvas { display: grid; place-items: center; width: max-content; min-width: 100%; min-height: 100%; }
 .art-full img { display: block; max-width: none; max-height: none; }
-.art-full__meta {
-  margin: 0;
-  padding: .6rem .85rem;
-  border-top: 1px solid var(--color-line);
-  font-size: .75rem;
-  color: var(--color-muted);
-  overflow-wrap: anywhere;
-}
-.art-full__scale { padding: 0 .85rem .6rem; color: var(--color-muted); font-size: .75rem; }
+.art-full__stage[data-zoom="fit"] img { cursor: zoom-in; }
+.art-full__stage[data-zoom="native"] img { cursor: zoom-out; }

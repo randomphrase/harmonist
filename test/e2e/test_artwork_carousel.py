@@ -12,6 +12,7 @@ one image (`artwork_carousel_app`).
 from __future__ import annotations
 
 import os
+import re
 
 import pytest
 
@@ -20,6 +21,9 @@ pw = pytest.importorskip("playwright.sync_api")
 
 ALBUM_ID = "demo-rel-dingoes"
 SETTLED = "() => !document.querySelector('.htmx-request, .htmx-settling')"
+_MAXIMIZED = (
+    f"() => !!document.getElementById('art-pick-panel-{ALBUM_ID}')?.matches(':popover-open')"
+)
 
 
 def _shown(page) -> list[str]:
@@ -122,32 +126,120 @@ def test_an_image_is_measured_when_it_is_shown(browser_factory, reset_carousel_s
     page.context.close()
 
 
+def _maximize(page):
+    """Press the carousel's image, which maximizes the picker on it (#918)."""
+    image = page.locator("#album-artwork .art-pick__picker .art-pick__slide:visible button")
+    image.scroll_into_view_if_needed()
+    image.click()
+    page.wait_for_function(_MAXIMIZED)
+    return page.locator(f"#art-pick-panel-{ALBUM_ID}")
+
+
+def _pane(panel, side: str):
+    """What a maximized pane shows — an image, or a row's empty frame: one,
+    if the generated rules work."""
+    return panel.locator(f".art-max__stage--{side} .art-max__canvas > :visible")
+
+
 def test_an_offered_image_opens_full_size(browser_factory, reset_carousel_server: str) -> None:
-    """Pressing the carousel's image opens its full-size view, as a row's
-    does, fetching that one original and no other (#659)."""
+    """Pressing the carousel's image maximizes the picker on it, beside the
+    checked row's image — fetching that one original and no other (#659,
+    #918)."""
     _browser, page = _open(browser_factory, reset_carousel_server)
     originals: list[str] = []
     page.on(
         "request",
         lambda r: originals.append(r.url.split("/")[-2]) if r.url.endswith("/original") else None,
     )
-    image = page.locator("#album-artwork .art-pick__picker .art-pick__slide:visible button")
-    image.scroll_into_view_if_needed()
     assert originals == []  # nothing fetched to show nothing
+    # Narrower than either image, so both are scaled to fit — and drawing
+    # them at one size is something the script has to do.
+    page.set_viewport_size({"width": 700, "height": 600})
 
-    image.click()
+    panel = _maximize(page)
 
-    viewer = page.locator(f"#art-cand-full-{ALBUM_ID}-101")
-    full = viewer.locator("img")
-    pw.expect(viewer).to_be_visible()
-    # The viewer is given its source by the popover's toggle event, which
-    # arrives after the popover shows — and until then the image has no
-    # src, which already counts as `complete`.
+    full = _pane(panel, "cand")
+    pw.expect(full).to_have_count(1)
     pw.expect(full).to_have_attribute("src", f"/artwork/candidate/{ALBUM_ID}/101/original")
     pw.expect(full).to_have_js_property("complete", True)
     assert full.evaluate("img => img.naturalWidth") > 0
-    pw.expect(viewer.get_by_role("button", name="Close artwork viewer")).to_be_focused()
+    row = _pane(panel, "now")
+    pw.expect(row).to_have_count(1)
+    pw.expect(row).to_have_attribute("data-row", "1")
+    # Drawn at one size, so a spot on one lines up with the same spot on the other.
+    page.wait_for_function(
+        """() => {
+            const [a, b] = Array.from(document.querySelectorAll('.art-max__stage img'))
+                .filter(i => i.checkVisibility()).map(i => i.getBoundingClientRect().width);
+            return a > 0 && Math.abs(a - b) < 1;
+        }"""
+    )
+    # The image pressed is hidden by the larger layout; the keyboard is on
+    # the toggle instead, so the arrow keys reach the picker.
+    pw.expect(panel.get_by_role("button", name="Put the artwork picker back")).to_be_focused()
     assert originals == ["101"]
+    page.context.close()
+
+
+def test_the_maximized_picker_steps_and_use_puts_it_back(
+    browser_factory, reset_carousel_server: str
+) -> None:
+    """Maximized, ↑ ↓ step the rows and ← → the images, as the arrows do; a
+    re-render of the section — the look ahead at the last image — leaves it
+    maximized; and Use puts it back before its request goes (#918)."""
+    _browser, page = _open(browser_factory, reset_carousel_server)
+    panel = _maximize(page)
+    section = page.locator("#album-artwork")
+
+    page.keyboard.press("ArrowDown")
+    pw.expect(section.locator("input[name='row']").nth(1)).to_be_checked()
+    pw.expect(_pane(panel, "now")).to_have_attribute("data-row", "2")
+
+    with page.expect_response(lambda r: "more=ahead" in r.url):
+        page.keyboard.press("ArrowRight")  # 101 → 103, the last front: look ahead
+    page.wait_for_function(SETTLED)
+    assert page.evaluate(_MAXIMIZED)  # the look ahead's re-render kept it so
+    assert _shown(page) == ["103"]
+    pw.expect(_pane(panel, "cand")).to_have_attribute("data-cand", "103")
+    # …of the album's two fronts and the other release's, now listed.
+    pw.expect(panel.locator(".art-pick__count")).to_have_text("2 of 3")
+
+    use = panel.locator("button.art-pick__use--go:visible")
+    with page.expect_response(lambda r: "pick=1" in r.url) as used:
+        use.click()
+        assert not page.evaluate(_MAXIMIZED)  # put back as it is pressed
+    assert "candidate=103" in used.value.url
+    page.wait_for_function(SETTLED)
+    assert not page.evaluate(_MAXIMIZED)
+    page.context.close()
+
+
+def test_the_maximized_panes_zoom_and_pan_together(
+    browser_factory, reset_carousel_server: str
+) -> None:
+    """Clicking an image takes both panes to 100%, and panning one pans the
+    other (#918)."""
+    _browser, page = _open(browser_factory, reset_carousel_server)
+    page.set_viewport_size({"width": 700, "height": 500})
+    panel = _maximize(page)
+    zoom = panel.locator("[data-art-zoom]")
+    pw.expect(zoom).to_have_text(re.compile(r"^Fit · \d+%$"))
+
+    _pane(panel, "cand").click()
+
+    pw.expect(zoom).to_have_attribute("aria-pressed", "true")
+    now, offered = panel.locator(".art-max__stage--now"), panel.locator(".art-max__stage--cand")
+    assert now.evaluate("e => e.scrollWidth > e.clientWidth")
+    offered.evaluate("e => { e.scrollLeft = 40; e.scrollTop = 30; }")
+    page.wait_for_function(
+        "() => { const e = document.querySelector('.art-max__stage--now');"
+        " return e.scrollLeft === 40 && e.scrollTop === 30; }"
+    )
+    now.evaluate("e => { e.scrollLeft = 10; e.scrollTop = 5; }")
+    page.wait_for_function(
+        "() => { const e = document.querySelector('.art-max__stage--cand');"
+        " return e.scrollLeft === 10 && e.scrollTop === 5; }"
+    )
     page.context.close()
 
 

@@ -150,7 +150,7 @@ Album**. Let Artwork settle. Start with the **Now**, **After Apply** and
 
 | Beat | On screen | Suggested narration or caption |
 | --- | --- | --- |
-| 0–20 s | Show the 320×320 current images and the 960×960 archive front. Open the candidate full size, then close the viewer. | “Compare the cover in my files with the Cover Art Archive.” |
+| 0–20 s | Show the 320×320 current images and the 960×960 archive front. Open the candidate full size, beside the row's image, then put the picker back. | “Compare the cover in my files with the Cover Art Archive.” |
 | 20–40 s | Point to the proposed folder-cover upgrade. Select **All 3 tracks**, then press **Use** for that row. Hold on both rows' **After Apply** images. | “The folder cover has a larger image available. Replacing the embedded covers is my choice.” |
 | 40–60 s | Press **Apply artwork** in Artwork. Wait for both current rows to show 960×960. | “Apply exactly the artwork I've reviewed.” |
 | 60–90 s | Scroll to History and choose that artwork change's **Undo**; accept the confirmation. Show both rows back at 320×320. | “Artwork changes can be undone independently of tags.” |

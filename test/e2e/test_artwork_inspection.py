@@ -1,6 +1,7 @@
 """Image geometry, scale and selection need a browser, not rendered HTML."""
 
 import os
+import re
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -27,9 +28,29 @@ def _open(page, base, review):
     return host
 
 
+def _arrows(viewer):
+    """‹ and ›, by position: a role locator skips the one hidden at an end."""
+    return (
+        viewer.locator(".art-full__nav > .art-arrow:first-child"),
+        viewer.locator(".art-full__nav > .art-arrow:last-child"),
+    )
+
+
+def _switch(viewer):
+    """Step to the gallery's other image — on, or back from the last — and
+    return its viewer's id."""
+    back, on = _arrows(viewer)
+    arrow = back if on.is_disabled() else on
+    target = arrow.get_attribute("data-art-view")
+    arrow.click()
+    return target
+
+
 def _assert_fitted(viewer):
     image = viewer.locator("img")
     image.evaluate("e => e.decode()")
+    # Drawn by the popover's toggle event, which arrives after it shows.
+    pw.expect(image).to_have_attribute("style", re.compile(r"width"))
     geometry = image.evaluate("""e => {
         const stage = e.closest('.art-full__stage');
         return {
@@ -73,10 +94,9 @@ def test_background_refresh_preserves_artwork_inspection(
     viewer = page.locator(".art-full:popover-open")
     # Switch away from the opener's image: Escape must still return to the
     # original thumbnail after the refresh replaces both thumbnails.
-    selected = viewer.locator(".art-full__image-choice option").last.get_attribute("value")
-    viewer.get_by_role("combobox", name="Artwork image").select_option(selected)
+    selected = _switch(viewer)
     pw.expect(viewer).to_have_attribute("id", selected)
-    viewer.get_by_role("combobox", name="Viewing scale").select_option("native")
+    viewer.locator("[data-art-zoom]").click()
     stage = viewer.get_by_role("region", name="Artwork detail")
     stage.evaluate("e => { e.scrollLeft = 200; e.scrollTop = 150; }")
     stage.focus()
@@ -97,7 +117,7 @@ def test_background_refresh_preserves_artwork_inspection(
         pw.expect(viewer).to_have_count(0)
     else:
         pw.expect(viewer).to_have_attribute("id", selected)
-        pw.expect(viewer.get_by_role("combobox", name="Viewing scale")).to_have_value("native")
+        pw.expect(viewer.locator("[data-art-zoom]")).to_have_attribute("aria-pressed", "true")
         pw.expect(stage).to_be_focused()
         assert stage.evaluate("e => [e.scrollLeft, e.scrollTop]") == [200, 150]
         page.keyboard.press("Escape")
@@ -119,17 +139,33 @@ def test_open_and_switch_fit_the_selected_image_without_focusing_a_menu(
     target = thumb.get_attribute("popovertarget")
     thumb.click()
     viewer = page.locator(".art-full:popover-open")
-    options = viewer.locator(".art-full__image-choice option").evaluate_all(
-        "es => es.map(e => e.value)"
-    )
-    for index, image_id in enumerate([target, *options[1:], target]):
-        if index:
-            viewer.get_by_role("combobox", name="Artwork image").select_option(image_id)
-        pw.expect(viewer).to_have_attribute("id", image_id)
-        if check == "fit":
-            _assert_fitted(viewer)
-        else:
-            pw.expect(viewer.get_by_role("button", name="Close artwork viewer")).to_be_focused()
+    pw.expect(viewer).to_have_attribute("id", target)
+    if check == "fit":
+        _assert_fitted(viewer)
+    else:
+        pw.expect(viewer.get_by_role("button", name="Close artwork viewer")).to_be_focused()
+    # On to the last image and back to the first: the 'focus' run by the
+    # keyboard's ← and →, which leave it on the arrow they stand for while
+    # it goes somewhere, and on Close where it stops.
+    seen = [target]
+    for which, key in enumerate(["ArrowRight", "ArrowLeft"]):
+        while not _arrows(viewer)[1 - which].is_disabled():
+            arrow = _arrows(viewer)[1 - which]
+            image_id = arrow.get_attribute("data-art-view")
+            if check == "fit":
+                arrow.click()
+            else:
+                page.keyboard.press(key)
+            pw.expect(viewer).to_have_attribute("id", image_id)
+            seen.append(image_id)
+            if check == "fit":
+                _assert_fitted(viewer)
+            elif _arrows(viewer)[1 - which].is_disabled():
+                pw.expect(viewer.get_by_role("button", name="Close artwork viewer")).to_be_focused()
+            else:
+                pw.expect(_arrows(viewer)[1 - which]).to_be_focused()
+    assert len(set(seen)) >= 2, seen
+    pw.expect(viewer.locator(".art-full__count")).to_have_text(f"1 of {len(set(seen))}")
     page.keyboard.press("Escape")
     pw.expect(thumb).to_be_focused()
     page.context.close()
@@ -178,25 +214,27 @@ def test_native_pixels_and_switching_preserve_scale_and_position(
     thumb.click()
     viewer = page.locator(f'[id="{target}"]')
     pw.expect(viewer).to_be_visible()
-    mode = viewer.get_by_role("combobox", name="Viewing scale")
-    mode.select_option("native")
+    zoom = viewer.locator("[data-art-zoom]")
+    pw.expect(zoom).to_have_text(re.compile(r"^Fit · \d+%$"))
+    zoom.click()
     image = viewer.locator("img")
     pw.expect(image).to_have_css("width", "1600px")
     pw.expect(image).to_have_css("height", "1000px")
     pw.expect(viewer).to_contain_text("1600×1000")
-    pw.expect(viewer.locator("output")).to_have_text("100% · 1 image pixel per CSS pixel")
+    pw.expect(zoom).to_have_text("100%")
     stage = viewer.get_by_role("region", name="Artwork detail")
     stage.evaluate("e => { e.scrollLeft = 200; e.scrollTop = 150; }")
     assert stage.evaluate("e => [e.scrollLeft, e.scrollTop]") == [200, 150]
-    select = viewer.get_by_role("combobox", name="Artwork image")
-    options = select.locator("option").evaluate_all("els => els.map(e => e.value)")
-    assert len(options) == len(set(options)) >= 2
-    next_id = options[-1]
+    # On to the gallery's last image: in the review, the selected release's.
+    shown = page.locator(".art-full:popover-open")
+    next_id = target
+    while not _arrows(shown)[1].is_disabled():
+        next_id = _switch(shown)
+        pw.expect(shown).to_have_attribute("id", next_id)
     assert next_id != target
-    select.select_option(next_id)
     switched = page.locator(f'[id="{next_id}"]')
     pw.expect(switched).to_be_visible()
-    pw.expect(switched.get_by_role("combobox", name="Viewing scale")).to_have_value("native")
+    pw.expect(switched.locator("[data-art-zoom]")).to_have_attribute("aria-pressed", "true")
     source = host.locator(f'button[popovertarget="{next_id}"] img').first.get_attribute("src")
     pw.expect(switched.locator("img")).to_have_attribute("src", source)
     if review:
@@ -210,9 +248,24 @@ def test_native_pixels_and_switching_preserve_scale_and_position(
     assert switched.get_by_role("region", name="Artwork detail").evaluate(
         "e => [e.scrollLeft, e.scrollTop]"
     ) == [200, 150]
-    switched.get_by_role("combobox", name="Viewing scale").select_option("fit")
+    switched.locator("[data-art-zoom]").click()
     _assert_fitted(switched)
-    switched.get_by_role("combobox", name="Artwork image").select_option(target)
+    # Clicking the picture does the same, at 100% centring the spot clicked.
+    picture = switched.locator("img")
+    box = picture.bounding_box()
+    picture.click(position={"x": box["width"] * 0.6, "y": box["height"] * 0.5})
+    pw.expect(switched.locator("[data-art-zoom]")).to_have_attribute("aria-pressed", "true")
+    centred = switched.get_by_role("region", name="Artwork detail").evaluate(
+        """e => {
+            const image = e.querySelector('img').getBoundingClientRect();
+            return [e.getBoundingClientRect().left + e.clientWidth / 2 - image.left, image.width];
+        }"""
+    )
+    assert centred[0] == pytest.approx(centred[1] * 0.6, abs=2)
+    picture.click()
+    _assert_fitted(switched)
+    while shown.get_attribute("id") != target:
+        _arrows(shown)[0].click()
     pw.expect(viewer).to_be_visible()
     _assert_fitted(viewer)
     page.keyboard.press("Escape")

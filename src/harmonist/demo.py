@@ -1174,7 +1174,7 @@ def fetch_listing(kind: str, mbid: str, *, client: Any = None) -> list[cover_art
     ]
 
 
-def fetch_bytes(url: str, *, client: Any = None) -> tuple[bytes, str]:
+def _asset_bytes(url: str) -> tuple[bytes, str]:
     """An image from the demo's own assets, by the name its listing URL ends
     with — never the real archive."""
     path = ASSETS_DIR / url.rsplit("/", 1)[-1]
@@ -1183,10 +1183,17 @@ def fetch_bytes(url: str, *, client: Any = None) -> tuple[bytes, str]:
     return path.read_bytes(), "image/png" if path.suffix == ".png" else "image/jpeg"
 
 
+def fetch_bytes(url: str, *, client: Any = None) -> tuple[bytes, str]:
+    """A whole demo asset — slowly, as a whole original is from the real
+    archive, so the picker's wait for one can be seen (#918)."""
+    time.sleep(2 * _delay())
+    return _asset_bytes(url)
+
+
 def fetch_head(url: str, *, client: Any = None) -> tuple[bytes, int | None, str | None]:
-    """The start of a demo asset, its length and type, as `fetch_bytes` names
-    it — what the picker measures an image from (#659)."""
-    data, mime = fetch_bytes(url)
+    """The start of a demo asset, its length and type — what the picker
+    measures an image from (#659). Quick, as the first bytes are."""
+    data, mime = _asset_bytes(url)
     return data[: cover_art.MEASURE_BYTES], len(data), mime
 
 
