@@ -154,8 +154,9 @@ in `.github/workflows/ci.yml` together; the job checks that their versions match
 Python dependency caches are separate for each test job and interpreter, so the
 small CSS install cannot populate the cache used by the test suites.
 
-Inside the devcontainer, install the e2e extras and their matching browser builds
-after a rebuild or Playwright upgrade:
+The devcontainer's setup installs the e2e extras and their matching browser
+builds, so the suite runs there once the container is created. After a
+Playwright upgrade, install them again:
 
 ```sh
 uv pip install -e ".[dev,e2e]"
