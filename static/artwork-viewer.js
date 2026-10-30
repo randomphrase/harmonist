@@ -247,21 +247,35 @@
         panel.dataset.zoom = panel.dataset.zoom === 'native' ? 'fit' : 'native';
         renderPanel(panel);
         if (panel.dataset.zoom !== 'native') {
-            panel.querySelectorAll('.art-max__stage').forEach(pane => pane.scrollTo(0, 0));
-        } else if (image) {
-            centre(stage, image, point);
-        } else {
-            const shown = shownPair(panel)[1];
-            if (shown) centre(stage, shown, point);
+            panTo(panel, [0, 0]);
+            return;
         }
+        const shown = image || shownPair(panel)[1];
+        if (!shown) return;
+        centre(stage, shown, point);
+        panTo(panel, [stage.scrollLeft, stage.scrollTop]);
     }
-    // Panned together: one pane's scroll is the other's. The other's own
-    // scroll event then finds the two already level and goes no further.
+    // Panned together: the pane the user has hold of leads, and the other
+    // follows it. Only that one: following queues the follower's own scroll
+    // event, a frame's scroll events run in the order they were queued, and
+    // the lead's next step, taken before it runs, would be copied back over by
+    // it — the lead jumping back, a pan stuttering. Moves the script makes
+    // itself (a zoom, a re-render) set both panes at once instead (`panTo`).
+    const leads = new WeakMap();
+    for (const type of ['pointerdown', 'wheel', 'touchstart', 'keydown']) {
+        document.addEventListener(type, event => {
+            const pane = event.target.closest?.('.art-max__stage');
+            if (pane) leads.set(pane.closest('.art-pick__picker'), pane);
+        }, {capture: true, passive: true});
+    }
+    const panesOf = panel => Array.from(panel.querySelectorAll('.art-max__stage'));
+    const panTo = (panel, [left, top]) => panesOf(panel).forEach(pane => pane.scrollTo(left, top));
     document.addEventListener('scroll', event => {
         const pane = event.target;
         if (!(pane instanceof Element) || !pane.matches('.art-max__stage')) return;
-        const other = Array.from(pane.closest('.art-pick__picker').querySelectorAll('.art-max__stage'))
-            .find(stage => stage !== pane);
+        const panel = pane.closest('.art-pick__picker');
+        if (leads.get(panel) !== pane) return;
+        const other = panesOf(panel).find(stage => stage !== pane);
         if (other.scrollLeft !== pane.scrollLeft) other.scrollLeft = pane.scrollLeft;
         if (other.scrollTop !== pane.scrollTop) other.scrollTop = pane.scrollTop;
     }, true);
@@ -429,7 +443,7 @@
         panel.dataset.zoom = was.zoom;
         panel.showPopover();
         renderPanel(panel);
-        panel.querySelector('.art-max__stage--cand').scrollTo(...was.position);
+        panTo(panel, was.position);
         const focus = was.focus && panel.querySelector(was.focus);
         (focus && !focus.disabled ? focus : panel.querySelector('.art-pick__size')).focus({preventScroll: true});
     });

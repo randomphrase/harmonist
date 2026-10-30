@@ -137,6 +137,17 @@ def _maximize(page):
     return page.locator(f"#art-pick-panel-{ALBUM_ID}")
 
 
+def _zoom_in(panel) -> None:
+    """Click the archive's image for 100%: once its original is here, which is
+    when the scale is offered — a click on the stand-in thumbnail does
+    nothing, on purpose."""
+    zoom = panel.locator("[data-art-zoom]")
+    pw.expect(zoom).to_have_text(re.compile(r"^Fit · \d+%$"))  # drawn, so its state is real
+    pw.expect(zoom).to_be_enabled()
+    _pane(panel, "cand").click()
+    pw.expect(zoom).to_have_attribute("aria-pressed", "true")
+
+
 def _pane(panel, side: str):
     """What a maximized pane shows — an image, or a row's empty frame: one,
     if the generated rules work."""
@@ -238,24 +249,58 @@ def test_the_maximized_panes_zoom_and_pan_together(
     _browser, page = _open(browser_factory, reset_carousel_server)
     page.set_viewport_size({"width": 700, "height": 500})
     panel = _maximize(page)
-    zoom = panel.locator("[data-art-zoom]")
-    pw.expect(zoom).to_have_text(re.compile(r"^Fit · \d+%$"))
+    pw.expect(panel.locator("[data-art-zoom]")).to_have_text(re.compile(r"^Fit · \d+%$"))
 
-    _pane(panel, "cand").click()
+    _zoom_in(panel)
 
-    pw.expect(zoom).to_have_attribute("aria-pressed", "true")
-    now, offered = panel.locator(".art-max__stage--now"), panel.locator(".art-max__stage--cand")
-    assert now.evaluate("e => e.scrollWidth > e.clientWidth")
-    offered.evaluate("e => { e.scrollLeft = 40; e.scrollTop = 30; }")
-    page.wait_for_function(
-        "() => { const e = document.querySelector('.art-max__stage--now');"
-        " return e.scrollLeft === 40 && e.scrollTop === 30; }"
+    assert panel.locator(".art-max__stage--now").evaluate("e => e.scrollWidth > e.clientWidth")
+    # The wheel, as a user pans: the pane under it leads, the other follows.
+    for lead, follower in (("cand", "now"), ("now", "cand")):
+        pane = panel.locator(f".art-max__stage--{lead}")
+        box = pane.bounding_box()
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        before = pane.evaluate("e => [e.scrollLeft, e.scrollTop]")
+        page.mouse.wheel(30, 20)
+        page.wait_for_function(
+            """([lead, follower, before]) => {
+                const a = document.querySelector(lead), b = document.querySelector(follower);
+                return (a.scrollLeft !== before[0] || a.scrollTop !== before[1])
+                    && a.scrollLeft === b.scrollLeft && a.scrollTop === b.scrollTop;
+            }""",
+            arg=[f".art-max__stage--{lead}", f".art-max__stage--{follower}", before],
+        )
+    page.context.close()
+
+
+def test_a_pan_step_is_not_undone_by_the_other_pane_following(
+    browser_factory, reset_carousel_server: str
+) -> None:
+    """Following the lead queues the follower's own scroll event, and a frame's
+    scroll events run in the order they were queued — so the lead's next step,
+    taken before that event runs, was copied back over by it: the lead jumped
+    back to where it had been, and a pan stuttered (#918)."""
+    _browser, page = _open(browser_factory, reset_carousel_server)
+    page.set_viewport_size({"width": 700, "height": 500})
+    panel = _maximize(page)
+    _zoom_in(panel)
+    box = panel.locator(".art-max__stage--cand").bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.wheel(0, 1)  # the user takes hold of the right pane
+
+    settled = page.evaluate(
+        """async () => {
+            const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r)));
+            const [follower, lead] = document.querySelectorAll('.art-max__stage');
+            for (let i = 0; i < 3; i++) await frame();
+            // Just after the follower has followed, and before its own scroll
+            // event has run: the user's next step.
+            lead.addEventListener('scroll', () => { lead.scrollLeft = 40; }, {once: true});
+            lead.scrollLeft = 20;
+            for (let i = 0; i < 4; i++) await frame();
+            return [lead.scrollLeft, follower.scrollLeft];
+        }"""
     )
-    now.evaluate("e => { e.scrollLeft = 10; e.scrollTop = 5; }")
-    page.wait_for_function(
-        "() => { const e = document.querySelector('.art-max__stage--cand');"
-        " return e.scrollLeft === 10 && e.scrollTop === 5; }"
-    )
+    assert settled == [40, 40]
     page.context.close()
 
 
