@@ -1,13 +1,24 @@
 {% from 'partials/_caa_checked.html' import caa_checked with context %}
-<header class="flex items-center justify-between flex-wrap gap-3">
+{% from 'partials/_artwork_images.html' import size_icon %}
+{# Embiggen in the middle (#918): the picker's images full size, beside the
+   row's. Only once there is a picker to embiggen — never on the placeholder
+   the page draws before the section arrives, nor while the archive is still
+   being asked. #}
+<header class="flex items-center justify-between flex-wrap gap-3 sm:grid sm:grid-cols-[1fr_auto_1fr]">
     <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
         Artwork
         {% if artwork and artwork.count %}
         <span class="text-muted font-normal normal-case tracking-normal ml-1">· {{ artwork.count }}</span>
         {% endif %}
     </h2>
+    {% if artwork and artwork.candidates %}
+    <button type="button" class="art-embiggen" popovertarget="art-pick-panel-{{ album.id }}"
+            popovertargetaction="show">Embiggen {{ size_icon('out') }}</button>
+    {% else %}
+    <span></span>
+    {% endif %}
     {% if album.sidecar and album.sidecar.mb_release_id %}
-    <dl class="caa-status grid grid-cols-[auto_auto_auto] items-center gap-x-2 text-xs">
+    <dl class="caa-status grid grid-cols-[auto_auto_auto] items-center gap-x-2 text-xs sm:justify-self-end">
         {{ caa_checked(caa_checked_at, '/album/' ~ album.id ~ '/artwork?reread=1', '#album-artwork') }}
     </dl>
     {% endif %}

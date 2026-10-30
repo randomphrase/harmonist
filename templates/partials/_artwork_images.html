@@ -53,6 +53,14 @@
      ><path d="{{ {'up': 'M4 10l4-4 4 4', 'down': 'M4 6l4 4 4-4', 'left': 'M10 4l-4 4 4 4', 'right': 'M6 4l4 4-4 4'}[direction] }}"/></svg>
 {%- endmacro %}
 
+{# The diagonal arrows: out to embiggen the artwork picker, in to put it back
+   (#918). #}
+{% macro size_icon(direction) -%}
+<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     ><path d="{{ 'M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9' if direction == 'out' else 'M13.5 6.5h-4v-4M9.5 6.5L14 2M2.5 9.5h4v4M6.5 9.5L2 14' }}"/></svg>
+{%- endmacro %}
+
 {# The scale control: Fit, or the image's own pixels. Its words are the
    script's, since they say what the window makes of the image. Clicking the
    image does the same. #}

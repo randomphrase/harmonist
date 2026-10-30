@@ -116,7 +116,9 @@ def test_an_image_is_measured_when_it_is_shown(browser_factory, reset_carousel_s
     page.wait_for_function(SETTLED)
     assert measured == []  # below the fold: nobody has seen it yet
     slide = page.locator("#album-artwork .art-pick__picker .art-pick__slide:visible")
-    slide.scroll_into_view_if_needed()
+    # The slide's image: on a wide page the slide lends its parts to the
+    # carousel's layout and has no box of its own to scroll to (#918).
+    slide.locator(".art-pick__image").scroll_into_view_if_needed()
     pw.expect(slide.locator(".art-row__meta")).to_contain_text("×")
     assert measured == ["101"]
 
@@ -202,7 +204,21 @@ def test_the_maximized_picker_steps_and_use_puts_it_back(
     assert _shown(page) == ["103"]
     pw.expect(_pane(panel, "cand")).to_have_attribute("data-cand", "103")
     # …of the album's two fronts and the other release's, now listed.
-    pw.expect(panel.locator(".art-pick__count")).to_have_text("2 of 3")
+    pw.expect(panel.locator(".art-pick__nav .art-pick__count")).to_have_text("2 of 3")
+    pw.expect(panel.locator(".art-pick__row-count")).to_have_text(re.compile(r"^2 of \d+$"))
+
+    # Put back, the picker on the page is where it was moved to embiggened:
+    # the same row, the same image — it is the same picker.
+    panel.get_by_role("button", name="Put the artwork picker back").click()
+    assert not page.evaluate(_MAXIMIZED)
+    # Once the popover's own toggle event has run, which is when anything
+    # done on putting it back would be done.
+    pw.expect(panel).not_to_have_attribute("role", "dialog")
+    pw.expect(section.locator("input[name='row']").nth(1)).to_be_checked()
+    assert _shown(page) == ["103"]
+    page.get_by_role("button", name="Embiggen").click()
+    page.wait_for_function(_MAXIMIZED)
+    pw.expect(_pane(panel, "cand")).to_have_attribute("data-cand", "103")
 
     use = panel.locator("button.art-pick__use--go:visible")
     with page.expect_response(lambda r: "pick=1" in r.url) as used:

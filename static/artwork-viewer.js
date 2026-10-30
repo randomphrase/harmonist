@@ -332,9 +332,7 @@
         if (!panel.matches('.art-pick__picker')) return;
         const open = event.newState === 'open';
         const size = panel.querySelector('.art-pick__size');
-        size.setAttribute('aria-label', open ? 'Put the artwork picker back' : 'Maximize the artwork picker');
-        size.title = open ? 'Back to the page' : 'Compare full size';
-        // A dialog while maximized; on the page, part of the section.
+        // A dialog while embiggened; on the page, part of the section.
         if (open) {
             panel.setAttribute('role', 'dialog');
             panel.setAttribute('aria-label', 'Artwork picker');
@@ -354,8 +352,12 @@
         if (!panel?.matches(':popover-open')) return;
         if (event.target.closest('.art-pick__use--go')) {
             // Use puts the picker back, to the row's After Apply: where what
-            // is about to be written is shown, and taken back with its ×.
-            panel.hidePopover();
+            // is about to be written is shown, and taken back with its ×. Not
+            // yet, though: putting it back hands the keyboard to whatever
+            // embiggened it, and htmx forgets which button submitted a form
+            // the moment that button loses focus — so Use would send no
+            // `pick`. Once htmx has the form's values (below).
+            panel.dataset.putBack = '';
         } else if (event.target.closest('[data-art-zoom]') || event.target.matches('.art-max__stage img')) {
             zoomPanel(panel, event);
         } else if (event.target.closest('[data-art-retry]')) {
@@ -363,6 +365,12 @@
             shown.dataset.retry = '1';
             renderPanel(panel);
         }
+    });
+    document.addEventListener('htmx:configRequest', event => {
+        const panel = event.detail.elt.querySelector?.('.art-pick__picker:popover-open[data-put-back]');
+        if (!panel) return;
+        delete panel.dataset.putBack;
+        panel.hidePopover();
     });
     // The arrow keys step as the arrows do: ↑ ↓ the rows, ← → the images —
     // except in a pane at 100% with the keyboard in it, where they scroll.
@@ -551,6 +559,8 @@
         form.querySelectorAll('.art-pick__step').forEach(step => {
             step.disabled = Number(step.dataset.artStep) < 0 ? row <= 0 : row === rows.length - 1;
         });
+        const rowCount = form.querySelector('.art-pick__row-count');
+        if (rowCount) rowCount.textContent = `${row + 1} of ${rows.length}`;
         const back = form.querySelector('.art-pick__turn--back');
         const on = form.querySelector('.art-pick__turn--on');
         if (!back || !on) return;
@@ -558,7 +568,7 @@
         const at = radios.findIndex(radio => radio.checked);
         back.disabled = at <= 0;
         on.disabled = at === radios.length - 1 && !form.querySelector('.art-pick__more[data-more="step"]');
-        form.querySelector('.art-pick__count').textContent = `${at + 1} of ${radios.length}`;
+        form.querySelector('.art-pick__nav .art-pick__count').textContent = `${at + 1} of ${radios.length}`;
     };
     document.addEventListener('htmx:load', event => {
         const root = event.detail.elt;

@@ -1,4 +1,4 @@
-{% from 'partials/_artwork_images.html' import thumbnail, full_size, facts_line, arrow, zoom_button with context %}
+{% from 'partials/_artwork_images.html' import thumbnail, full_size, facts_line, arrow, size_icon, zoom_button with context %}
 {% from 'macros.html' import artwork_chip %}
 {# What artwork this album carries, and what applying it would do (#155).
 
@@ -375,8 +375,8 @@
     {# Outside the panel's edge, facing the rows: previous row, the arrow that
        sends this image to the checked row, next row. The arrow IS the Use
        button, so the direction it points is the thing it does — into the
-       checked row's After Apply. Maximized, it sits between the two images'
-       headings, pointing from the shown image into the row's.
+       checked row's After Apply. Embiggened, it stands between the two
+       images, pointing from the shown one into the row's.
 
        One arrow per row, and the generated rules above show the checked row's:
        its accessible name says which row it writes to. Use sends the image the
@@ -385,13 +385,16 @@
        already coming to it: a Use there would be a press that changes nothing
        (*Far & Off*, #659).
 
-       ↑ and ↓ look like ‹ and ›, at either size: maximized, the rows are out
-       of sight and these are the way to them. They move the check between
+       ↑ and ↓ look like ‹ and ›, at either size: embiggened, they stand under
+       the row's image as ‹ › stand under the shown one. They move the check between
        radios, which is a script's job (artwork-viewer.js) — no request, and no
        `onclick` (web-ui rule 2a). #}
     <div class="art-pick__ctl">
         <button type="button" class="art-arrow art-pick__step" data-art-step="-1" data-art-group="row"
                 aria-label="Previous row">{{ arrow('up') }}</button>
+        {# Embiggened, the rows are out of sight: where the checked one is,
+           between ↑ and ↓ as the shown image's is between ‹ and ›. #}
+        <span class="art-max art-pick__count art-pick__row-count"></span>
         {% for r in artwork.rows %}
         <div class="art-pick__for" data-row="{{ loop.index }}">
             <button type="submit" name="pick" value="1" class="art-pick__use art-pick__use--go"
@@ -405,8 +408,9 @@
         <button type="button" class="art-arrow art-pick__step" data-art-step="1" data-art-group="row"
                 aria-label="Next row">{{ arrow('down') }}</button>
     </div>
-    {# Maximized only: the checked row — its name and facts above its image —
-       and the shown image, each in a pane that scrolls at 100%. One element
+    {# Embiggened only: the checked row — its name and facts under its image,
+       as the shown image's are under it — and the shown image, each in a pane
+       that scrolls at 100%. One element
        per row and per image, and the generated rules above show the checked
        ones. The archive's images start as the carousel's thumbnail and become
        the original once it arrives, which artwork-viewer.js fetches only when
@@ -445,6 +449,11 @@
     </div>
     <div class="art-max art-max__status" role="status"></div>
     <div class="art-max art-max__zoom">{{ zoom_button() }}</div>
+    {# Embiggened, what puts it back: the section header's Embiggen is behind
+       the backdrop. #}
+    <button type="button" class="art-max art-pick__size" popovertarget="art-pick-panel-{{ album.id }}"
+            popovertargetaction="hide" aria-label="Put the artwork picker back"
+            title="Back to the page">{{ size_icon('in') }}</button>
     {# The carousel: one image at a time, ‹ and › stepping through them — and
        through the fronts only while that box is ticked, which it is unless
        there are none (Picard's default). Each image is a radio, as the rows
@@ -479,10 +488,9 @@
             {% endif %}
         </div>
         {% endfor %}
-        {# ‹ and ›, beside the image rather than over it, with where the shown
-           image is among those Front only lets it show (artwork-viewer.js
-           counts them). Then the toggle that maximizes the picker and puts it
-           back. #}
+        {# ‹ and ›, under the image at either size, with where the shown image
+           is among those Front only lets it show (artwork-viewer.js counts
+           them). #}
         <div class="art-pick__nav">
             {% if picker|length > 1 or artwork.other_releases %}
             <button type="button" class="art-arrow art-pick__turn art-pick__turn--back" data-art-step="-1"
@@ -491,14 +499,6 @@
             <button type="button" class="art-arrow art-pick__turn art-pick__turn--on" data-art-step="1"
                     data-art-group="candidate" aria-label="Next image">{{ arrow('right') }}</button>
             {% endif %}
-            <button type="button" class="art-pick__size" popovertarget="art-pick-panel-{{ album.id }}"
-                    aria-label="Maximize the artwork picker" title="Compare full size"><svg
-                class="art-pick__size--max" viewBox="0 0 16 16" width="14" height="14" fill="none"
-                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9"/></svg><svg
-                class="art-pick__size--min" viewBox="0 0 16 16" width="14" height="14" fill="none"
-                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                aria-hidden="true"><path d="M13.5 6.5h-4v-4M9.5 6.5L14 2M2.5 9.5h4v4M6.5 9.5L2 14"/></svg></button>
         </div>
         {# Past the last image, the next release in the group (#659). The
            script presses these: `step` when › finds nothing further, so the
