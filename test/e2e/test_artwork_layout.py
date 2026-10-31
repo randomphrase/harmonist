@@ -32,10 +32,10 @@ def test_apply_uses_section_footer_within_picker_reservation(
     apply = button.bounding_box()
     panel = section.bounding_box()
     assert last and apply and panel
-    assert apply["y"] >= last["y"] + last["height"]
-    assert 0 <= panel["y"] + panel["height"] - (apply["y"] + apply["height"]) <= 32, (
-        "Apply belongs at the foot of the whole section"
+    assert 0 <= apply["y"] - (last["y"] + last["height"]) <= 32, (
+        "Apply belongs directly beneath the rows"
     )
+    assert apply["y"] + apply["height"] <= panel["y"] + panel["height"]
 
     rows.last.locator(".art-row__select").click()
     picker = section.locator(".art-pick__picker").bounding_box()

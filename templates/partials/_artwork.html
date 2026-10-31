@@ -159,7 +159,7 @@
 {% if picker %}
 {#- Generated, because a row or image count is not something a stylesheet
     knows; scoped to this album's form so two sections could never move each
-    other's picker. Per row: where the picker sits, and which row's Use is
+    other's picker. Per row: where the picker and its room sit, and which row's Use is
     shown. Per row and image that would change nothing — the row already has
     it, or is already getting it (#659): a ✓ in place of Use, and Unchanged
     in place of the row's empty slot. Per row and per image, which of each the
@@ -168,7 +168,7 @@
 <style>
 {% for r in artwork.rows %}
 {% set row = form ~ ':has(#art-sel-' ~ album.id ~ '-' ~ loop.index ~ ':checked)' %}
-{{ row }} .art-pick__picker { --art-pick-row: {{ loop.index + 1 }}; }
+{{ row }} :is(.art-pick__picker, .art-pick__ghost) { --art-pick-row: {{ loop.index + 1 }}; }
 {{ row }} .art-pick__for[data-row="{{ loop.index }}"] { display: block; }
 {% set row_index = loop.index %}
 {{ row }} .art-max [data-row="{{ loop.index }}"] { display: block; visibility: visible; }
@@ -542,12 +542,11 @@
     {% endif %}
     {% endif %}
 </div>
-{# Reserve room beside the last row and Apply for the tallest actual candidate.
+{# Reserve room from the checked row down for the tallest actual candidate.
    Overlaying the facts measures their maximum without inventing extra lines;
    the inert copy has no controls or requests of its own. #}
 {% if steppable %}
-<div class="art-pick__ghost{% if not picker %} art-pick__ghost--loading{% endif %}" aria-hidden="true" inert
-     style="--art-pick-last: {{ artwork.rows|length + 1 }}">
+<div class="art-pick__ghost{% if not picker %} art-pick__ghost--loading{% endif %}" aria-hidden="true" inert>
     {% if picker %}
     <div class="art-pick__carousel">
         <span class="art-row__art art-pick__image"></span>

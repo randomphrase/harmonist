@@ -357,6 +357,26 @@ def test_a_longer_caption_moves_nothing(
     page.context.close()
 
 
+def test_the_room_kept_for_the_picker_ends_where_it_does(
+    browser_factory, reset_carousel_server: str
+) -> None:
+    """Beside the rows, the picker hangs from the checked row, and the room
+    kept for it below the rows ends at its foot, whichever row that is — not
+    at the foot of a picker beside the last row, which left an empty row's
+    height under one beside the first (#918)."""
+    _browser, page = _open(browser_factory, reset_carousel_server)
+    rows = page.locator("#album-artwork input[name='row']")
+    assert rows.count() > 1
+    for index in range(rows.count()):
+        rows.nth(index).evaluate("radio => radio.click()")
+        feet = page.evaluate(
+            """() => ['.art-pick__picker', '.art-pick__ghost'].map(s => Math.round(
+                document.querySelector('#album-artwork ' + s).getBoundingClientRect().bottom))"""
+        )
+        assert feet[0] == feet[1], (index, feet)
+    page.context.close()
+
+
 def test_a_section_swap_does_not_scroll_the_page_in_webkit(
     browser_factory, reset_carousel_server: str, htmx_complete
 ) -> None:
