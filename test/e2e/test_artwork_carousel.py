@@ -33,8 +33,8 @@ def _shown(page) -> list[str]:
     ).evaluate_all("els => els.map(el => el.value)")
 
 
-def _open(browser_factory, base: str):
-    browser = browser_factory("chromium")
+def _open(browser_factory, base: str, engine: str = "chromium"):
+    browser = browser_factory(engine)
     page = browser.new_page(viewport={"width": 1280, "height": 1400})
     page.goto(f"{base}/album/{ALBUM_ID}")
     page.wait_for_selector("#album-artwork .art-pick__picker")
@@ -301,6 +301,59 @@ def test_a_pan_step_is_not_undone_by_the_other_pane_following(
         }"""
     )
     assert settled == [40, 40]
+    page.context.close()
+
+
+_LAID_OUT = """() => [
+    ...document.querySelectorAll(
+        '#album-artwork :is(.art-pick__picker, .art-max__stage, .art-pick__picker label)')
+].filter(e => e.checkVisibility()).map(e => {
+    const b = e.getBoundingClientRect();
+    return [Math.round(b.top + scrollY), Math.round(b.bottom + scrollY)];
+})"""
+
+
+@pytest.mark.parametrize("engine", ["chromium", "webkit"])
+@pytest.mark.parametrize("width", [700, 1280])
+def test_a_longer_caption_moves_nothing(
+    browser_factory, reset_carousel_server: str, engine: str, width: int
+) -> None:
+    """The back cover's caption has a line the fronts' lack, its kind; stepping
+    onto it and off again moves nothing, embiggened or on the page — the room
+    for the longest caption is kept whichever is shown (#918). And beside the
+    last row, the picker stays inside the section that makes room for it.
+    Embiggened, the panel is laid out alike at either width; on the page, the
+    picker is a column of its own only at the wider one."""
+    _browser, page = _open(browser_factory, reset_carousel_server, engine)
+    page.set_viewport_size({"width": width, "height": 1400})
+    section = page.locator("#album-artwork")
+    section.get_by_role("checkbox", name="Front only").uncheck()
+    panel = _maximize(page)
+    caption = panel.locator(".art-pick__slide:visible .art-row__facts")
+    before = page.evaluate(_LAID_OUT)
+    # Each caption level with the other: the two views' rows are one grid's.
+    row_caption = panel.locator(".art-max__head--now .art-row__facts:visible")
+    assert row_caption.bounding_box()["y"] == caption.bounding_box()["y"]
+
+    panel.get_by_role("button", name="Next image").click()
+    assert _shown(page) == ["102"]
+    pw.expect(caption).to_contain_text("Back")
+    assert page.evaluate(_LAID_OUT) == before
+
+    panel.get_by_role("button", name="Put the artwork picker back").click()
+    pw.expect(panel).not_to_have_attribute("role", "dialog")
+    before = page.evaluate(_LAID_OUT)
+    section.get_by_role("button", name="Previous image").click()
+    assert _shown(page) == ["101"]
+    pw.expect(caption).not_to_contain_text("Back")
+    assert page.evaluate(_LAID_OUT) == before
+
+    section.locator("input[name='row']").last.evaluate("radio => radio.click()")
+    bottoms = page.evaluate(
+        """() => ['.art-pick__picker', '.art-layout'].map(s =>
+            document.querySelector('#album-artwork ' + s).getBoundingClientRect().bottom)"""
+    )
+    assert bottoms[0] <= bottoms[1], bottoms
     page.context.close()
 
 
