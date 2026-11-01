@@ -10,6 +10,8 @@ versions follow [semantic versioning](https://semver.org).
 
 - **The artwork picker offers a new archive front as soon as an artwork update
   is reported** (#927).
+- **Embiggened, the artwork picker's two images are square and as large as the
+  window allows**, with their details just under them (#929).
 
 ## [1.32.0] - 2026-11-01
 

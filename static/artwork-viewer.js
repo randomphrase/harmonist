@@ -199,8 +199,12 @@
         const [now, offered] = shownPair(panel);
         fetchOriginal(offered);
         status(panel);
-        // The smaller pane's room: the left carries the border between them.
         const panes = Array.from(panel.querySelectorAll('.art-max__stage'));
+        // The panes are square, and the panel is their height and what the rest
+        // of it takes, which only the captions as laid out know (#929).
+        const rest = panel.getBoundingClientRect().height - panes[0].getBoundingClientRect().height;
+        panel.style.setProperty('--art-max-rest', `${Math.ceil(rest)}px`);
+        // The smaller pane's room: the left carries the border between them.
         const paneWidth = Math.min(...panes.map(pane => pane.clientWidth));
         const paneHeight = Math.min(...panes.map(pane => pane.clientHeight));
         // An image's size, where it is known: an archive image's only once its

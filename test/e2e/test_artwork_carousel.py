@@ -304,6 +304,34 @@ def test_a_pan_step_is_not_undone_by_the_other_pane_following(
     page.context.close()
 
 
+@pytest.mark.parametrize("engine", ["chromium", "webkit"])
+@pytest.mark.parametrize("viewport", [(1400, 1680), (1400, 640), (700, 900)])
+def test_the_maximized_panes_are_square(
+    browser_factory, reset_carousel_server: str, engine: str, viewport: tuple[int, int]
+) -> None:
+    """Most covers are square, and so are the panes: as large as the window
+    allows one way or the other, with the panel sized around them and the
+    captions inside it. Sized to the window, they were columns in a tall
+    window, a cover in a band of empty pane (#929)."""
+    _browser, page = _open(browser_factory, reset_carousel_server, engine)
+    width, height = viewport
+    page.set_viewport_size({"width": width, "height": height})
+    panel = _maximize(page)
+    # Once the popover's toggle event, queued as it opens, has measured it.
+    page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+    box = panel.bounding_box()
+    for pane in ("now", "cand"):
+        stage = panel.locator(f".art-max__stage--{pane}").bounding_box()
+        assert abs(stage["width"] - stage["height"]) <= 2, (pane, stage)
+    assert box["width"] >= 0.9 * width or box["height"] >= 0.85 * height, box
+    assert box["y"] >= 0 and box["y"] + box["height"] <= height, box
+    lowest = panel.locator("label:visible").evaluate_all(
+        "els => Math.max(...els.map(e => e.getBoundingClientRect().bottom))"
+    )
+    assert lowest <= box["y"] + box["height"], (lowest, box)
+    page.context.close()
+
+
 _LAID_OUT = """() => [
     ...document.querySelectorAll(
         '#album-artwork :is(.art-pick__picker, .art-max__stage, .art-pick__picker label)')

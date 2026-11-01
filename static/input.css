@@ -1890,18 +1890,33 @@ dialog::backdrop {
    only — the page's order. Every row's facts and every image's are laid out
    in their row, one on another, and all but the shown ones hidden: the row is
    as tall as the longest, so the panes never give up height to a caption with
-   another line (#918). */
+   another line (#918).
+
+   The panes are square, as most covers are: each as wide as half the window
+   allows or as tall as the window allows less the rest of the panel,
+   whichever is less, and the panel is sized around them, so the captions sit
+   under the images. The window's height caps the width, then, and a wide
+   screen gets the bigger panes it has room for. Sized to the window, the
+   panes took all the height the captions left: in any window less than twice
+   as wide as tall they were columns, a cover in a band of empty pane with its
+   caption far below it (#929). How tall the rest of the panel is, only the
+   captions as laid out know: the script measures it, and until then it is an
+   allowance — should the captions run longer, the panel stops at its maximum
+   and the panes give up the difference. */
 .art-max { display: none; }
 .art-max [data-row],
 .art-max [data-cand] { display: none; }
 .art-pick__picker:popover-open {
+  --art-max-side: min((96vw - 6rem) / 2, 92dvh - var(--art-max-rest, 9rem));
   position: fixed;
   inset: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 6rem minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto auto auto;
-  width: min(80rem, 96vw);
-  height: 92dvh;
+  width: calc(2 * var(--art-max-side) + 6rem);
+  height: fit-content;
+  min-height: 0;
+  max-height: 92dvh;
   margin: auto;
   padding: 0 0 .75rem;
   border: 1px solid var(--color-line);
@@ -1997,10 +2012,14 @@ dialog::backdrop {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* The panes: each scrolls at 100%, and the two scroll together. */
+/* The panes: each scrolls at 100%, and the two scroll together. Square, but
+   no taller than their row, which is what is left of the panel's maximum
+   when captions run past their allowance (above). */
 .art-max__stage {
   grid-row: 2;
+  height: var(--art-max-side);
   min-height: 0;
+  max-height: 100%;
   overflow: auto;
   background: var(--color-surface);
 }
