@@ -18,6 +18,7 @@ for it would be waiting on a race. Their markup is asserted in
 
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -48,14 +49,31 @@ def test_a_stale_comparison_refreshes_itself(browser_factory, stale_cache_server
     page.goto(f"{stale_cache_server}/album/{ALBUM}")
     page.wait_for_selector(f"#compare-{ALBUM} .tag-fields", timeout=15_000)
 
-    with page.expect_response(lambda r: "check=1" in r.url, timeout=15_000) as got:
+    # The refresh fires on load, so the observation has to be armed by the
+    # navigation itself. Waiting on `.tag-fields` again would prove nothing: the
+    # stale render already drew them. Settled is the moment the swap is done,
+    # and only a request from the refresh trigger counts.
+    observe = """trigger => {
+        let xhr = null;
+        document.addEventListener('htmx:beforeRequest', e => {
+            if (!xhr && e.detail.elt.id === trigger) xhr = e.detail.xhr;
+        });
+        document.addEventListener('htmx:afterSettle', e => {
+            if (xhr && e.detail.xhr === xhr) window.staleRefreshSettled = true;
+        });
+    }"""
+    page.add_init_script(f"({observe})({json.dumps(f'compare-refresh-{ALBUM}')})")
+    # The path, not just `check=1`: the artwork section makes a check of its
+    # own, and the first view's can land after this is armed.
+    with page.expect_response(lambda r: "/compare?check=1" in r.url, timeout=15_000) as got:
         page.goto(f"{stale_cache_server}/album/{ALBUM}")
     assert got.value.ok, "the refresh behind the stale render never landed"
 
     # …and it was SWAPPED IN, not merely received: one response, several
     # destinations, and a mis-targeted swap would leave the Tags section
     # holding the answer this one was sent to replace.
-    page.wait_for_selector(f"#compare-{ALBUM} .tag-fields", timeout=15_000)
+    page.wait_for_function("window.staleRefreshSettled === true", timeout=15_000)
+    assert page.locator(f"#compare-{ALBUM} .tag-fields").first.is_visible()
     assert page.locator("#album-tracks .tracklist").is_visible()
     assert page.locator(
         f'#album-checked-{ALBUM} dd[title^="MusicBrainz release last read"]'
