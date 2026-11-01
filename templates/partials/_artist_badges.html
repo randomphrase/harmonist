@@ -1,0 +1,9 @@
+{% if show_new | default(true) and artist.key in artists_view.new_ids %}
+<span class="px-1.5 py-0.5 text-2xs font-bold uppercase tracking-widest rounded bg-bc-teal text-white shadow-sm"
+      title="At least one album added in the last 7 days">New</span>
+{% endif %}
+{% if show_warnings | default(true) %}
+{% for label in artists_view.badges[artist.key] %}
+<span class="album-warning__badge">{{ label }}</span>
+{% endfor %}
+{% endif %}

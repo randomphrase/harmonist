@@ -982,6 +982,9 @@ def fetch_bytes(url: str, *, client: Any = None) -> tuple[bytes, str]:
 
 
 def install(monkeypatch):
+    # These recordings use their own release catalogue, without the public
+    # demo's artist profiles. Keep the two datasets internally consistent.
+    monkeypatch.setattr(demo, "ARTIST_NFOS", ())
     for name in (
         "LIBRARY",
         "PENDING_PURCHASES",

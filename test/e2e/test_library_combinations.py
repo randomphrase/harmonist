@@ -29,7 +29,7 @@ def test_new_filter(browser_factory, library_filters_server, htmx_ready, engine,
     pw.expect(page.locator("#library-page")).to_have_attribute("data-total-shown", "2")
     htmx_ready(page.get_by_role("link", name="Next →", exact=True)).click()
     pw.expect(page.locator("#library-page")).to_have_attribute("data-page", "2")
-    htmx_ready(page.locator("#library-grid > a")).click()
+    htmx_ready(page.locator('#library-grid a[id^="lib-"]')).click()
     page.get_by_role("link", name="← Back to library", exact=True).click()
     pw.expect(new).to_have_attribute("aria-pressed", "true")
     pw.expect(page.locator("#library-page")).to_have_attribute("data-page", "2")
@@ -86,7 +86,7 @@ def test_combined_filters(browser_factory, library_filters_server, htmx_ready, e
     pw.expect(page.locator("#library-page")).to_have_attribute("data-page", "1")
     no_art = page.locator("#library-artwork-button")
     pw.expect(no_art).to_have_text(re.compile(r"^\s*No artwork\s+1\s*$"))
-    pw.expect(page.locator("#library-grid > a")).to_have_count(1)
+    pw.expect(page.locator('#library-grid a[id^="lib-"]')).to_have_count(1)
     pw.expect(page.locator("#lib-demo-rel-rural-juror")).to_be_visible()
 
     htmx_ready(page.locator("#library-origin-button")).click()

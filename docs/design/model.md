@@ -1,5 +1,32 @@
 # The model
 
+## Artist identity belongs to the credits
+
+Artists derive from the albums' credits. MusicBrainz artist IDs distinguish
+people who share a name and keep collaborations associated with each artist.
+Names alone cannot establish identity, and an album-scoped key would change
+when the album is matched. Artist pages therefore require an MBID.
+Special-purpose identities such as Various Artists do not represent a person
+or group to browse.
+
+NFO location is not identity: moving a file within the library must not change
+who it describes. Its MBID must agree with the album credits rather than a
+directory name, so a collaboration cannot inherit an arbitrary parent's profile.
+
+Two NFOs with the same MBID are conflicting evidence. Choosing one silently
+would hide that disagreement. Files without a matching artist remain visible
+because unassociated metadata should not disappear. Orphan checks include the
+Inbox: a pending album is still evidence of an artist in the library. An
+unreadable file is an error, not proof of absence or orphanhood.
+
+Artists have their own page because NFOs and artist pictures describe artists,
+while origin and audio format describe albums. A separate collection gives
+each kind of item the search and filters that mean something for it.
+
+List and Cards offer name-led and picture-led browsing of the same collection.
+Keeping both accommodates libraries with different picture coverage. The layout
+is a browser preference, not artist metadata, so it does not belong in an NFO.
+
 ## An album is its release, not its folder
 
 A library assembled over decades keeps one release in several places:

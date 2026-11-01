@@ -33,6 +33,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree as ET
 
 from mutagen.flac import FLAC
 from mutagen.id3 import COMM, ID3, TCON, TXXX
@@ -181,7 +182,13 @@ def _release(
     # two ids behind one phrase — which #309's credit lookup correctly refuses to
     # choose between. The demo was then the one place the artists-as-links
     # rendering could never appear, which is the mode people meet it in.
-    artist_ids = {artist: _demo_mbid("art", mbid)}
+    artist_ids = {
+        artist: (
+            "89ad4ac3-39f7-470e-963a-56509c546377"
+            if artist == "Various Artists"
+            else _demo_mbid("art", mbid)
+        )
+    }
     for name in credits:
         artist_ids.setdefault(name, _demo_mbid("art", mbid, len(artist_ids)))
     shown = credited_as or artist
@@ -610,6 +617,38 @@ PURCHASE_ITEM_IDS = {
 }
 PURCHASE_ITEM_IDS[LIBRARY[0]["store"]] = 1000
 
+ARTIST_NFOS: tuple[dict[str, str], ...] = (
+    {
+        "directory": "ArtistInfo/Barry Jive and the Uptown Five",
+        "name": "Barry Jive and the Uptown Five",
+        "release": "demo-rel-barryjive",
+        "biography": "An after-hours soul band led by a record-store clerk. Their sets mix slow grooves with late-night covers.",
+        "genre": "Soul",
+        "image": "barry.png",
+    },
+    {
+        "directory": "ArtistInfo/Mouse Rat",
+        "name": "Mouse Rat",
+        "release": "demo-rel-mouserat",
+        "biography": "A Pawnee rock band with a rotating repertoire of local anthems.",
+    },
+    {
+        "directory": "Alternate artist info/Mouse Rat",
+        "name": "Mouse Rat",
+        "release": "demo-rel-mouserat",
+        "biography": "An alternate profile for the same Pawnee band.",
+    },
+    {
+        "directory": "ArtistInfo/The Unidentified Echoes",
+        "name": "The Unidentified Echoes",
+    },
+    {
+        "directory": "ArtistInfo/The Unplayed Satellites",
+        "name": "The Unplayed Satellites",
+        "mbid": _demo_mbid("art", "demo-unplayed-satellites"),
+    },
+)
+
 # ---------------------------------------------------------------------------
 # Seed / reset / sync
 # ---------------------------------------------------------------------------
@@ -625,7 +664,7 @@ def data_version() -> str:
     """
     payload = json.dumps(
         [
-            3,
+            4,
             os.environ.get("HARMONIST_DEMO_ADOPTION", "0"),
             LIBRARY,
             PENDING_PURCHASES,
@@ -633,6 +672,7 @@ def data_version() -> str:
             URL_RELS,
             MERGED_INTO,
             PURCHASE_ITEM_IDS,
+            ARTIST_NFOS,
         ],
         sort_keys=True,
         default=str,
@@ -650,6 +690,29 @@ def _marker_version(music_dir: Path) -> str | None:
         if line.startswith("version:"):
             return line.split(":", 1)[1].strip()
     return None
+
+
+def _seed_artist_nfos(music_dir: Path) -> None:
+    """Local profiles with matching IDs, conflicts and unmatched files."""
+    for spec in ARTIST_NFOS:
+        folder = music_dir / spec["directory"]
+        folder.mkdir(parents=True, exist_ok=True)
+        document = ET.Element("artist")
+        for tag in ("name", "biography", "genre"):
+            if value := spec.get(tag):
+                ET.SubElement(document, tag).text = value
+        identity = spec.get("mbid")
+        if release := spec.get("release"):
+            identity = MB_RELEASES[release]["artist-credit"][0]["artist"]["id"]
+        if identity:
+            ET.SubElement(document, "musicBrainzArtistID").text = identity
+        if image := spec.get("image"):
+            filename = "artist" + Path(image).suffix
+            shutil.copy(ASSETS_DIR / image, folder / filename)
+            ET.SubElement(document, "thumb").text = filename
+        ET.ElementTree(document).write(
+            folder / "artist.nfo", encoding="utf-8", xml_declaration=True
+        )
 
 
 def seed(music_dir: Path, *, persistent_history: bool = False) -> None:
@@ -674,6 +737,7 @@ def seed(music_dir: Path, *, persistent_history: bool = False) -> None:
                 )
         finally:
             _SEEDING.reset(token)
+    _seed_artist_nfos(music_dir)
     (music_dir / DEMO_MARKER).write_text(
         f"Harmonist demo data — safe to delete.\nversion: {data_version()}\n"
     )
