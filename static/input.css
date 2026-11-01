@@ -1505,8 +1505,9 @@ dialog::backdrop {
 /* The carousel (#659): one image at a time — the one whose radio is checked —
    and, while Front only is ticked, never one that is not a front. A thumbnail
    and its facts side by side, as the rows draw theirs, whether the picker is
-   the full width of the section or a column of its own (below). */
-.art-pick__carousel { position: relative; container-type: inline-size; }
+   the full width of the section or a column of its own (below). Not a size
+   container: containment would stop it being the embiggened panel's subgrid. */
+.art-pick__carousel { position: relative; }
 .art-pick__slide { display: none; cursor: default; }
 .art-pick__slide:has(input[name="candidate"]:checked) {
   display: grid;
@@ -1857,13 +1858,13 @@ dialog::backdrop {
 /* The picker, embiggened (#918): the same panel in the top layer, laid out as
    two panes — the checked row's image on the left, the shown one on the
    right — with Use between them, pointing from the one into the other. Under
-   each image, as under the picker's image on the page: its arrows, where it
-   is among the rest, then its facts. The panel's own controls are placed into
-   this grid; `display: contents` lifts them out of the boxes that lay them out
-   on the page.
+   each image, as beside the picker's image on the page: its facts, then its
+   arrows and where it is among the rest. The panel's own controls are placed
+   into this grid; `display: contents` lifts them out of the boxes that lay
+   them out on the page.
 
-   Rows: the bar (scale, put back), the panes, arrows, facts, then Don't
-   suggest and Front only. Every row's facts and every image's are laid out
+   Rows: the bar (scale, put back), the panes, facts, Don't suggest, arrows,
+   Front only — the page's order. Every row's facts and every image's are laid out
    in their row, one on another, and all but the shown ones hidden: the row is
    as tall as the longest, so the panes never give up height to a caption with
    another line (#918). */
@@ -1875,7 +1876,7 @@ dialog::backdrop {
   inset: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 6rem minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
   width: min(80rem, 96vw);
   height: 92dvh;
   margin: auto;
@@ -1889,13 +1890,13 @@ dialog::backdrop {
 .art-pick__picker::backdrop { background: rgb(0 0 0 / .55); }
 .art-pick__picker:popover-open .art-max { display: block; }
 /* Under the shown image, the carousel lays out as it does on the page, less
-   the image: in the panel's rows, so its arrows and facts line up with the
+   the image: in the panel's rows, so its facts and arrows line up with the
    row's. */
 .art-pick__picker:popover-open .art-pick__carousel {
   display: grid;
-  grid-area: 3 / 3 / 6 / 4;
+  grid-area: 3 / 3 / 7 / 4;
   grid-template-rows: subgrid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   row-gap: 0;
 }
 .art-pick__picker:popover-open .art-pick__slide:has(input[name="candidate"]:checked),
@@ -1942,12 +1943,12 @@ dialog::backdrop {
   border-radius: 0 4px 4px 0;
   clip-path: polygon(.8rem 0, 100% 0, 100% 100%, .8rem 100%, 0 50%);
 }
-/* Under the row's image: ↑ where it is ↓, centred, spaced exactly as ‹ › are
-   under the shown image — one row of the grid, so placed by offset from the
+/* Under the row's facts: ↑ where it is ↓, centred, spaced exactly as ‹ › are
+   under the shown image's — one row of the grid, so placed by offset from the
    middle rather than wrapped in a box of their own. */
 .art-pick__picker:popover-open .art-pick__step,
 .art-pick__picker:popover-open .art-pick__row-count {
-  grid-area: 3 / 1;
+  grid-area: 5 / 1;
   justify-self: center;
   align-self: center;
   margin-top: .5rem;
@@ -1956,15 +1957,15 @@ dialog::backdrop {
 .art-pick__picker:popover-open .art-pick__step[data-art-step="-1"] { translate: calc(-1 * (1.6rem + .35rem + .875rem)) 0; }
 .art-pick__picker:popover-open .art-pick__step[data-art-step="1"] { translate: calc(1.6rem + .35rem + .875rem) 0; }
 .art-pick__picker:popover-open .art-pick__nav {
-  grid-area: 1 / 1 / 2 / -1;
+  grid-area: 3 / 1;
   justify-content: center;
   margin: .5rem 0 0;
 }
-/* …then each image's facts, centred under it. */
-.art-max__head--now { grid-area: 4 / 1; }
+/* Each image's facts, centred under it. */
+.art-max__head--now { grid-area: 3 / 1; }
 .art-pick__picker:popover-open .art-max__head--now { display: grid; }
 .art-max__head--now > [data-row] { display: block; grid-area: 1 / 1; visibility: hidden; }
-.art-pick__picker:popover-open .art-pick__slide > .art-row__facts { grid-area: 2 / 1 / 3 / -1; }
+.art-pick__picker:popover-open .art-pick__slide > .art-row__facts { grid-area: 1 / 1; }
 .art-max__head--now .art-row__facts,
 .art-pick__picker:popover-open .art-pick__slide > .art-row__facts {
   align-items: center;
@@ -2008,17 +2009,11 @@ dialog::backdrop {
 }
 .art-pick__picker:popover-open .art-max__status:empty { display: none; }
 .art-max__status button { text-decoration: underline; cursor: pointer; }
-/* Last, under the shown image's facts: Don't suggest and Front only, side by
-   side as on the page. */
-.art-pick__picker:popover-open .art-pick__check { margin: .4rem 0 0; }
-.art-pick__picker:popover-open .art-pick__dismiss { grid-area: 3 / 2; }
-.art-pick__picker:popover-open .art-pick__front-only { grid-area: 3 / 3; margin-left: .75rem; }
-.art-pick__picker:popover-open .art-pick__carousel:not(:has(.art-pick__front-only)) .art-pick__dismiss,
-.art-pick__picker:popover-open .art-pick__carousel:not(:has(.art-pick__dismiss)) .art-pick__front-only {
-  grid-column: 1 / -1;
-  justify-self: center;
-  margin-left: 0;
-}
+/* Don't suggest under the shown image's facts, Front only under its arrows,
+   as on the page. */
+.art-pick__picker:popover-open .art-pick__check { justify-self: center; margin: .4rem 0 0; }
+.art-pick__picker:popover-open .art-pick__dismiss { grid-area: 2 / 1; }
+.art-pick__picker:popover-open .art-pick__front-only { grid-area: 4 / 1; }
 
 /* What the row is now, and what a re-tag would make it (#413). The second half
    is empty on a row that changes nothing, which is most of them. */

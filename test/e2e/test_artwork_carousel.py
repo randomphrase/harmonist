@@ -459,6 +459,40 @@ def test_the_picker_has_the_room_and_its_controls_follow_its_caption(
     page.context.close()
 
 
+def test_embiggened_the_controls_follow_the_caption_as_on_the_page(
+    browser_factory, reset_carousel_server: str
+) -> None:
+    """Embiggened, under the shown image: its caption, Don't suggest, ‹ ›,
+    Front only — the page's order, since it is the page's picker (#918). Under
+    the row's image, its caption level with the shown one's and ↑ ↓ level
+    with ‹ ›."""
+    _browser, page = _open(browser_factory, reset_carousel_server)
+    panel = _maximize(page)
+    boxes = page.evaluate(
+        """() => {
+            const p = document.querySelector('.art-pick__picker:popover-open');
+            const box = e => { const b = e.getBoundingClientRect();
+                return {top: b.top, bottom: b.bottom, middle: (b.top + b.bottom) / 2}; };
+            const one = sel => [...p.querySelectorAll(sel)].find(e => e.checkVisibility());
+            return {
+                caption: box(one('.art-pick__slide .art-row__facts')),
+                dismiss: box(one('.art-pick__slide .art-pick__dismiss')),
+                nav: box(one('.art-pick__nav')),
+                front: box(one('.art-pick__front-only')),
+                row: box(one('.art-max__head--now .art-row__facts')),
+                step: box(one('.art-pick__step')),
+            };
+        }"""
+    )
+    order = [boxes[k] for k in ("caption", "dismiss", "nav", "front")]
+    for above, below in itertools.pairwise(order):
+        assert above["bottom"] <= below["top"], boxes
+    assert boxes["row"]["top"] == boxes["caption"]["top"], boxes
+    assert abs(boxes["step"]["middle"] - boxes["nav"]["middle"]) <= 1, boxes
+    pw.expect(panel.get_by_role("button", name="Put the artwork picker back")).to_be_visible()
+    page.context.close()
+
+
 def test_a_section_swap_does_not_scroll_the_page_in_webkit(
     browser_factory, reset_carousel_server: str, htmx_complete
 ) -> None:
