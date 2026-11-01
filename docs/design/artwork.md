@@ -135,7 +135,9 @@ moved it. A separate viewer remains for images with nothing to compare against.
 the archive's image are one size, each with its caption to its right, and the
 picker's is level with the checked row's. They are three views of one choice,
 and a picker laid out differently, its image larger and captioned underneath,
-read as something else and took a column's width for one picture. The room kept
+read as something else and took a column's width for one picture. The rows'
+captions are only as wide as their facts need, and the picker has the rest:
+its captions name releases, which is what wraps. The room kept
 for the picker starts at the checked row, so the section ends at the picker's
 foot and grows as the check moves down, rather than always keeping room for a
 picker beside the last row.

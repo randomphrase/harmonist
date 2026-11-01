@@ -1535,9 +1535,14 @@ dialog::backdrop {
   color: var(--color-ink);
   cursor: pointer;
 }
-.art-arrow:hover { border-color: var(--color-accent); background: var(--color-surface); }
-/* At either end, where it would go nowhere (artwork-viewer.js decides). */
-.art-arrow:disabled { visibility: hidden; }
+.art-arrow:hover:not(:disabled) { border-color: var(--color-accent); background: var(--color-surface); }
+/* At either end, where it would go nowhere (artwork-viewer.js decides):
+   still there, so the other reads as one of a pair (#918) — unless neither
+   goes anywhere, where the pair says nothing. */
+.art-arrow:disabled { opacity: .35; cursor: default; }
+:is(.art-pick__ctl, .art-pick__nav, .art-full__nav):not(:has(.art-arrow:enabled)) .art-arrow {
+  visibility: hidden;
+}
 /* ‹, where the shown image is, ›, and the toggle that maximizes: under the
    image, beside it rather than over it. */
 .art-pick__nav { display: flex; align-items: center; gap: .35rem; margin-top: .5rem; }
@@ -1733,16 +1738,27 @@ dialog::backdrop {
   .art-layout--pick,
   .art-compare--pick {
     position: relative;
-    grid-template-columns: minmax(0, 1fr) minmax(0, calc(var(--art-thumb) + .85rem + 10rem + 1.2rem + 3px));
+    grid-template-columns:
+      minmax(0, calc(2 * (var(--art-thumb) + var(--art-caption)) + 3 * .85rem + 1.6rem + 1.2rem))
+      minmax(min(26rem, 42%), 1fr);
     column-gap: 5rem;
   }
   /* Every image beside the picker the size of the picker's, its caption to
      its right as the picker's is: the same three things, drawn alike. The
      picker's image is level with the checked row's, too: the row is padded by
-     the picker's margin, border and padding. */
-  .art-layout--pick { --art-thumb: 8rem; }
+     the picker's margin, border and padding.
+
+     The rows' captions are as wide as a row's facts need and no wider —
+     After Apply's by the 1.6rem its half is offset — and the picker has the
+     rest: its captions name releases, and wrapped there while the rows' stood
+     half empty (#918). Where there is less room the picker keeps enough for a
+     release's name, date, country and format on a line, and the rows'
+     captions, which are shorter, give way. */
+  .art-layout--pick { --art-thumb: 8rem; --art-caption: 10rem; }
   .art-layout--pick :is(.art-rows__head, .art-row) {
-    grid-template-columns: var(--art-thumb) minmax(0, 1fr) var(--art-thumb) minmax(0, 1fr);
+    grid-template-columns:
+      var(--art-thumb) minmax(0, var(--art-caption))
+      var(--art-thumb) minmax(0, calc(var(--art-caption) + 1.6rem));
   }
   .art-layout--pick .art-row :is(.art-row__art, .art-row__slot, .art-row__unchanged) {
     width: var(--art-thumb);
@@ -1781,10 +1797,11 @@ dialog::backdrop {
   .art-pick__ghost--loading { display: none; }
   .art-layout:has(.art-pick__loading.htmx-request) .art-pick__ghost--loading { display: block; }
   .art-pick__placeholder { width: 100%; }
-  /* The image, and to its right its caption, ‹ where it is ›, Don't suggest
-     and Front only (#918). The slides are laid out together, so every caption
-     is in the one space (above). The last row takes up what the image is
-     taller than the rest. */
+  /* The image, and to its right its caption, then Don't suggest, which is
+     about the image shown, ‹ where it is ›, and Front only, which is about
+     what they step through (#918). The slides are laid out together, so every
+     caption is in the one space (above). The last row takes up what the image
+     is taller than the rest. */
   .art-pick__carousel {
     display: grid;
     grid-template-columns: var(--art-thumb) minmax(0, 1fr);
@@ -1802,8 +1819,8 @@ dialog::backdrop {
     height: var(--art-thumb);
   }
   .art-pick__carousel :is(.art-pick__slide > .art-row__facts, .art-pick__ghost-facts) { grid-area: 1 / 2; }
-  .art-pick__carousel .art-pick__nav { grid-area: 2 / 2; margin: .15rem 0 0; }
-  .art-pick__carousel .art-pick__dismiss { grid-area: 3 / 2; margin: .15rem 0 0; }
+  .art-pick__carousel .art-pick__dismiss { grid-area: 2 / 2; margin: .1rem 0 0; }
+  .art-pick__carousel .art-pick__nav { grid-area: 3 / 2; margin: .15rem 0 0; }
   .art-pick__carousel .art-pick__front-only { grid-area: 4 / 2; margin: 0; }
   /* Level with the middle of the checked row's image and the picker's. */
   .art-pick__ctl {

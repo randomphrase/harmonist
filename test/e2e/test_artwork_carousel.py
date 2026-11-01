@@ -11,6 +11,7 @@ one image (`artwork_carousel_app`).
 
 from __future__ import annotations
 
+import itertools
 import os
 import re
 
@@ -416,6 +417,48 @@ def test_the_three_images_are_drawn_alike(browser_factory, reset_carousel_server
     page.context.close()
 
 
+@pytest.mark.parametrize("width", [1100, 1440])
+def test_the_picker_has_the_room_and_its_controls_follow_its_caption(
+    browser_factory, reset_carousel_server: str, width: int
+) -> None:
+    """Beside the rows, the picker's caption has at least the room a row's
+    has: the rows' captions are capped at what their facts need, and the
+    picker takes the rest. Under its caption, Don't suggest, about the image
+    shown; then ‹ ›; then Front only, about what they step through. At the
+    first row ↑ is there, disabled, so ↓ reads as one of a pair (#918)."""
+    _browser, page = _open(browser_factory, reset_carousel_server)
+    page.set_viewport_size({"width": width, "height": 1400})
+    section = page.locator("#album-artwork")
+    rows = section.locator("input[name='row']")
+    rows.first.evaluate("radio => radio.click()")
+    boxes = page.evaluate(
+        """() => {
+            const s = document.getElementById('album-artwork');
+            const box = e => { const b = e.getBoundingClientRect();
+                return {left: b.left, top: b.top, bottom: b.bottom, width: b.width}; };
+            const one = sel => [...s.querySelectorAll(sel)].find(e => e.checkVisibility());
+            return {
+                row: box(one('.art-row:has(input[name="row"]:checked) .art-row__facts')),
+                caption: box(one('.art-pick__slide .art-row__facts')),
+                dismiss: box(one('.art-pick__slide .art-pick__dismiss')),
+                nav: box(one('.art-pick__picker .art-pick__nav')),
+                front: box(one('.art-pick__picker .art-pick__front-only')),
+            };
+        }"""
+    )
+    assert boxes["caption"]["width"] >= boxes["row"]["width"], boxes
+    order = [boxes[k] for k in ("caption", "dismiss", "nav", "front")]
+    for above, below in itertools.pairwise(order):
+        assert above["bottom"] <= below["top"], boxes
+    assert len({round(b["left"]) for b in order}) == 1, boxes  # one column
+
+    up = section.locator(".art-pick__step[data-art-step='-1']")
+    pw.expect(up).to_be_visible()
+    pw.expect(up).to_be_disabled()
+    pw.expect(section.locator(".art-pick__step[data-art-step='1']")).to_be_enabled()
+    page.context.close()
+
+
 def test_a_section_swap_does_not_scroll_the_page_in_webkit(
     browser_factory, reset_carousel_server: str, htmx_complete
 ) -> None:
@@ -479,27 +522,28 @@ def test_the_carousel_offers_no_step_past_either_end(
 ) -> None:
     """‹ and › only where they go somewhere, as the rows' ↑ ↓ stop at the
     ends: no ‹ on the first image, and no › on the last once no release can
-    follow it — where it was offered and did nothing."""
+    follow it — where it was offered and did nothing. Drawn disabled there,
+    not hidden, so the one left reads as one of a pair (#918)."""
     _browser, page = _open(browser_factory, reset_carousel_server)
     section = page.locator("#album-artwork")
-    # By class, not role: a role locator skips a hidden button, and would
-    # find "hidden" true of a button it simply did not find.
     back = section.locator(".art-pick__picker .art-pick__turn--back")
     on = section.locator(".art-pick__picker .art-pick__turn--on")
 
-    pw.expect(back).to_be_hidden()  # 101, the first
-    pw.expect(on).to_be_visible()
+    pw.expect(back).to_be_visible()
+    pw.expect(back).to_be_disabled()  # 101, the first
+    pw.expect(on).to_be_enabled()
     with page.expect_response(lambda r: "more=ahead" in r.url):
         on.click()
     page.wait_for_function(SETTLED)
     # 103, the album's last image — but another release may follow it.
-    pw.expect(back).to_be_visible()
-    pw.expect(on).to_be_visible()
+    pw.expect(back).to_be_enabled()
+    pw.expect(on).to_be_enabled()
 
     on.click()  # 201, the other release's only image, and the group's last
     assert _shown(page) == ["201"]
-    pw.expect(on).to_be_hidden()
-    pw.expect(back).to_be_visible()
+    pw.expect(on).to_be_visible()
+    pw.expect(on).to_be_disabled()
+    pw.expect(back).to_be_enabled()
     page.context.close()
 
 
