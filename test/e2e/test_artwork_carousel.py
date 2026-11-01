@@ -459,6 +459,38 @@ def test_the_picker_is_the_height_of_its_row(browser_factory, reset_carousel_ser
     page.context.close()
 
 
+@pytest.mark.parametrize("embiggened", [False, True], ids=["page", "embiggened"])
+def test_use_and_its_check_are_one_size(
+    browser_factory, reset_carousel_server: str, embiggened: bool
+) -> None:
+    """Use, and the ✓ in its place where the row already has the shown image,
+    are one size, so stepping between images moves neither it nor ↑ ↓ (#918).
+    Each is measured in turn in the checked row's place, as the section's
+    generated rules show one or the other."""
+    _browser, page = _open(browser_factory, reset_carousel_server)
+    if embiggened:
+        _maximize(page)
+    sizes = page.evaluate(
+        """() => {
+            const place = [...document.querySelectorAll('#album-artwork .art-pick__for')]
+                .find(e => e.checkVisibility());
+            const shown = [...place.children].find(e => e.checkVisibility());
+            const size = el => {
+                const was = [shown.style.display, el.style.display];
+                shown.style.display = 'none';
+                el.style.display = 'block';
+                const b = el.getBoundingClientRect();
+                [shown.style.display, el.style.display] = was;
+                return [b.width, b.height];
+            };
+            return ['.art-pick__use--go', '.art-pick__use--done']
+                .map(sel => size(place.querySelector(sel)));
+        }"""
+    )
+    assert sizes[0] == sizes[1], sizes
+    page.context.close()
+
+
 _BOXES = """sels => {
     const box = e => { const b = e.getBoundingClientRect();
         return {left: b.left, right: b.right, top: b.top, bottom: b.bottom,

@@ -1713,10 +1713,14 @@ dialog::backdrop {
 .art-pick__ctl { display: flex; align-items: center; gap: .25rem; margin-bottom: .5rem; }
 /* One Use per row, and the section's generated rules show the checked row's. */
 .art-pick__for { display: none; }
+/* One width for Use and the ✓ that stands in for it, so stepping between
+   images moves neither it nor the arrows beside it (#918). */
 .art-pick__use {
   display: block;
+  width: 3.5rem;
   height: 1.9rem;
   padding: 0 .75rem;
+  text-align: center;
   border: 0;
   border-radius: 4px;
   background: var(--color-mb-purple);
