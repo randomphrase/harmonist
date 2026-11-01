@@ -216,8 +216,7 @@ def test_the_maximized_picker_steps_and_use_puts_it_back(
     assert _shown(page) == ["103"]
     pw.expect(_pane(panel, "cand")).to_have_attribute("data-cand", "103")
     # …of the album's two fronts and the other release's, now listed.
-    pw.expect(panel.locator(".art-pick__nav .art-pick__count")).to_have_text("2 of 3")
-    pw.expect(panel.locator(".art-pick__row-count")).to_have_text(re.compile(r"^2 of \d+$"))
+    pw.expect(panel.locator(".art-pick__slide[data-front='true']")).to_have_count(3)
 
     # Put back, the picker on the page is where it was moved to embiggened:
     # the same row, the same image — it is the same picker.
@@ -460,40 +459,77 @@ def test_the_picker_is_the_height_of_its_row(browser_factory, reset_carousel_ser
     page.context.close()
 
 
-@pytest.mark.parametrize("width", [1100, 1440])
-def test_the_picker_has_the_room_and_its_controls_follow_its_caption(
+_BOXES = """sels => {
+    const box = e => { const b = e.getBoundingClientRect();
+        return {left: b.left, right: b.right, top: b.top, bottom: b.bottom,
+                width: b.width, x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2}; };
+    // A key ending in "text" measures the element's words, not its box.
+    const words = el => { const r = document.createRange(); r.selectNodeContents(el); return r; };
+    return Object.fromEntries(Object.entries(sels).map(([key, sel]) => {
+        const el = [...document.querySelectorAll(sel)].find(e => e.checkVisibility());
+        return [key, el ? box(key.endsWith('text') ? words(el) : el) : null];
+    }));
+}"""
+
+
+def _either_end_of(arrows: tuple[dict, dict], title: dict, column: dict) -> None:
+    """The arrows at either end of the column, as far in from each, both level
+    with the title line and the title's words between them."""
+    first, second = arrows
+    inset = first["left"] - column["left"]
+    assert 0 <= inset <= 16 and abs(column["right"] - second["right"] - inset) <= 1, (
+        arrows,
+        column,
+    )
+    assert first["right"] <= title["left"] and title["right"] <= second["left"], (arrows, title)
+    for arrow in arrows:
+        assert abs(arrow["y"] - title["y"]) <= 1, (arrow, title)
+
+
+@pytest.mark.parametrize("width", [700, 1024, 1440])
+def test_the_picker_steps_from_its_title(
     browser_factory, reset_carousel_server: str, width: int
 ) -> None:
-    """Beside the rows, the picker's caption has at least the room a row's
-    has: the rows' captions are capped at what their facts need, and the
-    picker takes the rest. Under its caption, Don't suggest, about the image
-    shown; then ‹ ›; then Front only, about what they step through. At the
-    first row ↑ is there, disabled, so ↓ reads as one of a pair (#918)."""
+    """‹ before the picker's title and › at the end of its line, with no count
+    (#918): ‹ never moves as the title changes, and › keeps to the end. The
+    title is one line, cut short rather than wrapped. Beside the rows, the
+    caption has at least the room a row's has, and under it Don't suggest,
+    then Front only. At the first row the gutter's ↑ is there, disabled, so ↓
+    reads as one of a pair."""
     _browser, page = _open(browser_factory, reset_carousel_server)
     page.set_viewport_size({"width": width, "height": 1400})
     section = page.locator("#album-artwork")
-    rows = section.locator("input[name='row']")
-    rows.first.evaluate("radio => radio.click()")
-    boxes = page.evaluate(
-        """() => {
-            const s = document.getElementById('album-artwork');
-            const box = e => { const b = e.getBoundingClientRect();
-                return {left: b.left, top: b.top, bottom: b.bottom, width: b.width}; };
-            const one = sel => [...s.querySelectorAll(sel)].find(e => e.checkVisibility());
-            return {
-                row: box(one('.art-row:has(input[name="row"]:checked) .art-row__facts')),
-                caption: box(one('.art-pick__slide .art-row__facts')),
-                dismiss: box(one('.art-pick__slide .art-pick__dismiss')),
-                nav: box(one('.art-pick__picker .art-pick__nav')),
-                front: box(one('.art-pick__picker .art-pick__front-only')),
-            };
-        }"""
-    )
-    assert boxes["caption"]["width"] >= boxes["row"]["width"], boxes
-    order = [boxes[k] for k in ("caption", "dismiss", "nav", "front")]
-    for above, below in itertools.pairwise(order):
-        assert above["bottom"] <= below["top"], boxes
-    assert len({round(b["left"]) for b in order}) == 1, boxes  # one column
+    section.locator("input[name='row']").first.evaluate("radio => radio.click()")
+    p = "#album-artwork .art-pick__picker"
+    sels = {
+        "row": "#album-artwork .art-row:has(input[name='row']:checked) .art-row__facts",
+        "caption": f"{p} .art-pick__slide .art-row__facts",
+        "title_text": f"{p} .art-pick__slide .art-row__who",
+        "meta": f"{p} .art-pick__slide .art-row__meta",
+        "nav": f"{p} .art-pick__nav",
+        "back": f"{p} .art-pick__turn--back",
+        "on": f"{p} .art-pick__turn--on",
+        "dismiss": f"{p} .art-pick__slide .art-pick__dismiss",
+        "front": f"{p} .art-pick__front-only",
+    }
+    first = page.evaluate(_BOXES, sels)
+    with page.expect_response(lambda r: "more=ahead" in r.url):
+        section.get_by_role("button", name="Next image").click()  # 103: both ways open
+    page.wait_for_function(SETTLED)
+    boxes = page.evaluate(_BOXES, sels)
+    _either_end_of((boxes["back"], boxes["on"]), boxes["title_text"], boxes["caption"])
+    assert boxes["back"]["left"] == first["back"]["left"], (first, boxes)  # ‹ stays put
+    # Under the title, the caption starts where ‹ does, not in line with the title.
+    assert abs(boxes["meta"]["left"] - boxes["back"]["left"]) <= 1, boxes
+    title = section.locator(".art-pick__picker .art-pick__slide .art-row__who").filter(visible=True)
+    pw.expect(title).to_have_css("white-space", "nowrap")
+    pw.expect(section.locator(".art-pick__picker .art-pick__nav")).to_have_text("")
+    if width >= 1024:
+        assert boxes["caption"]["width"] >= boxes["row"]["width"], boxes
+        order = [boxes[k] for k in ("caption", "dismiss", "front")]
+        for above, below in itertools.pairwise(order):
+            assert above["bottom"] <= below["top"], boxes
+        assert len({round(b["left"]) for b in order}) == 1, boxes  # one column
 
     up = section.locator(".art-pick__step[data-art-step='-1']")
     pw.expect(up).to_be_visible()
@@ -502,37 +538,40 @@ def test_the_picker_has_the_room_and_its_controls_follow_its_caption(
     page.context.close()
 
 
-def test_embiggened_the_controls_follow_the_caption_as_on_the_page(
+def test_embiggened_the_arrows_frame_the_titles(
     browser_factory, reset_carousel_server: str
 ) -> None:
-    """Embiggened, under the shown image: its caption, Don't suggest, ‹ ›,
-    Front only — the page's order, since it is the page's picker (#918). Under
-    the row's image, its caption level with the shown one's and ↑ ↓ level
-    with ‹ ›."""
+    """Embiggened, ‹ and › stand at either end of the shown image's title line
+    and ↑ and ↓ at either end of the row's, with no counts (#918). Under the
+    shown image: its caption, Don't suggest, Front only — the page's order —
+    and the row's caption level with it."""
     _browser, page = _open(browser_factory, reset_carousel_server)
     panel = _maximize(page)
-    boxes = page.evaluate(
-        """() => {
-            const p = document.querySelector('.art-pick__picker:popover-open');
-            const box = e => { const b = e.getBoundingClientRect();
-                return {top: b.top, bottom: b.bottom, middle: (b.top + b.bottom) / 2}; };
-            const one = sel => [...p.querySelectorAll(sel)].find(e => e.checkVisibility());
-            return {
-                caption: box(one('.art-pick__slide .art-row__facts')),
-                dismiss: box(one('.art-pick__slide .art-pick__dismiss')),
-                nav: box(one('.art-pick__nav')),
-                front: box(one('.art-pick__front-only')),
-                row: box(one('.art-max__head--now .art-row__facts')),
-                step: box(one('.art-pick__step')),
-            };
-        }"""
-    )
-    order = [boxes[k] for k in ("caption", "dismiss", "nav", "front")]
+    p = ".art-pick__picker:popover-open"
+    sels = {
+        "row": f"{p} .art-max__head--now .art-row__facts",
+        "row_title_text": f"{p} .art-max__head--now .art-row__who",
+        "caption": f"{p} .art-pick__slide .art-row__facts",
+        "title_text": f"{p} .art-pick__slide .art-row__who",
+        "up": f"{p} .art-pick__step[data-art-step='-1']",
+        "down": f"{p} .art-pick__step[data-art-step='1']",
+        "back": f"{p} .art-pick__turn--back",
+        "on": f"{p} .art-pick__turn--on",
+        "dismiss": f"{p} .art-pick__slide .art-pick__dismiss",
+        "front": f"{p} .art-pick__front-only",
+    }
+    page.keyboard.press("ArrowDown")
+    with page.expect_response(lambda r: "more=ahead" in r.url):
+        page.keyboard.press("ArrowRight")  # 103: both ways open
+    page.wait_for_function(SETTLED)
+    boxes = page.evaluate(_BOXES, sels)
+    _either_end_of((boxes["up"], boxes["down"]), boxes["row_title_text"], boxes["row"])
+    _either_end_of((boxes["back"], boxes["on"]), boxes["title_text"], boxes["caption"])
+    pw.expect(panel.locator(".art-pick__nav")).to_have_text("")
+    order = [boxes[k] for k in ("caption", "dismiss", "front")]
     for above, below in itertools.pairwise(order):
         assert above["bottom"] <= below["top"], boxes
     assert boxes["row"]["top"] == boxes["caption"]["top"], boxes
-    assert abs(boxes["step"]["middle"] - boxes["nav"]["middle"]) <= 1, boxes
-    pw.expect(panel.get_by_role("button", name="Put the artwork picker back")).to_be_visible()
     page.context.close()
 
 

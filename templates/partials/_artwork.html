@@ -385,16 +385,13 @@
        already coming to it: a Use there would be a press that changes nothing
        (*Far & Off*, #659).
 
-       ↑ and ↓ look like ‹ and ›, at either size: embiggened, they stand under
-       the row's image as ‹ › stand under the shown one. They move the check between
-       radios, which is a script's job (artwork-viewer.js) — no request, and no
-       `onclick` (web-ui rule 2a). #}
+       ↑ and ↓ look like ‹ and ›, at either size: embiggened, they stand at
+       either end of the row's title as ‹ › do the shown image's. They move the
+       check between radios, which is a script's job (artwork-viewer.js) — no
+       request, and no `onclick` (web-ui rule 2a). #}
     <div class="art-pick__ctl">
         <button type="button" class="art-arrow art-pick__step" data-art-step="-1" data-art-group="row"
                 aria-label="Previous row">{{ arrow('up') }}</button>
-        {# Embiggened, the rows are out of sight: where the checked one is,
-           between ↑ and ↓ as the shown image's is between ‹ and ›. #}
-        <span class="art-max art-pick__count art-pick__row-count"></span>
         {% for r in artwork.rows %}
         <div class="art-pick__for" data-row="{{ loop.index }}">
             <button type="submit" name="pick" value="1" class="art-pick__use art-pick__use--go"
@@ -490,14 +487,13 @@
             {% endif %}
         </div>
         {% endfor %}
-        {# ‹ and ›, under the image at either size, with where the shown image
-           is among those Front only lets it show (artwork-viewer.js counts
-           them). #}
+        {# ‹ and ›, at either end of the shown image's title line at either
+           size (#918): ‹ before the title, so it never moves as the title
+           changes, and › at the end of the line. #}
         <div class="art-pick__nav">
             {% if picker|length > 1 or artwork.other_releases %}
             <button type="button" class="art-arrow art-pick__turn art-pick__turn--back" data-art-step="-1"
                     data-art-group="candidate" aria-label="Previous image">{{ arrow('left') }}</button>
-            <span class="art-pick__count"></span>
             <button type="button" class="art-arrow art-pick__turn art-pick__turn--on" data-art-step="1"
                     data-art-group="candidate" aria-label="Next image">{{ arrow('right') }}</button>
             {% endif %}

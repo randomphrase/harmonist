@@ -1543,10 +1543,29 @@ dialog::backdrop {
 :is(.art-pick__ctl, .art-pick__nav, .art-full__nav):not(:has(.art-arrow:enabled)) .art-arrow {
   visibility: hidden;
 }
-/* ‹, where the shown image is, ›, and the toggle that maximizes: under the
-   image, beside it rather than over it. */
-.art-pick__nav { display: flex; align-items: center; gap: .35rem; margin-top: .5rem; }
-.art-pick__count,
+/* ‹ and ›, at either end of the shown image's title line (#918): ‹ before
+   the title, where it never moves as the title changes, and › at the end of
+   the line. Over the caption's first line, which keeps clear of them and is
+   cut short rather than wrapped; the lines under it start at the left. */
+.art-pick__nav {
+  position: absolute;
+  top: 0;
+  left: calc(var(--art-thumb, 6.5rem) + .85rem);
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 1.75rem;
+  pointer-events: none;
+}
+.art-pick__nav .art-arrow { pointer-events: auto; }
+.art-compare--pick:has(.art-pick__turn) :is(.art-pick__slide, .art-pick__ghost-facts) > .art-row__facts > .art-row__who {
+  padding-inline: calc(1.75rem + .4rem);
+  overflow: hidden;
+  line-height: 1.75rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .art-full__count {
   min-width: 3.2rem;
   font-size: .72rem;
@@ -1808,17 +1827,15 @@ dialog::backdrop {
   .art-pick__ghost--loading { display: none; }
   .art-layout:has(.art-pick__loading.htmx-request) .art-pick__ghost--loading { display: block; }
   .art-pick__placeholder { width: 100%; }
-  /* The image, and to its right its caption, then Don't suggest, which is
-     about the image shown, ‹ where it is ›, and Front only, which is about
-     what they step through (#918). The slides are laid out together, so every
-     caption is in the one space (above). The last row takes up what the image
-     is taller than the rest. Close-set, so a caption of three lines and all
-     three controls fit beside the image, and the picker stays its row's
-     height. */
+  /* The image, and to its right its caption, with ‹ › on its title line
+     (above), then Don't suggest and Front only (#918). The slides are laid out together, so every caption is in the one
+     space (above). The last row takes up what the image is taller than the
+     rest. Close-set, so a long caption and both checkboxes fit beside the
+     image, and the picker stays its row's height. */
   .art-pick__carousel {
     display: grid;
     grid-template-columns: var(--art-thumb) minmax(0, 1fr);
-    grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
     column-gap: .85rem;
     row-gap: .1rem;
   }
@@ -1833,8 +1850,7 @@ dialog::backdrop {
   }
   .art-pick__carousel :is(.art-pick__slide > .art-row__facts, .art-pick__ghost-facts) { grid-area: 1 / 2; }
   .art-pick__carousel .art-pick__dismiss { grid-area: 2 / 2; margin: 0; }
-  .art-pick__carousel .art-pick__nav { grid-area: 3 / 2; margin: 0; }
-  .art-pick__carousel .art-pick__front-only { grid-area: 4 / 2; margin: 0; }
+  .art-pick__carousel .art-pick__front-only { grid-area: 3 / 2; margin: 0; }
   /* ↑ at the picker's top and ↓ at its foot, Use half-way between: level
      with the middle of the row. The arrows are centred on Use's label, not
      on the whole arrow, whose point would pull them off the ✓. */
@@ -1861,13 +1877,13 @@ dialog::backdrop {
 /* The picker, embiggened (#918): the same panel in the top layer, laid out as
    two panes — the checked row's image on the left, the shown one on the
    right — with Use between them, pointing from the one into the other. Under
-   each image, as beside the picker's image on the page: its facts, then its
-   arrows and where it is among the rest. The panel's own controls are placed
+   each image, as beside the picker's image on the page: its facts, with its
+   arrows at either end of its title line. The panel's own controls are placed
    into this grid; `display: contents` lifts them out of the boxes that lay
    them out on the page.
 
-   Rows: the bar (scale, put back), the panes, facts, Don't suggest, arrows,
-   Front only — the page's order. Every row's facts and every image's are laid out
+   Rows: the bar (scale, put back), the panes, facts, Don't suggest, Front
+   only — the page's order. Every row's facts and every image's are laid out
    in their row, one on another, and all but the shown ones hidden: the row is
    as tall as the longest, so the panes never give up height to a caption with
    another line (#918). */
@@ -1879,7 +1895,7 @@ dialog::backdrop {
   inset: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 6rem minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   width: min(80rem, 96vw);
   height: 92dvh;
   margin: auto;
@@ -1897,7 +1913,7 @@ dialog::backdrop {
    row's. */
 .art-pick__picker:popover-open .art-pick__carousel {
   display: grid;
-  grid-area: 3 / 3 / 7 / 4;
+  grid-area: 3 / 3 / 6 / 4;
   grid-template-rows: subgrid;
   grid-template-columns: minmax(0, 1fr);
   row-gap: 0;
@@ -1933,8 +1949,8 @@ dialog::backdrop {
   cursor: pointer;
 }
 .art-pick__picker:popover-open .art-pick__size:hover { background: var(--color-surface); color: var(--color-ink); }
-/* Use, alone between the panes, half-way down them. ↑ and ↓ go under the
-   row's image (below), so the box that holds the three on the page lets go. */
+/* Use, alone between the panes, half-way down them. ↑ and ↓ go on the row's
+   title line (below), so the box that holds the three on the page lets go. */
 .art-pick__picker:popover-open .art-pick__ctl { display: contents; }
 .art-pick__picker:popover-open .art-pick__for {
   grid-area: 2 / 2;
@@ -1946,25 +1962,19 @@ dialog::backdrop {
   border-radius: 0 4px 4px 0;
   clip-path: polygon(.8rem 0, 100% 0, 100% 100%, .8rem 100%, 0 50%);
 }
-/* Under the row's facts: ↑ where it is ↓, centred, spaced exactly as ‹ › are
-   under the shown image's — one row of the grid, so placed by offset from the
-   middle rather than wrapped in a box of their own. */
-.art-pick__picker:popover-open .art-pick__step,
-.art-pick__picker:popover-open .art-pick__row-count {
-  grid-area: 5 / 1;
-  justify-self: center;
-  align-self: center;
-  margin-top: .5rem;
-}
-.art-pick__picker:popover-open .art-pick__row-count { display: block; }
-.art-pick__picker:popover-open .art-pick__step[data-art-step="-1"] { translate: calc(-1 * (1.6rem + .35rem + .875rem)) 0; }
-.art-pick__picker:popover-open .art-pick__step[data-art-step="1"] { translate: calc(1.6rem + .35rem + .875rem) 0; }
-.art-pick__picker:popover-open .art-pick__nav {
+/* ↑ at the start of the row's title line and ↓ at its end, as ‹ › are on
+   the shown image's. */
+.art-pick__picker:popover-open .art-pick__step[data-art-step] {
   grid-area: 3 / 1;
-  justify-content: center;
-  margin: .5rem 0 0;
+  align-self: start;
+  margin: .35rem .85rem 0;
+  translate: none;
 }
-/* Each image's facts, centred under it. */
+.art-pick__picker:popover-open .art-pick__step[data-art-step="-1"] { justify-self: start; }
+.art-pick__picker:popover-open .art-pick__step[data-art-step="1"] { justify-self: end; }
+.art-pick__picker:popover-open .art-pick__nav { top: .35rem; left: .85rem; right: .85rem; }
+/* Each image's facts, centred under it, the title clear of the arrows at
+   either end of its line and cut short rather than wrapped. */
 .art-max__head--now { grid-area: 3 / 1; }
 .art-pick__picker:popover-open .art-max__head--now { display: grid; }
 .art-max__head--now > [data-row] { display: block; grid-area: 1 / 1; visibility: hidden; }
@@ -1974,6 +1984,14 @@ dialog::backdrop {
   align-items: center;
   padding: .35rem .85rem 0;
   text-align: center;
+}
+.art-pick__picker:popover-open :is(.art-max__head--now, .art-pick__slide) .art-row__facts > .art-row__who {
+  max-width: 100%;
+  overflow: hidden;
+  padding-inline: calc(1.75rem + .4rem);
+  line-height: 1.75rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 /* The panes: each scrolls at 100%, and the two scroll together. */
 .art-max__stage {
@@ -2012,11 +2030,11 @@ dialog::backdrop {
 }
 .art-pick__picker:popover-open .art-max__status:empty { display: none; }
 .art-max__status button { text-decoration: underline; cursor: pointer; }
-/* Don't suggest under the shown image's facts, Front only under its arrows,
-   as on the page. */
+/* Don't suggest, then Front only, under the shown image's facts, as on the
+   page. */
 .art-pick__picker:popover-open .art-pick__check { justify-self: center; margin: .4rem 0 0; }
 .art-pick__picker:popover-open .art-pick__dismiss { grid-area: 2 / 1; }
-.art-pick__picker:popover-open .art-pick__front-only { grid-area: 4 / 1; }
+.art-pick__picker:popover-open .art-pick__front-only { grid-area: 3 / 1; }
 
 /* What the row is now, and what a re-tag would make it (#413). The second half
    is empty on a row that changes nothing, which is most of them. */

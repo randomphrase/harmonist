@@ -563,18 +563,14 @@
     });
     // ‹ and › only where they go somewhere, and ↑ and ↓ the same: ‹ not on the
     // first image shown, › not on the last — unless another release may follow
-    // it. Disabled, which the stylesheet hides, so a press that would do
-    // nothing is never offered. Between ‹ and ›, where the shown image is among
-    // those Front only lets it show (#918). Re-read after anything that moves
-    // the picker or changes what it shows.
+    // it. Disabled, so a press that would do nothing is never offered.
+    // Re-read after anything that moves the picker or changes what it shows.
     const turns = form => {
         const rows = Array.from(form.querySelectorAll('input[name="row"]'));
         const row = rows.findIndex(radio => radio.checked);
         form.querySelectorAll('.art-pick__step').forEach(step => {
             step.disabled = Number(step.dataset.artStep) < 0 ? row <= 0 : row === rows.length - 1;
         });
-        const rowCount = form.querySelector('.art-pick__row-count');
-        if (rowCount) rowCount.textContent = `${row + 1} of ${rows.length}`;
         const back = form.querySelector('.art-pick__turn--back');
         const on = form.querySelector('.art-pick__turn--on');
         if (!back || !on) return;
@@ -582,7 +578,6 @@
         const at = radios.findIndex(radio => radio.checked);
         back.disabled = at <= 0;
         on.disabled = at === radios.length - 1 && !form.querySelector('.art-pick__more[data-more="step"]');
-        form.querySelector('.art-pick__nav .art-pick__count').textContent = `${at + 1} of ${radios.length}`;
     };
     document.addEventListener('htmx:load', event => {
         const root = event.detail.elt;
