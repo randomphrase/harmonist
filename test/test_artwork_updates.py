@@ -708,3 +708,90 @@ def test_the_check_that_sees_the_front_change_fetches_its_successor(tmp_path, mo
     assert artwork_updates.sweep([album], limit=1) == 0
     assert fetched == ["https://example.test/new.png"]
     assert artwork_updates.operation(album) is artwork.Operation.REPLACEMENT
+
+
+@pytest.mark.parametrize("changed", [True, False])
+def test_the_check_that_sees_the_front_change_lists_the_release_again(
+    tmp_path, monkeypatch, changed
+):
+    """The picker offers what the release's stored listing names, and After
+    apply what the front check found (#927). A listing still fresh by its own
+    date can predate the front the check just found, so the check lists the
+    release again — and only then, at one request."""
+    old, new = png_bytes(120, 120), png_bytes(60, 60)
+    album = _carrying(tmp_path, old)
+    stale = _archive(old, age=timedelta(days=8))
+    old_url = "https://example.test/front.png"
+    new_url = "https://example.test/new.png" if changed else old_url
+
+    def listed(url, *, front):
+        image_id = url.rsplit("/", 1)[1].removesuffix(".png")
+        return cover_art.Candidate(image_id, url, url, ("front",), front)
+
+    monkeypatch.setattr(
+        cover_art, "fetch_listing", lambda kind, mbid: [listed(old_url, front=True)]
+    )
+    caa_cache.listing("release", MBID)
+    listings = []
+
+    def fetch_listing(kind, mbid):
+        listings.append((kind, mbid))
+        return [listed(new_url, front=True)] + ([listed(old_url, front=False)] if changed else [])
+
+    def check(mbid, **kwargs):
+        cover_art.cache_image(mbid, new, "image/png")
+        return replace(stale, fetched_at=datetime.now(UTC), image_url=new_url, width=60)
+
+    monkeypatch.setattr(cover_art, "fetch_listing", fetch_listing)
+    monkeypatch.setattr(cover_art, "check_front", check)
+
+    assert artwork_updates.sweep([album], limit=1) == 1
+
+    assert listings == ([("release", MBID)] if changed else [])
+    stored = caa_cache.stored_listing("release", MBID)
+    assert stored is not None
+    assert [c.image_url for c in stored if c.front] == [new_url]
+
+
+def test_a_front_that_falls_back_to_the_group_lists_both_again(tmp_path, monkeypatch):
+    """The release lost its front, and the group's stands in (#927): the
+    release's listing still names the front it lost, and the group's one it
+    has since replaced, so both are asked again."""
+    release = _release(mbid=MBID)
+    activity_store.store_release(MBID, "+".join(sorted(mb_lookup.RELEASE_INCLUDES)), release)
+    album = _carrying(tmp_path, png_bytes(120, 120))
+    stale = _archive(png_bytes(120, 120), age=timedelta(days=8))
+    old_url, group_url = "https://example.test/front.png", "https://example.test/group.png"
+    lists = {
+        ("release", MBID): [cover_art.Candidate("1", old_url, old_url, ("front",), True)],
+        ("release-group", "rg-aaa"): [cover_art.Candidate("2", old_url, old_url, ("front",), True)],
+    }
+    monkeypatch.setattr(cover_art, "fetch_listing", lambda kind, mbid: lists[kind, mbid])
+    for kind, key in lists:
+        caa_cache.listing(kind, key)
+    lists = {
+        ("release", MBID): [],
+        ("release-group", "rg-aaa"): [
+            cover_art.Candidate("3", group_url, group_url, ("front",), True)
+        ],
+    }
+    listings = []
+
+    def fetch_listing(kind, mbid):
+        listings.append((kind, mbid))
+        return lists[kind, mbid]
+
+    def check(mbid, **kwargs):
+        cover_art.cache_image(mbid, png_bytes(60, 60), "image/png")
+        return replace(
+            stale, fetched_at=datetime.now(UTC), image_url=group_url, source="release-group"
+        )
+
+    monkeypatch.setattr(cover_art, "fetch_listing", fetch_listing)
+    monkeypatch.setattr(cover_art, "check_front", check)
+
+    assert artwork_updates.sweep([album], limit=1) == 1
+
+    assert listings == [("release", MBID), ("release-group", "rg-aaa")]
+    assert caa_cache.stored_listing("release", MBID) == []
+    assert caa_cache.stored_listing("release-group", "rg-aaa") == lists["release-group", "rg-aaa"]

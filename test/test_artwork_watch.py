@@ -3,7 +3,7 @@
 import json
 import threading
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from html import unescape
 from unittest.mock import Mock
 
@@ -272,7 +272,11 @@ def test_sweep_shares_cache_and_failure_preserves_proposal(client, cfg, setup, m
     other = replace(album, id="other", sidecar=replace(album.sidecar, artwork_watch=None))
     before = {p.name: p.read_bytes() for p in album.path.iterdir() if p.is_file()}
     caa_cache.configure(timedelta(0))
-    monkeypatch.setattr(caa_cache, "front", Mock())
+    # The front the listings name, so the check has no listing to ask again (#927).
+    front = activity_store.CachedCoverArt(
+        fetched_at=datetime.now(UTC), image_url=candidate("200").image_url, source="release"
+    )
+    monkeypatch.setattr(caa_cache, "front", Mock(return_value=front))
     listed.reset_mock()
     assert artwork_updates.sweep([album, other], limit=10) == 1
     assert listed.call_count == 2 and downloaded.call_count == 1

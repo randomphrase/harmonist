@@ -6,6 +6,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The artwork picker offers a new archive front as soon as an artwork update
+  is reported** (#927).
+
 ## [1.32.0] - 2026-11-01
 
 ### Added

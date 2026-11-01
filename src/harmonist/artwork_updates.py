@@ -564,6 +564,30 @@ def download_threshold(local: LocalArtwork | None, borrowed: frozenset[str]) -> 
     return size.width if size else None
 
 
+def _out_of_step(
+    mbid: str, group: str | None, answer: activity_store.CachedCoverArt
+) -> list[tuple[str, str]]:
+    """The stored listings whose front is not the one the check found (#927).
+
+    The picker offers what a listing names, and After apply what the front
+    check found. Each keeps its own date, so a front the check has just found
+    can be missing from a listing still fresh by its own. The release's listing
+    should name the answer's front unless that came from the group; the
+    group's should name it when it did, and nothing when neither has one. A
+    listing never stored is not out of step: the album page lists it when the
+    album is first shown.
+    """
+    expected = {("release", mbid): None if answer.from_release_group else answer.image_url}
+    if group is not None and (answer.from_release_group or not answer.has_art):
+        expected[("release-group", group)] = answer.image_url
+    return [
+        (kind, key)
+        for (kind, key), url in expected.items()
+        if (listed := caa_cache.stored_listing(kind, key)) is not None
+        and next((c.image_url for c in listed if c.front), None) != url
+    ]
+
+
 def sweep(albums: Sequence[Album], *, limit: int | None = None) -> int:
     """Refresh a bounded oldest-first slice on CAA's own clock. Never write music.
 
@@ -621,11 +645,15 @@ def sweep(albums: Sequence[Album], *, limit: int | None = None) -> int:
             if any(artwork_watch.active(a.sidecar) for a in groups[mbid]):
                 artwork_watch.check(mbid)
                 artwork_watch.prepare(groups[mbid])
-            caa_cache.front(
+            front = caa_cache.front(
                 mbid,
                 release_group_mbid=group if isinstance(group, str) else None,
                 keep_if_wider_than=width,
             )
+            # The picker beside the plan this check changes must offer what
+            # it found, so a listing behind it is asked again now (#927).
+            for kind, key in _out_of_step(mbid, group if isinstance(group, str) else None, front):
+                caa_cache.listing(kind, key, max_age=caa_cache.FRESH)
             # The check was sized by what the albums carried before it learnt
             # one of those images is a front the archive has replaced (#886).
             # Its successor wins whatever it measures, so it is fetched now,
