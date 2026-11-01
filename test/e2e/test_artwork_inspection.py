@@ -182,6 +182,11 @@ def test_thumbnail_frames_do_not_shrink_for_long_metadata(
     # The rows' frames: the picker's image is sized by its own panel (#659).
     thumbs = host.locator("button.art-row__art[popovertarget]:not(.art-pick__image)")
     assert thumbs.count() >= 2
+    measure = (
+        "els => els.map(e => [e.getBoundingClientRect().width, e.getBoundingClientRect().height])"
+    )
+    unstressed = thumbs.evaluate_all(measure)
+    assert all(w == h >= 104 for w, h in unstressed), unstressed  # square, never small
     # Stress one caption, leaving the opposing image's caption short.
     # No layout/style mutation: this is the metadata a large box set can carry.
     thumbs.first.evaluate(
@@ -189,10 +194,8 @@ def test_thumbnail_frames_do_not_shrink_for_long_metadata(
         "'Discs 1, 3, 5, 7, 9: tracks 1, 3, 5, 7, 9 and cover.png — '"
         ".repeat(6)"
     )
-    sizes = thumbs.evaluate_all(
-        "els => els.map(e => [e.getBoundingClientRect().width, e.getBoundingClientRect().height])"
-    )
-    assert all(size == [104, 104] for size in sizes), sizes
+    sizes = thumbs.evaluate_all(measure)
+    assert sizes == unstressed
     for thumb in thumbs.all():
         pw.expect(thumb.locator("img")).to_have_css("object-fit", "contain")
     assert host.evaluate("e => e.scrollWidth <= e.clientWidth + 1")

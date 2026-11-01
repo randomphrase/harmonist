@@ -377,6 +377,45 @@ def test_the_room_kept_for_the_picker_ends_where_it_does(
     page.context.close()
 
 
+def test_the_three_images_are_drawn_alike(browser_factory, reset_carousel_server: str) -> None:
+    """Now, After Apply and the picker's image are the same size, their tops
+    level and each caption to its image's right, with Use level with their
+    middles — whichever row is checked (#918). They are three views of one
+    choice; a picker drawn differently read as something else."""
+    _browser, page = _open(browser_factory, reset_carousel_server)
+    rows = page.locator("#album-artwork input[name='row']")
+    for index in range(rows.count()):
+        rows.nth(index).evaluate("radio => radio.click()")
+        boxes = page.evaluate(
+            """() => {
+                const s = document.getElementById('album-artwork');
+                const box = e => { const b = e.getBoundingClientRect();
+                    return [b.left, b.top, b.width, b.height]; };
+                const shown = sel => [...s.querySelectorAll(sel)].filter(e => e.checkVisibility());
+                const images = shown('.art-row:has(input[name="row"]:checked) :is(.art-row__art, '
+                    + '.art-row__slot, .art-row__unchanged), .art-pick__slide .art-pick__image');
+                // An empty After Apply has no caption to place.
+                const captions = images.map(i => i.parentElement.querySelector(
+                    ':scope > .art-row__facts')).map(c => c && box(c));
+                const use = shown('.art-pick__for')[0];
+                return {images: images.map(box), captions, use: box(use)};
+            }"""
+        )
+        images, captions, use = boxes["images"], boxes["captions"], boxes["use"]
+        assert len(images) == 3, (index, boxes)
+        # Level, and one size — to within the half pixel the picker's 1.5px
+        # border loses where a browser draws it whole, at a pixel ratio of 1.
+        for i in range(1, 4):
+            assert max(b[i] for b in images) - min(b[i] for b in images) <= 0.5, (index, images)
+        assert captions[0] and captions[-1], (index, boxes)  # the row's, and the picker's
+        for image, caption in zip(images, captions, strict=True):
+            if caption:
+                assert caption[0] >= image[0] + image[2], (index, image, caption)
+        _, top, size, _ = images[0]
+        assert abs(use[1] + use[3] / 2 - (top + size / 2)) <= 1, (index, use, images)
+    page.context.close()
+
+
 def test_a_section_swap_does_not_scroll_the_page_in_webkit(
     browser_factory, reset_carousel_server: str, htmx_complete
 ) -> None:

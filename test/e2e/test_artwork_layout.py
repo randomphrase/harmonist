@@ -48,8 +48,9 @@ def test_apply_uses_section_footer_within_picker_reservation(
     assert abs((after["y"] - last_after["y"]) - (apply["y"] - last["y"])) < 1, (
         "moving the picker moved Apply relative to its rows"
     )
-    assert panel["y"] + panel["height"] - (picker["y"] + picker["height"]) <= 48, (
-        "Apply must fit beside the picker without extending the section"
+    foot = max(picker["y"] + picker["height"], after["y"] + after["height"])
+    assert panel["y"] + panel["height"] - foot <= 48, (
+        "the section ends at whichever of the picker and Apply reaches lower"
     )
 
     for width in (760, 390):

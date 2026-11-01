@@ -1504,9 +1504,8 @@ dialog::backdrop {
 
 /* The carousel (#659): one image at a time — the one whose radio is checked —
    and, while Front only is ticked, never one that is not a front. A thumbnail
-   and its facts side by side while the picker is the full width of the
-   section; the picture fills the panel once it is a column of its own (below),
-   where there is room to look at it and nothing else to fill. */
+   and its facts side by side, as the rows draw theirs, whether the picker is
+   the full width of the section or a column of its own (below). */
 .art-pick__carousel { position: relative; container-type: inline-size; }
 .art-pick__slide { display: none; cursor: default; }
 .art-pick__slide:has(input[name="candidate"]:checked) {
@@ -1734,9 +1733,22 @@ dialog::backdrop {
   .art-layout--pick,
   .art-compare--pick {
     position: relative;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 13.5rem);
+    grid-template-columns: minmax(0, 1fr) minmax(0, calc(var(--art-thumb) + .85rem + 10rem + 1.2rem + 3px));
     column-gap: 5rem;
   }
+  /* Every image beside the picker the size of the picker's, its caption to
+     its right as the picker's is: the same three things, drawn alike. The
+     picker's image is level with the checked row's, too: the row is padded by
+     the picker's margin, border and padding. */
+  .art-layout--pick { --art-thumb: 8rem; }
+  .art-layout--pick :is(.art-rows__head, .art-row) {
+    grid-template-columns: var(--art-thumb) minmax(0, 1fr) var(--art-thumb) minmax(0, 1fr);
+  }
+  .art-layout--pick .art-row :is(.art-row__art, .art-row__slot, .art-row__unchanged) {
+    width: var(--art-thumb);
+    height: var(--art-thumb);
+  }
+  .art-layout--pick .art-row { padding-top: calc(.5rem + 1.5px + .6rem); }
   .art-layout--pick {
     display: grid;
     /* Rows and Apply keep their natural heights. Only the trailing flexible
@@ -1769,43 +1781,35 @@ dialog::backdrop {
   .art-pick__ghost--loading { display: none; }
   .art-layout:has(.art-pick__loading.htmx-request) .art-pick__ghost--loading { display: block; }
   .art-pick__placeholder { width: 100%; }
-  /* The image, ‹ where it is ›, its caption, then Don't suggest and Front
-     only: the order the embiggened picker shows them in, under the image
-     (#918). The slides are laid out together, so every caption is in the one
-     space (above); the two checkboxes stand side by side, centred as a
-     pair — and wrap rather than widen the panel where they don't fit. */
+  /* The image, and to its right its caption, ‹ where it is ›, Don't suggest
+     and Front only (#918). The slides are laid out together, so every caption
+     is in the one space (above). The last row takes up what the image is
+     taller than the rest. */
   .art-pick__carousel {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, auto) minmax(0, 1fr);
-    row-gap: .4rem;
+    grid-template-columns: var(--art-thumb) minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    column-gap: .85rem;
+    row-gap: .3rem;
   }
   /* Even those Front only hides: the space stays the same when it is
      unticked. */
   .art-pick__slide:has(input[name="candidate"]:checked),
   .art-pick__carousel .art-pick__slide[data-front]:not(:has(input[name="candidate"]:checked)) { display: contents; }
   .art-pick__carousel .art-pick__image {
-    grid-area: 1 / 1 / 2 / -1;
-    width: 100%;
-    height: auto;
-    aspect-ratio: 1;
+    grid-area: 1 / 1 / -1 / 2;
+    width: var(--art-thumb);
+    height: var(--art-thumb);
   }
-  .art-pick__carousel .art-pick__nav { grid-area: 2 / 1 / 3 / -1; justify-content: center; margin: 0; }
-  .art-pick__carousel :is(.art-pick__slide > .art-row__facts, .art-pick__ghost-facts) {
-    grid-area: 3 / 1 / 4 / -1;
-    align-items: center;
-    text-align: center;
-  }
-  .art-pick__carousel .art-pick__dismiss { grid-area: 4 / 2; margin: 0; }
-  .art-pick__carousel .art-pick__front-only { grid-area: 4 / 3; margin: 0 0 0 .75rem; }
-  .art-pick__carousel:not(:has(.art-pick__front-only)) .art-pick__dismiss,
-  .art-pick__carousel:not(:has(.art-pick__dismiss)) .art-pick__front-only {
-    grid-column: 1 / -1;
-    justify-self: center;
-    margin-left: 0;
-  }
+  .art-pick__carousel :is(.art-pick__slide > .art-row__facts, .art-pick__ghost-facts) { grid-area: 1 / 2; }
+  .art-pick__carousel .art-pick__nav { grid-area: 2 / 2; margin: .15rem 0 0; }
+  .art-pick__carousel .art-pick__dismiss { grid-area: 3 / 2; margin: .15rem 0 0; }
+  .art-pick__carousel .art-pick__front-only { grid-area: 4 / 2; margin: 0; }
+  /* Level with the middle of the checked row's image and the picker's. */
   .art-pick__ctl {
     position: absolute;
-    top: .35rem;
+    top: calc(.6rem + var(--art-thumb) / 2);
+    translate: 0 -50%;
     right: calc(100% + .6rem);
     flex-direction: column;
     align-items: center;

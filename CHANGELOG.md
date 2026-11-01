@@ -20,8 +20,8 @@ versions follow [semantic versioning](https://semver.org).
 - **Embiggen shows a row's image and an archive image side by side**, zooming
   and panning together; the image viewer steps with ‹ › and a click on the
   image switches between Fit and 100% (#918).
-- **The Artwork section ends at the artwork picker**, instead of keeping room
-  under it for a picker beside the last row (#918).
+- **The Artwork section is more compact**: its images are one size, each with
+  its details to its right, and the section ends at the artwork picker (#918).
 - **After Apply says an image over the limit "will be reduced to fit"**, since
   "reduced to fit" beside its size read as the size after reducing (#893).
 - **The album page reads each file once, and not at all on a repeat view of an

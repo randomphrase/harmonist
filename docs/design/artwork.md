@@ -131,6 +131,15 @@ rather than a viewer of its own: the controls are the page's, so nothing is kept
 in step between two copies, and putting it back leaves the picker where the user
 moved it. A separate viewer remains for images with nothing to compare against.
 
+**On the page, the three images are drawn alike** (#918). Now, After Apply and
+the archive's image are one size, each with its caption to its right, and the
+picker's is level with the checked row's. They are three views of one choice,
+and a picker laid out differently, its image larger and captioned underneath,
+read as something else and took a column's width for one picture. The room kept
+for the picker starts at the checked row, so the section ends at the picker's
+foot and grows as the check moves down, rather than always keeping room for a
+picker beside the last row.
+
 **A choice that changes nothing says so.** Choosing an image a row already
 carries, byte for byte, is a no-op, and once the original is in hand the row
 says **Unchanged** where the incoming image would go, and Use becomes a ✓, rather
