@@ -140,7 +140,10 @@ captions are only as wide as their facts need, and the picker has the rest:
 its captions name releases, which is what wraps. The room kept
 for the picker starts at the checked row, so the section ends at the picker's
 foot and grows as the check moves down, rather than always keeping room for a
-picker beside the last row.
+picker beside the last row. Now and After Apply are a table of the album's rows,
+and the picker is an action beside it, moved from row to row and applied: so it
+has no column heading, which read as the table's third column, and its outline
+is the checked row's height, divider to divider.
 
 **A choice that changes nothing says so.** Choosing an image a row already
 carries, byte for byte, is a no-op, and once the original is in hand the row

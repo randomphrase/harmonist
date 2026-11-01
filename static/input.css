@@ -1451,7 +1451,6 @@ dialog::backdrop {
 .art-compare.htmx-request { opacity: 1; }
 .art-compare--pick .art-rows__head,
 .art-compare--pick .art-row { grid-column: 1; padding-inline: .6rem; }
-.art-pick__head { display: none; }
 /* Its own panel, outlined in the picker's colour: a thing beside the table,
    not a row of it. The tint that used to join it to the checked row made the
    two read as one misaligned row instead. */
@@ -1765,7 +1764,8 @@ dialog::backdrop {
     width: var(--art-thumb);
     height: var(--art-thumb);
   }
-  .art-layout--pick .art-row { padding-top: calc(.5rem + 1.5px + .6rem); }
+  /* The last row as tall as the rest, so a picker beside it fits it too. */
+  .art-layout--pick .art-row:last-child { padding-bottom: .85rem; }
   .art-layout--pick {
     display: grid;
     /* Rows and Apply keep their natural heights. Only the trailing flexible
@@ -1775,20 +1775,30 @@ dialog::backdrop {
   }
   .art-layout--pick > .art-compare { display: contents; }
   /* Directly beneath the rows (#683), beside the picker's room: where the
-     picker hangs changes how far the section reaches, not where Apply is. */
+     picker hangs changes how far the section reaches, not where Apply is. In
+     line with the images above it, and as wide (#918). */
   .art-layout--pick > .art-apply {
     grid-column: 1;
     grid-row: var(--art-layout-rows) / -1;
     align-self: start;
+    margin-left: .6rem;
   }
+  .art-layout--pick > .art-apply button { min-width: var(--art-thumb); }
+  /* From the checked row's top divider to its bottom one, unless what it
+     holds needs more (#918): padded so its image is level with the row's,
+     as a row's is. Its area spans the one row: an absolutely positioned item's
+     unstated end line is the grid's edge, not the next line. */
   .art-pick__picker {
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
+    min-height: 100%;
     grid-column: 2;
-    grid-row: var(--art-pick-row, 2);
+    grid-row: var(--art-pick-row, 2) / span 1;
   }
+  .art-pick__picker,
+  .art-pick__ghost { margin: 0; padding: calc(.85rem - 1.5px) .6rem; }
   .art-pick__ghost {
     display: block;
     visibility: hidden;
@@ -1802,13 +1812,15 @@ dialog::backdrop {
      about the image shown, ‹ where it is ›, and Front only, which is about
      what they step through (#918). The slides are laid out together, so every
      caption is in the one space (above). The last row takes up what the image
-     is taller than the rest. */
+     is taller than the rest. Close-set, so a caption of three lines and all
+     three controls fit beside the image, and the picker stays its row's
+     height. */
   .art-pick__carousel {
     display: grid;
     grid-template-columns: var(--art-thumb) minmax(0, 1fr);
     grid-template-rows: auto auto auto auto minmax(0, 1fr);
     column-gap: .85rem;
-    row-gap: .3rem;
+    row-gap: .1rem;
   }
   /* Even those Front only hides: the space stays the same when it is
      unticked. */
@@ -1820,38 +1832,29 @@ dialog::backdrop {
     height: var(--art-thumb);
   }
   .art-pick__carousel :is(.art-pick__slide > .art-row__facts, .art-pick__ghost-facts) { grid-area: 1 / 2; }
-  .art-pick__carousel .art-pick__dismiss { grid-area: 2 / 2; margin: .1rem 0 0; }
-  .art-pick__carousel .art-pick__nav { grid-area: 3 / 2; margin: .15rem 0 0; }
+  .art-pick__carousel .art-pick__dismiss { grid-area: 2 / 2; margin: 0; }
+  .art-pick__carousel .art-pick__nav { grid-area: 3 / 2; margin: 0; }
   .art-pick__carousel .art-pick__front-only { grid-area: 4 / 2; margin: 0; }
-  /* Level with the middle of the checked row's image and the picker's. */
+  /* ↑ at the picker's top and ↓ at its foot, Use half-way between: level
+     with the middle of the row. The arrows are centred on Use's label, not
+     on the whole arrow, whose point would pull them off the ✓. */
   .art-pick__ctl {
     position: absolute;
-    top: calc(.6rem + var(--art-thumb) / 2);
-    translate: 0 -50%;
+    top: -1.5px;
+    bottom: -1.5px;
     right: calc(100% + .6rem);
     flex-direction: column;
+    justify-content: space-between;
     align-items: center;
     margin: 0;
   }
+  .art-pick__step { translate: calc((1.15rem - .7rem) / 2) 0; }
   /* The arrow IS the Use button, pointing into the checked row's After Apply:
      the direction it points is the thing it does. */
   .art-pick__use {
     padding: 0 .7rem 0 1.15rem;
     border-radius: 0 4px 4px 0;
     clip-path: polygon(.8rem 0, 100% 0, 100% 100%, .8rem 100%, 0 50%);
-  }
-  /* Its heading lines up with Now and After Apply, on the heading row. */
-  .art-pick__head {
-    display: block;
-    grid-column: 2;
-    grid-row: 1;
-    padding: 0 .6rem .4rem;
-    border-bottom: 1px solid var(--color-line);
-    font-size: var(--text-2xs);
-    text-transform: uppercase;
-    letter-spacing: .1em;
-    font-weight: 700;
-    color: var(--color-muted);
   }
 }
 

@@ -361,20 +361,25 @@ def test_a_longer_caption_moves_nothing(
 def test_the_room_kept_for_the_picker_ends_where_it_does(
     browser_factory, reset_carousel_server: str
 ) -> None:
-    """Beside the rows, the picker hangs from the checked row, and the room
-    kept for it below the rows ends at its foot, whichever row that is — not
-    at the foot of a picker beside the last row, which left an empty row's
-    height under one beside the first (#918)."""
+    """Beside the rows, the picker hangs from the checked row, and the section
+    ends at whichever reaches lower, the picker or the rows and Apply — not at
+    the foot of a picker beside the last row, which left an empty row's height
+    under one beside the first (#918)."""
     _browser, page = _open(browser_factory, reset_carousel_server)
     rows = page.locator("#album-artwork input[name='row']")
     assert rows.count() > 1
     for index in range(rows.count()):
         rows.nth(index).evaluate("radio => radio.click()")
-        feet = page.evaluate(
-            """() => ['.art-pick__picker', '.art-pick__ghost'].map(s => Math.round(
-                document.querySelector('#album-artwork ' + s).getBoundingClientRect().bottom))"""
+        layout, foot = page.evaluate(
+            """() => {
+                const s = document.getElementById('album-artwork');
+                const bottom = e => e ? e.getBoundingClientRect().bottom : 0;
+                return [bottom(s.querySelector('.art-layout')), Math.max(
+                    ...['.art-pick__picker', '.art-row:last-child', '.art-apply']
+                        .map(sel => bottom(s.querySelector(sel))))];
+            }"""
         )
-        assert feet[0] == feet[1], (index, feet)
+        assert abs(layout - foot) <= 1, (index, layout, foot)
     page.context.close()
 
 
@@ -414,6 +419,44 @@ def test_the_three_images_are_drawn_alike(browser_factory, reset_carousel_server
                 assert caption[0] >= image[0] + image[2], (index, image, caption)
         _, top, size, _ = images[0]
         assert abs(use[1] + use[3] / 2 - (top + size / 2)) <= 1, (index, use, images)
+    page.context.close()
+
+
+def test_the_picker_is_the_height_of_its_row(browser_factory, reset_carousel_server: str) -> None:
+    """Beside the rows, the picker's outline runs from the checked row's top
+    divider to its bottom one — not a few pixels over, which read as nearly
+    the row's height and not quite (#918). ↑ and ↓ stand at its top and
+    bottom, centred on Use's label rather than on the arrow it is drawn in."""
+    _browser, page = _open(browser_factory, reset_carousel_server)
+    rows = page.locator("#album-artwork input[name='row']")
+    for index in range(rows.count()):
+        rows.nth(index).evaluate("radio => radio.click()")
+        boxes = page.evaluate(
+            """() => {
+                const s = document.getElementById('album-artwork');
+                const box = e => { const b = e.getBoundingClientRect();
+                    return {top: b.top, bottom: b.bottom, centre: (b.left + b.right) / 2}; };
+                const shown = sel => [...s.querySelectorAll(sel)].find(e => e.checkVisibility());
+                const use = shown('.art-pick__for .art-pick__use');
+                const b = use.getBoundingClientRect(), c = getComputedStyle(use);
+                const left = b.left + parseFloat(c.paddingLeft);
+                const right = b.right - parseFloat(c.paddingRight);
+                return {
+                    row: box(s.querySelector('.art-row:has(input[name="row"]:checked)')),
+                    picker: box(s.querySelector('.art-pick__picker')),
+                    up: box(s.querySelector('.art-pick__step[data-art-step="-1"]')),
+                    down: box(s.querySelector('.art-pick__step[data-art-step="1"]')),
+                    label: (left + right) / 2,
+                };
+            }"""
+        )
+        row, picker, up, down = boxes["row"], boxes["picker"], boxes["up"], boxes["down"]
+        assert abs(picker["top"] - row["top"]) <= 0.5, (index, boxes)
+        assert abs(picker["bottom"] - row["bottom"]) <= 0.5, (index, boxes)
+        assert abs(up["top"] - picker["top"]) <= 0.5, (index, boxes)
+        assert abs(down["bottom"] - picker["bottom"]) <= 0.5, (index, boxes)
+        for arrow in (up, down):
+            assert abs(arrow["centre"] - boxes["label"]) <= 1, (index, boxes)
     page.context.close()
 
 

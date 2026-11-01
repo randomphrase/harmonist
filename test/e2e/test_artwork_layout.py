@@ -36,6 +36,11 @@ def test_apply_uses_section_footer_within_picker_reservation(
         "Apply belongs directly beneath the rows"
     )
     assert apply["y"] + apply["height"] <= panel["y"] + panel["height"]
+    # In line with the images above it, and as wide, not nearly so (#918).
+    image = rows.first.locator(".art-row__art").first.bounding_box()
+    assert image, rows.first.inner_html()
+    assert abs(apply["x"] - image["x"]) <= 0.5, (apply, image)
+    assert abs(apply["width"] - image["width"]) <= 0.5, (apply, image)
 
     rows.last.locator(".art-row__select").click()
     picker = section.locator(".art-pick__picker").bounding_box()

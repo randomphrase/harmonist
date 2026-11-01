@@ -317,11 +317,12 @@
 
 {# What the archive has, offered to the checked row (#659): every image it
    lists for the release, then for its release group. Candidates from outside
-   the album, so never among the rows — the column says WHERE an image comes
+   the album, so never among the rows — the caption says WHERE an image comes
    from, and the rows' own marks say whether it is coming (#441).
 
-   Its heading is a grid item of its own so it lines up with Now and After
-   Apply; the picker below it moves, the heading does not. #}
+   No heading: Now and After Apply are a table of the album's rows, and the
+   picker is an action beside it, moved from row to row (#918). A heading
+   over it read as the table's third column. #}
 {#- A candidate named in a line, for its viewer's image list and its button's
     accessible name: whose, which release, and its kind when not the front. -#}
 {% macro candidate_caption(c) -%}
@@ -363,7 +364,6 @@
 </div>
 {% endmacro %}
 {% if steppable %}
-<span class="art-pick__head">Available</span>
 {# Maximized (#918), the panel is a popover: the same element, so the same
    controls — rows, images, Use, Front only — in a larger layout, with the
    checked row's image and the shown one side by side. The picker is wherever

@@ -12570,12 +12570,10 @@ def test_a_losing_archive_cover_sits_in_a_column_of_its_own(client, cfg):
     _listed("rel-side", ("1", "https://coverartarchive.org/release/rel-side/1.jpg", True))
 
     rendered = " ".join(client.get(f"/album/{_id_for(cfg, d)}/artwork").text.split())
-    start = rendered.index('class="art-pick__head"')
+    start = rendered.index('class="art-pick__picker"')
     picker = rendered[start : rendered.index("</form>", start)]
 
-    # Its own column, under a heading that is not the promise "After Apply"
-    # makes.
-    assert "Available" in picker
+    # Beside the rows, not under the promise "After Apply" makes.
     assert "This release" in picker
     assert "After Apply" not in picker
     # Neither mark: both say "this is what would be put on your files", and a
