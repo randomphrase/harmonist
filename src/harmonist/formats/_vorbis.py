@@ -318,6 +318,9 @@ class VorbisTagger:
             codec=codec,
             has_cover=has_cover,
             album_artist=first(KEY_ALBUM_ARTIST),
+            album_artist_names=tuple(str(v) for v in tags.get(KEY_ALBUM_ARTISTS, [])),
+            album_artist_ids=tuple(str(v) for v in tags.get(KEY_ALBUM_ARTIST_ID, [])),
+            album_artist_sort=first(KEY_ALBUM_ARTIST_SORT),
             disc_num=_first_int(first(KEY_DISC_NUMBER)),
             # TOTALTRACKS/TOTALDISCS are the canonical keys Harmonist writes;
             # fall back to the "n/total" form some taggers put in TRACKNUMBER.

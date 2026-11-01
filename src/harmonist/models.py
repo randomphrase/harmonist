@@ -388,6 +388,18 @@ class BorrowedArtwork:
     image_id: str | None = None
 
 
+@dataclass(frozen=True)
+class AlbumArtist:
+    """An observed album-artist credit; absent MBID means unverified identity."""
+
+    name: str
+    mbid: str | None = None
+    sort_name: str | None = None
+    # Derived from files lacking album-artist IDs; keeps partial identification
+    # visible even when the remaining files establish one unambiguous identity.
+    missing_id_count: int = 0
+
+
 @dataclass
 class Album:
     """An album as observed on disk, derived from sidecar + filesystem.
@@ -573,6 +585,8 @@ class Album:
     file_provenance: tuple[tuple[Path, ProvenanceTags], ...] = ()
     # Rebuilt from the durable MB cache; conclusions are derived per local copy.
     contribution_observation: Observation | None = None
+    # Read with the existing scan, never persisted or inferred from folder names.
+    artist_credits: tuple[AlbumArtist, ...] = ()
 
     @property
     def shared_history_ids(self) -> tuple[str, ...]:

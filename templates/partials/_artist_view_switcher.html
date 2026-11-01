@@ -1,0 +1,14 @@
+<nav aria-label="Artist views" class="flex items-center gap-1 shrink-0 text-xs">
+    <span class="text-muted mr-1">View</span>
+    {% for key, label in [('list', 'List'), ('cards', 'Cards')] %}
+    {% set choice_class = 'px-2 py-1 rounded border font-bold transition' %}
+    {% if artists_view.view == key %}
+    <span aria-current="true" class="{{ choice_class }} text-accent border-accent bg-surface">{{ label }}</span>
+    {% else %}
+    <a href="{{ artists_view.view_urls[key] }}&remember_view=true"
+       hx-get="{{ artists_view.view_urls[key] }}&remember_view=true"
+       hx-target="#artists-rows" hx-swap="innerHTML" hx-push-url="{{ artists_view.view_urls[key] }}"
+       class="{{ choice_class }} text-muted border-line bg-surface hover:text-accent hover:border-accent">{{ label }}</a>
+    {% endif %}
+    {% endfor %}
+</nav>

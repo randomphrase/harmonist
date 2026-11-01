@@ -6,6 +6,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **Browse artists on their own page**, with List and Cards views, search, artist-specific filters and links from album credits (#813).
+- **Read local artist NFOs and pictures throughout the library**, with metadata badges, automatic updates and visible conflicts, unmatched files and read errors (#813).
+
 ### Fixed
 
 - **The artwork picker offers a new archive front as soon as an artwork update

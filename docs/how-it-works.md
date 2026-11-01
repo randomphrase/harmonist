@@ -65,6 +65,63 @@ The reverse is fine: **one album can span several folders**, such as per-disc
 subfolders. If the folders are tagged to the same release and hold different
 tracks of it, Harmonist treats them as one album. It doesn't move anything.
 
+## Artists and local metadata
+
+Artists come from the Library's embedded **album-artist credits**, including
+separate collaborators. MusicBrainz artist IDs keep different people with the
+same name apart and let one collaborative album appear under each artist. A name
+without a usable ID does not create an artist page. Albums with missing or
+inconsistent artist IDs are listed separately with links to their album pages.
+MusicBrainz's special-purpose artists, including Various Artists, do not have
+artist pages; other collaborators remain listed under their own IDs.
+
+When only some tracks lack artist IDs, consistent artist credits on the other
+tracks can identify the album's artist if all tracks name the same release.
+The artist remains a single entry, and the affected album also appears in the
+list of albums with missing artist IDs. That list reflects the files and clears
+when their missing IDs are filled in; browsing does not write them.
+
+Existing Kodi/Jellyfin `artist.nfo` files can supply a biography, dates, sort
+name and other artist information. Their artist ID must match the embedded
+album-artist ID. They can live anywhere inside the music library, including
+directories without audio. Two NFOs naming the same artist ID are shown as a
+conflict, with both paths. NFOs with no artist ID or no credited artist appear
+separately by path. Albums in the Inbox count when checking for these orphans.
+Unreadable NFOs are reported as errors rather than treated as absent.
+
+An incomplete NFO scan keeps readable profiles, biographies and local pictures
+available, with the affected paths and a warning that other matching files may
+be unreadable. Missing-metadata filters and orphan totals are unavailable until
+coverage recovers. Known duplicate paths remain visible as observed conflicts;
+their total and filter are unavailable, and neither file supplies the profile.
+Positive filter counts are lower bounds while coverage is incomplete. An image
+read error preserves the NFO's text and artist ID, without calling its picture
+missing. Generic folder pictures require a complete walk to verify their context.
+Repeated scans keep errors visible; logs and Activity report new or changed
+conditions, and a recurrence after recovery, rather than repeating the same
+failure on every scan.
+
+Artist pictures prefer the NFO's local `<thumb>` reference. Relative paths
+start at the NFO's directory; absolute paths must stay inside `music_dir`.
+If that reference is absent or its file is missing, `artist.*` images beside
+the NFO take precedence over `thumb.*` and then `folder.*`. Supported formats
+are JPEG, PNG and WebP.
+
+Generic `thumb.*` and `folder.*` pictures are used only in a verified artist
+directory: its descendant albums must credit that artist, and the directory
+must not be an album or disc container. An ambiguous folder supplies no generic
+picture, since it might be an album cover. An explicit `<thumb>` can still
+name a folder cover; that is the owner's choice.
+
+Artist browsing reads local tags, NFOs and local raster artwork. It makes no
+MusicBrainz or image-provider requests, does not generate NFOs and never changes
+tags based on them. Remote image URLs in an NFO are not downloaded. With local
+NFOs and image files, the artist pages remain available offline. The MusicBrainz
+link opens the artist's page separately. NFO discographies do not count as owned
+albums. The file watcher updates the inventory after local changes settle;
+the hourly rescan covers missed notifications, including on network mounts.
+Open artist pages and the artist list follow those updates automatically.
+
 ## The Inbox
 
 Harmonist works out each album's state from its files and sidecar every time it

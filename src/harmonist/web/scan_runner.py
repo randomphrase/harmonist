@@ -36,6 +36,8 @@ from typing import Any, cast
 from harmonist import (
     activity,
     activity_store,
+    artist_nfo,
+    artists,
     audit,
     contributions,
     formats,
@@ -97,6 +99,9 @@ class ScanRunner:
         self._music_dir = music_dir
         self._cache: scanner.AlbumCache = {}
         self._albums: list[Album] = []
+        self._nfos = artist_nfo.Inventory()
+        self._nfo_diagnostics = artist_nfo.Diagnostics()
+        self._artist_ids: frozenset[str] = frozenset()
         # The per-DIRECTORY entries `_albums` was folded from. Retained because
         # `merge_by_identity` is one-way: a merged Album no longer knows which of
         # its parts came from which directory, so refreshing ONE album (#151)
@@ -189,6 +194,19 @@ class ScanRunner:
     def has_completed(self) -> bool:
         return self._completed_once
 
+    def nfo_inventory(self) -> artist_nfo.Inventory:
+        """Immutable local NFO evidence from the last completed scan."""
+        return self._nfos
+
+    def scan_nfos_now(self) -> artist_nfo.Inventory:
+        """Unengaged request fallback shares this scanner's diagnostic scope."""
+        return artist_nfo.scan(self._music_dir, diagnostics=self._nfo_diagnostics)
+
+    def artist_inventory(self, identity: str | None) -> artist_nfo.Inventory | None:
+        """Membership and enrichment from the same publication, with no I/O."""
+        with self._snapshot_lock:
+            return self._nfos if identity in self._artist_ids else None
+
     def scanned_fields(self, album_dir: Path) -> list[formats.ScanFields] | None:
         """The tag fields the last scan read for one directory, in file order.
 
@@ -227,7 +245,17 @@ class ScanRunner:
         that moved an album between states has already told `live_counts` about
         it, and the full rescan is what re-derives them. This only patches the
         snapshot."""
-        self._publish(scanner.scan_dirs(self._music_dir, album_cache=self._cache))
+        discovery = artist_nfo.Discovery(self._music_dir)
+        scanned = scanner.scan_dirs(self._music_dir, album_cache=self._cache, nfos=discovery)
+        inventory = discovery.finish([entry.album for entry in scanned])
+        with self._snapshot_lock:
+            nfos_changed = inventory != self._nfos
+            _, _, rebuilt, failures = self._publish_locked(scanned, inventory)
+            if nfos_changed:
+                self._scan_seq += 1
+                self._status.seq = self._scan_seq
+        artist_nfo.report_failures(failures)
+        self._report_rebuilt(rebuilt)
         self._completed_once = True
 
     def refresh_album(self, dirs: Sequence[Path], *, notify: bool = False) -> bool:
@@ -303,31 +331,78 @@ class ScanRunner:
                     entries.append(replacement)
                 else:
                     self._cache.pop(entry.album.path, None)
-            results, changed, rebuilt = self._publish_locked(entries)
+            results, changed, rebuilt, failures = self._publish_locked(entries)
             if notify:
                 live_counts.reset_from(results)
                 library_index.reset_from(results)
                 if changed:
                     self._scan_seq += 1
                     self._status.seq = self._scan_seq
+        artist_nfo.report_failures(failures)
         self._report_rebuilt(rebuilt)
         return complete
 
     def _refresh_changed(self, paths: set[Path]) -> bool:
         """Refresh known file parents; uncertain directory changes need a walk."""
+        nfo_paths = {p for p in paths if p.name.lower() == "artist.nfo"}
+        if any(p.is_dir() for p in paths):
+            return False  # New directory layout needs the collector's full walk.
+        images = {p for p in paths if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}}
         known = {entry.album.path for entry in self._scanned}
+        if (nfo_paths or images) and self._completed_once and not self._nfos.walk_errors:
+            self._refresh_nfos(nfo_paths, images=None if nfo_paths else images)
+            paths = paths - nfo_paths
+            # Images in known non-album directories have been accounted for by
+            # the dependency index. Unseen directories still need a full walk.
+            paths -= {
+                p for p in images if p.parent not in known and p.parent in self._nfos.walked_dirs
+            }
+            if not paths:
+                return True
         dirs = {path.parent for path in paths}
         if not self._completed_once or not dirs <= known:
             return False
         if any(path.is_dir() or path in known for path in paths):
             return False
-        return self.refresh_album(sorted(dirs), notify=True)
+        complete = self.refresh_album(sorted(dirs), notify=True)
+        if complete and any(formats.is_supported(p) for p in paths):
+            # Re-tagging can change whether a generic folder image belongs to
+            # an artist. Reuse the new tag snapshot; do not reopen audio here.
+            self._refresh_nfos(set())
+        return complete
 
-    def _publish(self, scanned: list[scanner.ScannedDir]) -> tuple[list[Album], bool]:
+    def _refresh_nfos(self, paths: set[Path], *, images: set[Path] | None = None) -> None:
         with self._snapshot_lock:
-            results, changed, rebuilt = self._publish_locked(scanned)
-        self._report_rebuilt(rebuilt)
-        return results, changed
+            baseline = self._nfos
+            entries = self._scanned
+        if (
+            images is not None
+            and not baseline.errors
+            and not any(p.image_error and not p.image_candidates for p in baseline.profiles)
+        ):
+            inventory = baseline.refresh_images(self._music_dir, images)
+            if inventory is baseline:
+                return
+        else:
+            discovery = artist_nfo.Discovery(
+                self._music_dir,
+                list(set(baseline.paths) | paths),
+                album_dirs=set(baseline.album_dirs),
+                walked_dirs=set(baseline.walked_dirs),
+            )
+            inventory = discovery.finish([entry.album for entry in entries])
+        with self._snapshot_lock:
+            if self._nfos is not baseline or self._scanned is not entries:
+                # A newer publication wins. Retry against its album context
+                # rather than putting an earlier folder classification back.
+                self.request_quiet_rescan()
+                return
+            if inventory != self._nfos:
+                self._nfos = inventory
+                self._scan_seq += 1
+                self._status.seq = self._scan_seq
+            failures = self._nfo_diagnostics.changes(inventory)
+        artist_nfo.report_failures(failures)
 
     def _report_rebuilt(self, albums: list[Album]) -> None:
         # Before the first completion every album is new, and the warm-up covers it.
@@ -342,13 +417,19 @@ class ScanRunner:
             log.exception("on-rebuilt callback failed")
 
     def _publish_locked(
-        self, scanned: list[scanner.ScannedDir]
-    ) -> tuple[list[Album], bool, list[Album]]:
+        self,
+        scanned: list[scanner.ScannedDir],
+        inventory: artist_nfo.Inventory | None = None,
+    ) -> tuple[list[Album], bool, list[Album], tuple[artist_nfo.Failure, ...]]:
         """Fold the per-directory entries into albums and publish both, so the
         two never disagree. Caller holds `_snapshot_lock`. Also answers whether
         the snapshot actually CHANGED, which is what the client's refresh hangs
         off since the hourly rescan started producing identical ones, and which
         albums it rebuilt (`set_on_rebuilt`).
+
+        Diagnostic transitions follow this publication order too. The caller
+        logs the returned failures outside the lock, keeping log/Activity I/O
+        out of the snapshot's critical section.
 
         The comparison is cheap in the case that matters: an unchanged directory
         is served from the mtime cache as the very same `Album` object, and list
@@ -370,10 +451,16 @@ class ScanRunner:
             mbid = album.sidecar.mb_release_id if album.sidecar else None
             album.contribution_observation = observations.get(mbid) if mbid else None
         changed = results != self._albums
+        failures: tuple[artist_nfo.Failure, ...] = ()
+        if inventory is not None:
+            changed = changed or inventory != self._nfos
+            self._nfos = inventory
+            failures = self._nfo_diagnostics.changes(inventory)
         self._scanned = scanned
         self._albums = results
+        self._artist_ids = artists.library_ids(results)
         library_titles.reset_from(results)
-        return results, changed, rebuilt
+        return results, changed, rebuilt, failures
 
     def _keep_unchanged(
         self, scanned: list[scanner.ScannedDir], merged: list[Album]
@@ -483,6 +570,8 @@ class ScanRunner:
         with self._snapshot_lock:
             self._scanned = []
             self._albums = []
+            self._nfos = artist_nfo.Inventory()
+            self._artist_ids = frozenset()
         self._kick()
 
     def _kick(self) -> None:
@@ -547,6 +636,7 @@ class ScanRunner:
         started = time.monotonic()
         with self._snapshot_lock:
             baseline = {entry.album.path: entry for entry in self._scanned}
+            baseline_nfos = self._nfos
         log.info("Library %s started: %s", "scan" if visible else "rescan", self._music_dir)
         # Carry the last completed seq while scanning; bump it only on completion
         # so the client refreshes when a NEW snapshot is actually ready.
@@ -568,7 +658,8 @@ class ScanRunner:
 
         # The walk generator does blocking scandir/stat; it is advanced ONLY on
         # the worker thread (one step at a time, awaited), never concurrently.
-        walk = scanner.iter_album_dirs(self._music_dir)
+        discovery = artist_nfo.Discovery(self._music_dir)
+        walk = scanner.iter_album_dirs(self._music_dir, nfos=discovery)
         while True:
             # Blocking walk+stat for the next album → worker; loop stays free.
             item = await loop.run_in_executor(executor, next, walk, _DONE)
@@ -602,6 +693,9 @@ class ScanRunner:
                 )
                 last_log = now
 
+        inventory = await loop.run_in_executor(
+            executor, discovery.finish, [entry.album for entry in scanned]
+        )
         # Fold the directories that hold parts of one release into single albums.
         # Pure CPU over tags already read, so it stays on the loop thread.
         # Under the lock so it can't interleave with a per-album refresh
@@ -616,11 +710,18 @@ class ScanRunner:
                     else:
                         collected.pop(path, None)
             scanner.prune_cache(self._cache, set(collected))
-            results, changed, rebuilt = self._publish_locked(list(collected.values()))
+            # A synchronous refresh may have published newer NFO evidence while
+            # this full walk was running, just as with the albums above.
+            if self._nfos is not baseline_nfos:
+                inventory = self._nfos
+            results, changed, rebuilt, failures = self._publish_locked(
+                list(collected.values()), inventory
+            )
             live_counts.reset_from(results)
             library_index.reset_from(results)
             if changed:
                 self._scan_seq += 1
+        artist_nfo.report_failures(failures)
         self._report_rebuilt(rebuilt)
         status.albums_found = len(results)
         self._announce_discoveries(results)

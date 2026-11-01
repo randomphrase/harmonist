@@ -27,9 +27,9 @@
        working through "the 12 albums with no artwork" returns to all 400. `&q=`
        rides along for exactly the same reason (#180), urlencoded because unlike
        the filter's slug it is free text. #}
-    <a href="/?tab=library{% if from_page > 1 %}&page={{ from_page }}{% endif %}{% if from_filter %}&filter={{ from_filter }}{% endif %}{% if from_q %}&q={{ from_q | urlencode }}{% endif %}"
+    <a href="{% if artist_back_url %}{{ artist_back_url }}{% else %}/?tab=library{% if from_page > 1 %}&page={{ from_page }}{% endif %}{% if from_filter %}&filter={{ from_filter }}{% endif %}{% if from_q %}&q={{ from_q | urlencode }}{% endif %}{% endif %}"
        class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">
-        ← Back to library
+        ← Back to {{ 'artist' if artist_back_url else 'library' }}
     </a>
 
     {# Empty until the /compare fetch below discovers something the page could
