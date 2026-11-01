@@ -6,43 +6,39 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.32.0] - 2026-11-01
+
 ### Added
 
+- **Embiggen compares a row's image with an archive image side by side**,
+  zooming and panning the two together (#918).
 - **Artwork an album already has over the 20 MB limit is offered reduced to
   fit**, as an artwork Replacement, so Navidrome reads it (#893).
 - **A folder cover named for the wrong image type is offered a rename**, such
-  as a `cover.jpg` that's really a PNG, as an artwork Addition (#907). Undoing
-  a folder cover's rename now puts its old name back too.
+  as a `cover.jpg` that's really a PNG (#907).
 
 ### Changed
 
-- **Forget returns an album to the Inbox with one click**, without a confirmation dialog (#915).
-- **Embiggen shows a row's image and an archive image side by side**, zooming
-  and panning together; the image viewer steps with ‹ › and a click on the
-  image switches between Fit and 100% (#918).
-- **The Artwork section is more compact**: its images are one size, each with
-  its details to its right, and the section ends at the artwork picker (#918).
-- **The artwork picker's Front only checkbox is now "Show Front covers only"** (#918).
-- **After Apply says an image over the limit "will be reduced to fit"**, since
-  "reduced to fit" beside its size read as the size after reducing (#893).
-- **The album page reads each file once, and not at all on a repeat view of an
-  unchanged album**; while it reads, it says "Reading tags…" and no longer
-  blames MusicBrainz (#904).
-- **Ticking or unticking Don't warn me about this, Better artwork wanted or Don't
-  suggest this image no longer adds to Activity or flashes the status bar** (#911).
+- **The album page reads each file once, and not again until it changes**,
+  saying "Reading tags…" while it does (#904).
+- **Forget returns an album to the Inbox with one click**, without a
+  confirmation dialog (#915).
+- **The Artwork section is more compact**, its images one size with their
+  details beside them (#918).
+- **The image viewer steps with ‹ ›, and a click on the image switches between
+  Fit and 100%** (#918).
+- **The artwork picker's Front only checkbox is now Show Front covers only**
+  (#918).
+- **After Apply says an image over the limit "will be reduced to fit"** (#893).
+- **Ticking Don't warn me about this, Better artwork wanted or Don't suggest
+  this image no longer adds to Activity or flashes the status bar** (#911).
 
 ### Fixed
 
-- **Choosing a MusicBrainz release after Forget opens review correctly**, even when the files still carry their previous release ID (#915).
-- **The album page's sections are evenly spaced**, without a double gap above
-  the album panel and below Possible mismatch, nor extra padding under a
-  dismissed Possible mismatch (#902).
-- **A folder cover is named for the image it holds** (#905). One created or
-  replaced from a PNG over the 20 MB limit is `cover.jpg`, the JPEG it is
-  reduced to, and a `cover.jpg` replaced by a PNG becomes `cover.png`, unless
-  that name is already taken. An image's type is read from the image itself,
-  so a PNG another tagger labelled a JPEG makes a `cover.png`, and the Artwork
-  section says PNG.
+- **Choosing a release after Forget opens its review** (#915).
+- **A folder cover is named for the image it holds** — `cover.jpg` for a PNG
+  reduced to fit, `cover.png` for a PNG another tagger labelled a JPEG (#905).
+- **The album page's sections are evenly spaced** (#902).
 
 ## [1.31.0] - 2026-10-27
 
