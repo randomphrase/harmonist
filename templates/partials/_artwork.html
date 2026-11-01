@@ -471,8 +471,6 @@
                 <img src="/artwork/candidate/{{ album.id }}/{{ c.image_id }}" alt="" loading="lazy">
             </button>
             {{ candidate_facts(c) }}
-            {# Under the image's facts, so "this image" goes without saying —
-               except to a screen reader, which has no image to go by. #}
             {% if album.sidecar and album.sidecar.mb_release_id %}
             <label class="art-pick__check art-pick__dismiss">
                 <input type="checkbox" name="rejected" value="true"
@@ -480,9 +478,8 @@
                        hx-post="/album/{{ album.id }}/artwork/suggestion/{{ c.image_id }}"
                        hx-trigger="change" hx-target="#album-artwork" hx-swap="innerHTML"
                        hx-include="closest form" hx-params="rejected,use" hx-disabled-elt="this"
-                       hx-vals='js:{rejected: event.target.checked}'
-                       aria-label="Don't suggest this image">
-                Don't suggest
+                       hx-vals='js:{rejected: event.target.checked}'>
+                Don't suggest this image
             </label>
             {% endif %}
         </div>
@@ -498,12 +495,13 @@
                     data-art-group="candidate" aria-label="Next image">{{ arrow('right') }}</button>
             {% endif %}
         </div>
-        {# Beside Don't suggest, on one line where the two fit. #}
+        {# Front covers only, offered where there are fronts and something
+           else. "Front" as the captions name the archive's types. #}
         {% if picker|selectattr('front')|list and picker|rejectattr('front')|list %}
         <label class="art-pick__check art-pick__front-only">
             <input type="hidden" name="front_only" value="0">
             <input type="checkbox" name="front_only" value="1" {% if front_only %}checked{% endif %}>
-            Front only
+            Show Front covers only
         </label>
         {% endif %}
         {# Past the last image, the next release in the group (#659). The
@@ -553,10 +551,10 @@
         {# With their boxes, which take room beside them; nameless, so the form
            sends nothing for them. #}
         {% if album.sidecar and album.sidecar.mb_release_id %}
-        <span class="art-pick__check art-pick__dismiss"><input type="checkbox" disabled> Don't suggest</span>
+        <span class="art-pick__check art-pick__dismiss"><input type="checkbox" disabled> Don't suggest this image</span>
         {% endif %}
         {% if picker|selectattr('front')|list and picker|rejectattr('front')|list %}
-        <span class="art-pick__check art-pick__front-only"><input type="checkbox" disabled> Front only</span>
+        <span class="art-pick__check art-pick__front-only"><input type="checkbox" disabled> Show Front covers only</span>
         {% endif %}
     </div>
     {% else %}

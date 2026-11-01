@@ -22,6 +22,7 @@ versions follow [semantic versioning](https://semver.org).
   image switches between Fit and 100% (#918).
 - **The Artwork section is more compact**: its images are one size, each with
   its details to its right, and the section ends at the artwork picker (#918).
+- **The artwork picker's Front only checkbox is now "Show Front covers only"** (#918).
 - **After Apply says an image over the limit "will be reduced to fit"**, since
   "reduced to fit" beside its size read as the size after reducing (#893).
 - **The album page reads each file once, and not at all on a repeat view of an

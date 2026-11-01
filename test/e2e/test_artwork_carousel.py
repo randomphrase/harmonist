@@ -48,7 +48,7 @@ def test_front_only_steps_over_the_back_cover(browser_factory, reset_carousel_se
     section = page.locator("#album-artwork")
     on = section.get_by_role("button", name="Next image")
     back = section.get_by_role("button", name="Previous image")
-    front_only = section.get_by_role("checkbox", name="Front only")
+    front_only = section.get_by_role("checkbox", name="Show Front covers only")
     sent: list[str] = []
     page.on("request", lambda r: sent.append(r.url))
 
@@ -327,7 +327,7 @@ def test_a_longer_caption_moves_nothing(
     _browser, page = _open(browser_factory, reset_carousel_server, engine)
     page.set_viewport_size({"width": width, "height": 1400})
     section = page.locator("#album-artwork")
-    section.get_by_role("checkbox", name="Front only").uncheck()
+    section.get_by_role("checkbox", name="Show Front covers only").uncheck()
     panel = _maximize(page)
     caption = panel.locator(".art-pick__slide:visible .art-row__facts")
     before = page.evaluate(_LAID_OUT)
@@ -683,7 +683,7 @@ def test_a_late_archive_check_leaves_the_picker_where_it_was_moved(
     page.wait_for_function("() => document.querySelector('.htmx-request')")
 
     section.locator(".art-row").nth(1).locator(".art-row__select").click()
-    section.get_by_role("checkbox", name="Front only").uncheck()
+    section.get_by_role("checkbox", name="Show Front covers only").uncheck()
     section.get_by_role("button", name="Next image").click()  # 101 → 102, the back
     page.wait_for_function("window.__archiveHeld === true")
     route, response = held.pop()
@@ -696,7 +696,7 @@ def test_a_late_archive_check_leaves_the_picker_where_it_was_moved(
         section.locator("input[name='row']").nth(1).get_attribute("value") or ""
     )
     assert _shown(page) == ["102"]
-    pw.expect(section.get_by_role("checkbox", name="Front only")).not_to_be_checked()
+    pw.expect(section.get_by_role("checkbox", name="Show Front covers only")).not_to_be_checked()
     page.context.close()
 
 

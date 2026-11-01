@@ -88,7 +88,7 @@ The picker offers every image the archive lists for the release, then for its
 release group (#659). The front the size rule weighs is one archive image among
 many, and the image a user wants is often another: a different scan, or the
 group's cover when this release has none. A back cover or a booklet page is
-rarely wanted, so **Front only** narrows the carousel, ticked unless the archive
+rarely wanted, so **Show Front covers only** narrows the carousel, ticked unless the archive
 lists no fronts. It is a property of what's being looked at, not a preference:
 Picard's equivalent is a setting that applies to every album, and a setting
 would hide the one back cover a user came looking for. Matrix/runout,
