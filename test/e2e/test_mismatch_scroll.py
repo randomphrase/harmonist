@@ -27,7 +27,7 @@ def test_mismatch_review_opens_over_the_page(
     page = browser.new_page(viewport={"width": width, "height": 720})
     page.goto(f"{server}/album/demo-rel-dingoes")
     panel = page.locator("#album-contributions-demo-rel-dingoes")
-    use = htmx_ready(panel.get_by_role("button", name="Use", exact=True).first)
+    use = htmx_ready(panel.get_by_role("button", name="Review", exact=True).first)
     pw.expect(use).to_be_visible()
     page.wait_for_function("!document.querySelector('.htmx-settling')")
     use.scroll_into_view_if_needed()

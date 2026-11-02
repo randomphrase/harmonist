@@ -892,6 +892,7 @@ def create_app(
     templates.env.globals["link_parts"] = url_recovery.link_parts
     # A single release named by its title and disambiguation (#635).
     templates.env.globals["release_title"] = _release_title
+    templates.env.globals["suggested_row"] = _suggested_row
     templates.env.globals["AUDIT_DETAIL_LIMIT"] = AUDIT_DETAIL_LIMIT
     # "1400×1400 · JPEG · 718 KB" (#155). A global rather than a filter for the
     # reason `headline` is one: the Artwork section states the same facts about
@@ -2057,6 +2058,16 @@ def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
         # A page-local replacement choice travels with the shared review's
         # requests. It never changes the sidecar before confirmation.
         "replacement": request.query_params.get("replacement", ""),
+        # So does a release the user chose to review (#933), and how they found it.
+        "chosen": request.query_params.get("release", ""),
+        # Both, as the query every step of that review carries (`review_url`).
+        "review": urlencode(
+            {
+                k: v
+                for k in ("replacement", "release", "found_by")
+                if (v := request.query_params.get(k))
+            }
+        ),
         "cfg": cfg,
         "now": datetime.now(UTC),
         # Sync-popover state (header renders on every page): whether link-only
@@ -2192,6 +2203,38 @@ _FOUND_BY = {
 }
 
 
+def _suggested_row(candidate: MatchCandidate) -> dict[str, Any]:
+    """A waiting suggestion as a release row, the shape a search result has (#933).
+
+    Read from the store like `_release_title`, so a card costs no MusicBrainz
+    request. With nothing stored the row still names and links the release,
+    and its facts wait for the review that reads it.
+    """
+    release = mb_cache.stored_release(candidate.mb_release_id)
+    if release is not None:
+        return mb_lookup.release_summary(release)
+    return {
+        "id": candidate.mb_release_id,
+        "title": candidate.mistag_owned_label or "MusicBrainz release",
+        "disambiguation": candidate.mistag_owned_disambig or "",
+        "track_count": candidate.track_count or None,
+    }
+
+
+def _waiting_rows(album: Album) -> dict[str, Any]:
+    """What a release list needs to show the suggestion stored on `album` (#933).
+
+    A row for that release is that suggestion: marked, and reviewed as stored.
+    A surrender's candidate is the album's own release, not a suggestion."""
+    candidate = album.sidecar.mb_match_candidate if album.sidecar else None
+    if candidate is None or candidate.unmatched_purchase:
+        return {"waiting": None, "restored": False}
+    return {
+        "waiting": candidate.mb_release_id,
+        "restored": candidate.found_by == FoundBy.UNDO,
+    }
+
+
 def _release_title(mbid: str | None) -> tuple[str, str] | None:
     """A release's (title, disambiguation) as MusicBrainz last gave it, or None
     when nothing is stored (#635).
@@ -2250,21 +2293,6 @@ def _cleared_release(album: Album) -> str | None:
     if len(ids) != 1:
         return None
     return ids.pop() or None
-
-
-def _suggestion_waiting(album_dir: Path) -> bool:
-    """A suggestion the user hasn't resolved sits on the album (#638).
-
-    The barcode and store-URL lookups check this before asking MusicBrainz and
-    again before writing: they take seconds, and after the "wrong match" pencil
-    one landed on top of the other's suggestion while the user may have been
-    reviewing it. Nothing a user can press sends a lookup here — the search tools
-    are hidden until the suggestion is confirmed or dismissed — so a lookup that
-    arrives now is answered with nothing done. Read from disk, not the scan
-    snapshot, which may predate the suggestion the other lookup just wrote.
-    """
-    sc = sidecar_mod.read(album_dir)
-    return sc is not None and sc.mb_match_candidate is not None
 
 
 def _demote_to_needs_mbid(
@@ -4269,7 +4297,6 @@ def _apply_best_match(
     tagger: Tagger,
     *,
     found_by: FoundBy,
-    review_only: bool = False,
     download: bool = False,
 ) -> tuple[str, str]:
     """Fetch every candidate MB release, pick the best fit, then tag or stash.
@@ -4309,10 +4336,8 @@ def _apply_best_match(
         )
         return "ambiguous", message
 
-    if (
-        not review_only
-        and candidate.confidence == "exact"
-        and not _reassigns_release(album_files.audio_files(album_path), candidate.mb_release_id)
+    if candidate.confidence == "exact" and not _reassigns_release(
+        album_files.audio_files(album_path), candidate.mb_release_id
     ):
         retag_mod.tag_with_release(album_path, candidate.mb_release_id, cfg, tagger)
         return "tagged", "Match exact — files tagged."
@@ -4361,18 +4386,7 @@ class _ReplacementUnavailable(Exception):
     """A page-local replacement cannot safely continue its review."""
 
 
-def _chosen_review_trigger(album_id: str, active: bool) -> dict[str, Any] | None:
-    """Open the review of a release the user just chose, over the Inbox (#933).
-
-    The album page has no list to stay on: it is redirected to
-    `_album_location(..., review_chosen=True)` instead, which opens the same
-    review on the page's new address."""
-    return {"review-chosen": {"album": album_id}} if active else None
-
-
-def _album_location(
-    request: Request, album_id: str, *, edit_assignments: bool = False, review_chosen: bool = False
-) -> str:
+def _album_location(request: Request, album_id: str, *, edit_assignments: bool = False) -> str:
     """Keep the Library return context when review replaces the album page."""
     query = request.headers.get("HX-Current-URL", "").partition("?")[2].split("#", 1)[0]
     context = {
@@ -4394,8 +4408,6 @@ def _album_location(
     }
     if edit_assignments:
         context["edit_assignments"] = "true"
-    if review_chosen:
-        context["review"] = "chosen"
     location = "/album/" + quote(album_id, safe="")
     if context:
         location += "?" + urlencode(context)
@@ -5480,7 +5492,6 @@ def _register_routes(app: FastAPI) -> None:
         artist_new: bool = False,
         artist_view: str | None = None,
         edit_assignments: bool = False,
-        review: Literal["chosen"] | None = None,
     ) -> Response:
         """The standalone album page (#103) — full tracklist plus the album's
         history, neither of which fits a viewport-constrained dialog.
@@ -5648,11 +5659,6 @@ def _register_routes(app: FastAPI) -> None:
             ),
         )
         ctx["edit_assignments"] = edit_assignments
-        # Use redirects here to open the review of the release just chosen
-        # (#933). A reload after that suggestion was resolved has none to open.
-        ctx["open_chosen_review"] = bool(
-            review and album.sidecar and album.sidecar.mb_match_candidate
-        )
         # Format evidence exists before a release is chosen too. Keep the
         # header's link useful on an unmatched album, using files alone (#720).
         if not (album.sidecar and album.sidecar.mb_release_id):
@@ -7554,7 +7560,9 @@ def _register_routes(app: FastAPI) -> None:
         # the page talks to one host, so opening an album cannot tell the
         # Internet Archive which records this user owns.
         mbid = album.sidecar.mb_release_id if album.sidecar else None
-        if request.query_params.get("replacement"):
+        # A sibling or a chosen release under review (#933) is named by the
+        # review's query, and was stored nowhere else.
+        if request.query_params.get("replacement") or request.query_params.get("release"):
             try:
                 candidate = _assignment_candidate(request, album)
             except _ReplacementUnavailable as exc:
@@ -7681,6 +7689,31 @@ def _register_routes(app: FastAPI) -> None:
                 confidence="no_match",
                 file_count=album.track_count,
                 track_count=mb_lookup.release_summary(release)["track_count"] or 0,
+            )
+        chosen = request.query_params.get("release", "")
+        if chosen:
+            # A release the user picked, reviewed without storing it (#933):
+            # nothing is written until Confirm, so closing has nothing to undo.
+            release = mb_cache.stored_release(chosen)
+            if load_replacement and (release is None or reread):
+                try:
+                    release = mb_cache.fetch_release(
+                        chosen, max_age=mb_cache.FRESH if reread else None
+                    )
+                except mb_lookup.MBError as exc:
+                    raise _ReplacementUnavailable(f"Could not load the release: {exc}") from exc
+            try:
+                found_by = FoundBy(request.query_params.get("found_by", FoundBy.MBID))
+            except ValueError:
+                found_by = FoundBy.MBID
+            return MatchCandidate(
+                mb_release_id=chosen,
+                confidence="no_match",
+                file_count=album.track_count,
+                track_count=(mb_lookup.release_summary(release)["track_count"] or 0)
+                if release
+                else 0,
+                found_by=found_by,
             )
         if album.sidecar is None:
             return None
@@ -7953,19 +7986,56 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/review/{album_id}", response_class=HTMLResponse)
     def review_dialog(
-        request: Request, album_id: str, on_album_page: bool = False, chosen: bool = False
+        request: Request,
+        album_id: str,
+        on_album_page: bool = False,
+        release: str = "",
+        found_by: FoundBy = FoundBy.MBID,
     ) -> Response:
-        """The release review, in the page's modal mount (#933).
+        """The Review dialog, in the page's modal mount (#933).
 
-        Only the shell: the editor loads into it as it did inline, so opening is
-        instant and spends nothing. `chosen` says the review opened because the
-        user picked the release, so closing it discards the suggestion as
-        Cancel did. Opened from a waiting suggestion, closing leaves it waiting:
-        Harmonist found that one, and #638 keeps it until the user decides."""
+        Only the shell: the editor loads into it. It spends nothing except on a
+        chosen release not yet read, which the review needs either way. It
+        reviews the suggestion waiting on the album, a
+        sibling from the release group check (`replacement`), or a `release`
+        the user picked from a search or pasted. None of them is written until
+        Confirm, so closing decides nothing."""
         album = _find_album(request, album_id)
         replacement = request.query_params.get("replacement", "")
         candidate = album.sidecar.mb_match_candidate if album.sidecar else None
-        if not replacement and candidate is None:
+        review = urlencode({"replacement": replacement}) if replacement else ""
+        if release:
+            mbid = _extract_mbid(release)
+            if mbid is None:
+                response = _flash_response(
+                    "Could not parse",
+                    "Paste a full MB release URL or the 36-char MBID",
+                    level=Level.ERROR,
+                    tasks_changed=False,
+                    album=album,
+                    record_activity=False,
+                )
+                response.headers["HX-Reswap"] = "none"
+                return response
+            # Read the release once, here, and carry the id MusicBrainz gave it:
+            # after a merge that isn't the one asked for, and the store keeps
+            # it under the one it has (#268), where every later step finds it.
+            try:
+                mbid = str(mb_cache.fetch_release(mbid)["id"])
+            except mb_lookup.MBError as e:
+                response = _flash_response(
+                    "MB lookup failed",
+                    str(e),
+                    level=Level.ERROR,
+                    tasks_changed=False,
+                    album=album,
+                    record_activity=False,
+                )
+                response.headers["HX-Reswap"] = "none"
+                return response
+            review = urlencode({"release": mbid, "found_by": found_by.value})
+            candidate = None
+        elif not replacement and candidate is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no suggestion to review")
         return _templates(request).TemplateResponse(
             request,
@@ -7974,9 +8044,8 @@ def _register_routes(app: FastAPI) -> None:
                 request,
                 album=album,
                 candidate=None if replacement else candidate,
-                replacement=replacement,
                 on_album_page=on_album_page,
-                discard=chosen and not replacement,
+                review=review,
             ),
         )
 
@@ -8190,9 +8259,11 @@ def _register_routes(app: FastAPI) -> None:
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         sc = album.sidecar
         candidate = _assignment_candidate(request, album)
-        if sc is None or candidate is None:
+        # A chosen release (#933) may be confirmed on an album with no sidecar
+        # yet: it was never stored, so the reviewed draft is all there is.
+        if candidate is None or (sc is None and not request.query_params.get("release")):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no candidate to confirm")
-        if sc.mb_match_candidate is None and not disk_fingerprint:
+        if (sc is None or sc.mb_match_candidate is None) and not disk_fingerprint:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, "review assignments for the confirmed release"
             )
@@ -8248,9 +8319,12 @@ def _register_routes(app: FastAPI) -> None:
                 chosen=artwork.Source.ARCHIVE,
                 assignment_draft=draft,
                 release_artwork_only=bool(request.query_params.get("replacement")),
-                # A release chosen from the album page's release review (#618).
+                # A release chosen from the album page's release review (#618),
+                # or for a tagged album whose match was cleared or forgotten:
+                # a chosen release stores no sidecar first (#933), so a
+                # forgotten album may have none.
                 accept_release=bool(request.query_params.get("replacement"))
-                or bool(album.has_tag_mbid and album.sidecar and not album.sidecar.mb_release_id),
+                or bool(album.has_tag_mbid and not (album.sidecar and album.sidecar.mb_release_id)),
             )
         except (retag_mod.ConfirmationChanged, track_assignment.AssignmentChanged) as e:
             log.warning("could not apply reviewed changes: %s", e, extra=_LOG_ONLY)
@@ -8642,8 +8716,6 @@ def _register_routes(app: FastAPI) -> None:
 
         request.state.skip_rescan = True
         album = _find_album(request, album_id)
-        if _suggestion_waiting(album.path):
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
         evidence = barcodes.evidence(
             [formats.read_scan_fields(f) for f in album_files.for_paths(album.folders)]
         )
@@ -8659,6 +8731,9 @@ def _register_routes(app: FastAPI) -> None:
             return response
         try:
             results, total = mb_search.search_barcode(evidence)
+            # The release the evidence narrows the barcode to, if one, is the
+            # list's suggested row. A search only lists: nothing is stored
+            # until a review of one of its rows is confirmed (#933).
             release = (
                 None
                 if album.has_tag_mbid
@@ -8671,36 +8746,6 @@ def _register_routes(app: FastAPI) -> None:
                     max_age=mb_cache.FRESH,
                 )
             )
-            if release is not None:
-                ranking = match_releases(album.path, [release])
-                assert ranking is not None
-                current = sidecar_mod.read(album.path) or Sidecar(added_at=datetime.now(UTC))
-                if current.mb_release_id:
-                    raise mb_search.MBSearchError("Album was matched while the lookup ran")
-                if current.mb_match_candidate is not None:
-                    return Response(status_code=status.HTTP_204_NO_CONTENT)  # #638
-                if len(results) > 1 and provenance.origin(
-                    replace(album, sidecar=current)
-                ) is not provenance.origin(album):
-                    raise mb_search.MBSearchError("Album origin changed while the lookup ran")
-                sidecar_mod.write(
-                    album.path,
-                    replace(
-                        current,
-                        mb_match_candidate=replace(ranking.best, found_by=FoundBy.BARCODE),
-                    ),
-                )
-                runner = request.app.state.scan_runner
-                if runner.is_engaged():
-                    runner.refresh_now()
-                # Flashed, not recorded (#639): a suggestion changes nothing about
-                # the album, and confirming it is the event History keeps.
-                return _flash_response(
-                    "Needs review",
-                    "Barcode match found — review and confirm",
-                    album=album,
-                    record_activity=False,
-                )
         except (mb_search.MBSearchError, mb_lookup.MBError) as exc:
             response = _flash_response(
                 "Barcode lookup failed",
@@ -8722,6 +8767,7 @@ def _register_routes(app: FastAPI) -> None:
             on_album_page=on_album_page,
             retarget=True,
             barcode=evidence.barcode,
+            suggested=release["id"] if release else None,
         )
 
     @app.post("/manual/{album_id}/candidates", response_class=HTMLResponse)
@@ -8738,8 +8784,6 @@ def _register_routes(app: FastAPI) -> None:
         sc = album.sidecar
         if sc is None or not sc.store_url:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no store URL on sidecar")
-        if _suggestion_waiting(album.path):
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
         try:
             results, total = mb_lookup.candidate_summaries_for_url(sc.store_url)
         except mb_lookup.MBError as e:
@@ -8752,8 +8796,6 @@ def _register_routes(app: FastAPI) -> None:
             )
             response.headers["HX-Retarget"] = f"#mbid-results-{album.id}"
             return response
-        if _suggestion_waiting(album.path):
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
         return _render_release_picker(
             request,
             album,
@@ -8817,125 +8859,12 @@ def _register_routes(app: FastAPI) -> None:
                 local_artist=album.artist,
                 on_album_page=on_album_page,
                 found_by=FoundBy.RELEASE_GROUP,
+                **_waiting_rows(album),
             ),
         )
         if no_alternatives:
             response.headers["HX-Trigger-After-Swap"] = json.dumps(
                 {"release-group-empty": {"target": f"#release-siblings-{album.id}"}}
-            )
-        return response
-
-    @app.post("/manual/{album_id}/assign", response_class=HTMLResponse)
-    def manual_assign(
-        request: Request,
-        album_id: str,
-        mbid: str = Form(...),
-        on_album_page: bool = Form(False),
-        # Which picker the release came from (#639); the paste box sends none.
-        found_by: FoundBy = Form(FoundBy.MBID),
-    ) -> Response:
-        """Suggest the release the user chose — a picker's Use or a pasted
-        MBID — for review. A choice is never tagged unreviewed, however well
-        it fits (#848, #880): only a first, exact, unique match is."""
-        album = _refreshed_from_disk(request, _find_album(request, album_id))
-        extracted = _extract_mbid(mbid)
-        if not extracted:
-            return _flash_response(
-                "Could not parse",
-                "Paste a full MB release URL or the 36-char MBID",
-                level=Level.ERROR,
-                tasks_changed=False,
-                album=album,
-            )
-        try:
-            # A previously tagged album always enters review, even when the
-            # user picks its original release again. Build the candidate for
-            # the whole album; the assignment review supplies the actual pairs.
-            if album.has_tag_mbid:
-                if _suggestion_waiting(album.path):
-                    return Response(status_code=status.HTTP_204_NO_CONTENT)
-                release = mb_cache.fetch_release(extracted)
-                current = sidecar_mod.read(album.path)
-                if current is None:
-                    if album.sidecar is not None:
-                        raise mb_lookup.MBError("Album was forgotten while the lookup ran")
-                    # Forget retains embedded IDs but removes the sidecar. A
-                    # manual choice can create a suggestion without adopting
-                    # those old IDs or touching the files before confirmation.
-                    current = Sidecar(added_at=datetime.now(UTC))
-                if current.mb_release_id:
-                    raise mb_lookup.MBError("Album was matched while the lookup ran")
-                if current.mb_match_candidate is not None:
-                    return Response(status_code=status.HTTP_204_NO_CONTENT)
-                candidate = MatchCandidate(
-                    mb_release_id=release["id"],
-                    confidence="no_match",
-                    file_count=album.track_count,
-                    track_count=mb_lookup.release_summary(release)["track_count"] or 0,
-                    found_by=found_by,
-                )
-                sidecar_mod.write(album.path, replace(current, mb_match_candidate=candidate))
-                runner = request.app.state.scan_runner
-                if runner.is_engaged():
-                    runner.refresh_now()
-                request.state.skip_rescan = True
-                response = _flash_response(
-                    "Needs review",
-                    "Review and confirm the selected release",
-                    album=album,
-                    record_activity=False,
-                    extra_triggers=_chosen_review_trigger(album.id, not on_album_page),
-                )
-                if on_album_page:
-                    response.headers["HX-Redirect"] = _album_location(
-                        request, album.id, review_chosen=True
-                    )
-                return response
-            _, msg = _apply_best_match(
-                album.path,
-                [extracted],
-                request.app.state.cfg,
-                request.app.state.tagger,
-                found_by=found_by,
-                review_only=True,
-            )
-        except mb_lookup.MBError as e:
-            return _flash_response(
-                "MB lookup failed",
-                str(e),
-                level=Level.ERROR,
-                tasks_changed=False,
-                album=album,
-            )
-        except Exception as e:
-            log.exception("manual assign failed", extra=_LOG_ONLY)
-            return _flash_response(
-                "Assignment failed",
-                str(e),
-                level=Level.ERROR,
-                tasks_changed=False,
-                album=album,
-            )
-        # A suggestion to review, or nothing to act on: flashed, not recorded.
-        # The decision is the confirm, which records how the release was found.
-        # Publish the new identity before the review or the redirected page asks
-        # for it (#798). Use the scanned id so duplicate copies remain distinct.
-        runner = request.app.state.scan_runner
-        if runner.is_engaged():
-            runner.refresh_album(album.folders)
-        refreshed_album = next(a for a in _albums(request) if album.path in a.folders)
-        written = sidecar_mod.read(album.path)
-        chosen = written is not None and written.mb_match_candidate is not None
-        response = _flash_response(
-            "Needs review",
-            msg,
-            album=album,
-            record_activity=False,
-            extra_triggers=_chosen_review_trigger(refreshed_album.id, chosen and not on_album_page),
-        )
-        if on_album_page:
-            response.headers["HX-Redirect"] = _album_location(
-                request, refreshed_album.id, review_chosen=chosen
             )
         return response
 
@@ -9152,25 +9081,31 @@ def _render_release_picker(
     barcode: str | None = None,
     store_url: str | None = None,
     mb_query: str | None = None,
+    suggested: str | None = None,
 ) -> Response:
     """Render the shared candidate-release list (store-URL picker or name
-    search). `retarget` rewrites the swap to the card's preserved results box, and
-    its `HX-Retarget` header tells `reload_unless_retargeted` not to reload the
-    album page over the list.
+    search). `retarget` rewrites the swap to the card's preserved results box.
 
     `on_album_page` is what the *rows* need (#150). Every other action block is
     an include, so it inherits that flag from the template around it; this one
-    is a response, rendered with no such surroundings, and its **Use** button
-    suggests a release exactly as the paste box does. Without the flag travelling
-    with the request, picking a release from a search made on the album page
-    would leave the page describing the album as it was before the choice.
+    is a response, rendered with no such surroundings, and its **Review** opens
+    the review a confirm then answers on the page it was opened from.
+
+    `suggested` is the release the search's evidence points to, if one: it
+    leads the list, marked as the suggestion, and is stored no more than the
+    rest (#933). A suggestion already stored on the album outranks it: a row
+    for that release is that suggestion, not a second one.
     """
     headers: dict[str, str] = {}
     if retarget:
         headers["HX-Retarget"] = f"#mbid-results-{album.id}"
-        # Barcode choices must be initialized before their visible Use buttons
-        # can submit; the default settle delay leaves a native-GET race.
+        # Rows must be initialized before their visible Review buttons can be
+        # pressed; the default settle delay leaves a race.
         headers["HX-Reswap"] = "innerHTML settle:0ms"
+    rows = _waiting_rows(album)
+    suggested = rows["waiting"] or suggested
+    if suggested:
+        results = sorted(results, key=lambda r: r.get("id") != suggested)
     return _templates(request).TemplateResponse(
         request,
         "partials/manual_search_results.html",
@@ -9188,7 +9123,9 @@ def _render_release_picker(
             "store_url": store_url,
             # The search a truncated list hands over to musicbrainz.org (#878).
             "mb_query": mb_query,
-            # How a row's release was found, carried by its Use (#639).
+            "suggested": suggested,
+            **rows,
+            # How a row's release was found, carried by its Review (#639).
             "found_by": (
                 FoundBy.BARCODE
                 if barcode

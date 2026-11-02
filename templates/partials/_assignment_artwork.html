@@ -10,7 +10,7 @@
         {% if not artwork_pending %}
         <dl class="caa-status grid grid-cols-[auto_auto_auto] items-center gap-x-2 text-xs">
             {{ caa_checked(caa.fetched_at if caa else none,
-                review_url('/assignments/' ~ album.id ~ '/artwork?release_fingerprint=' ~ release_fingerprint ~ '&reread=true' ~ fill_query, replacement),
+                review_url('/assignments/' ~ album.id ~ '/artwork?release_fingerprint=' ~ release_fingerprint ~ '&reread=true' ~ fill_query, review),
                 'closest .assignment-artwork') }}
         </dl>
         {% endif %}
@@ -66,7 +66,7 @@
             {% elif selected.identical == selected.row %}
             {% elif archive_image %}
             <div class="assignment-artwork__image">
-                {{ thumbnail(archive_image, album.id, "the selected release's artwork", image_prefix, 'Artwork for selected release', '' if selected.identical else replacement) }}
+                {{ thumbnail(archive_image, album.id, "the selected release's artwork", image_prefix, 'Artwork for selected release', '' if selected.identical else review) }}
                 <p class="text-muted">{{ describe_image(archive_image) }}</p>
             </div>
             {% else %}<p class="text-muted">No front cover is available. Existing images will be kept.</p>{% endif %}
@@ -81,7 +81,7 @@
     {% if artwork.cover_unreadable %}<p class="text-xs text-amber-700">The folder cover could not be read. It will be left alone.</p>{% endif %}
     {% if artwork.plan.preserves_per_track_art %}<p class="text-xs text-muted">Differing per-track artwork is preserved.</p>{% endif %}
     {% for image, who in artwork.distinct %}
-        {{ full_size(image, album.id, who, image_prefix, replacement if archive_image and image.digest == archive_image.digest and not selected.identical else '', gallery=artwork.distinct) }}
+        {{ full_size(image, album.id, who, image_prefix, review if archive_image and image.digest == archive_image.digest and not selected.identical else '', gallery=artwork.distinct) }}
     {% endfor %}
     {% endif %}
 </div>

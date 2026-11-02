@@ -129,9 +129,10 @@ likely but not certain: often track lengths differ by a few seconds, or the
 track count doesn't match.
 
 **Review** it: check the side-by-side tracklist and **Tag changes**, then
-**Confirm suggestion**, or **Dismiss suggestion** to search for another release.
-Closing the review decides nothing, and the suggestion stays until one of those
-is chosen.
+**Confirm suggestion**, or **Dismiss suggestion** if it's wrong. Closing the
+review decides nothing. Another release can be searched for right beside the
+suggestion, and reviewed the same way; nothing is written until a review is
+confirmed.
 
 ### An album's discs show up as separate albums
 

@@ -131,14 +131,6 @@
         {% endwith %}
     </section>
     {% endif %}
-    {% if open_chosen_review %}
-    {# Use redirected here to review the release just chosen (#933). The address
-       drops `review` as it opens, so a reload doesn't open it a second time. #}
-    <div hidden hx-get="/review/{{ album.id }}?chosen=true&amp;on_album_page=true" hx-trigger="load"
-         hx-target="#modal" hx-swap="innerHTML"
-         hx-on::before-request="const url = new URL(window.location.href); url.searchParams.delete('review'); history.replaceState(history.state, '', url)"></div>
-    {% endif %}
-
     {# Tags and Tracks each stand as their own section, siblings of the album
        panel and History rather than blocks inside it (#160). The panel above is
        what the album IS — its state, where it lives, what you can do to it —

@@ -102,19 +102,24 @@ that tagged at once when it fit exactly, and opened review when it didn't, made
 the same button do one of two things depending on an assessment the user
 couldn't see before pressing it.
 
-**A lookup never replaces a suggestion awaiting the user** (#638). The search
-tools are hidden while one waits, so a barcode or store-URL lookup arriving then
-isn't one the user asked for: it is answered without asking MusicBrainz, and
-checked again before writing, since a lookup takes seconds and another can land
-meanwhile. A suggestion changes only when the user confirms or dismisses it.
+**A lookup never replaces a suggestion awaiting the user** (#638). A suggestion
+changes only when the user confirms or dismisses it.
 
-**Closing a review only dismisses a release the user chose** (#933). The review
-opens in a dialog, and closing it is not a decision about a suggestion Harmonist
-found: that one keeps waiting, as the rule above protects it. A release the user
-picked with Use is different: the review opened because of that click, so
-closing it takes the choice back, as Cancel did, and the search tools return. A
-suggestion the user walked away from would otherwise be left on the album,
-hiding the very tools they'd use to choose again.
+**Only Harmonist's own lookups store a suggestion; a search the user runs only
+lists** (#933). Adoption's barcode lookup, a sync's store URL, a possible mis-tag
+and an undo each store one, because nothing else would remember it. A search is
+the user looking, so it lists releases and stores nothing, a release its
+evidence narrows to included: that one is marked, not written. Reviewing a
+release the user picked stores nothing either, so only Confirm writes, and
+closing a review decides nothing. That is what lets the search tools stay beside
+a waiting suggestion, for the case where it is wrong: no search can replace it,
+because no search writes. Earlier a pick was stored before its review, which
+needed the tools hidden while a suggestion waited, and a way to throw the pick
+away again when the review was closed.
+
+**A suggestion is the row its lookup found.** It is shown as the first row of
+the search results, under the mode that found it, and a search that lists the
+same release marks that row rather than adding a second.
 
 ### Length ranks candidates, but is never a finding
 

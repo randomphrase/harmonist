@@ -78,7 +78,7 @@ def test_siblings_use_shared_rows_and_one_browse(client, cfg, monkeypatch):
     page = client.get(f"/album/{aid}")
     assert f"/manual/{aid}/siblings" in page.text
     assert f"/manual/{aid}/search" in page.text
-    assert f"/manual/{aid}/assign" in page.text
+    assert f'hx-get="/review/{aid}"' in page.text
 
 
 @pytest.mark.parametrize("missing_id", [False, True])
@@ -96,20 +96,28 @@ def test_manual_rematch_reviews_original_release_even_if_exact(
         track = album_files.audio_files(root)[0]
         formats.write_owned(track, dict(formats.read_owned(track), mb_album_id=None))
     before = {p: p.read_bytes() for p in album_files.audio_files(root)}
-    response = client.post(f"/manual/{aid}/assign", data={"mbid": REL_A, "on_album_page": "true"})
-    assert response.status_code == 200
+    cleared = sc.read(root)
+    # Choosing the album's own release again opens its review, however well it
+    # fits, and writes nothing until that is confirmed (#933).
+    review = client.get(
+        f"/assignments/{aid}",
+        params={"release": REL_A, "found_by": "release_group", "cancel": "true"},
+    )
+    assert review.status_code == 200
+    assert "Confirm suggestion" in review.text
+    assert sc.read(root) == cleared
     assert sc.read(root).mb_release_id is None
-    assert sc.read(root).mb_match_candidate.mb_release_id == REL_A
     assert {p: p.read_bytes() for p in before} == before
-    assert response.headers["HX-Redirect"] == f"/album/{aid}?review=chosen"
-    selected = sc.read(root)
+    # Reading it again uses the release the first read stored.
     lookups = list(calls)
     monkeypatch.setattr(
-        mb_cache, "fetch_release", lambda *a, **k: pytest.fail("selection already awaits review")
+        mb_cache, "fetch_release", lambda *a, **k: pytest.fail("the review already read it")
     )
-    repeated = client.post(f"/manual/{aid}/assign", data={"mbid": REL_A})
-    assert repeated.status_code == 204
-    assert sc.read(root) == selected
+    again = client.get(
+        f"/assignments/{aid}",
+        params={"release": REL_A, "found_by": "release_group", "cancel": "true"},
+    )
+    assert again.status_code == 200
     assert calls == lookups
 
 
@@ -131,7 +139,7 @@ def test_sibling_failure_keeps_restore_search_and_paste(client, cfg, monkeypatch
     assert ("HX-Trigger-After-Swap" in response.headers) is gone
     page = BeautifulSoup(client.get(f"/album/{aid}").text, "html.parser")
     assert page.select_one(f'form[hx-post="/manual/{aid}/search"]')
-    assert page.select_one('input[name="mbid"][type="text"]')
+    assert page.select_one('input[name="release"][type="text"]')
     assert sc.read(folder).mb_release_id is None
 
 
@@ -184,10 +192,18 @@ def test_multi_folder_confirmation_uses_reviewed_release_and_all_files(client, c
         return selected
 
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
-    client.post(f"/manual/{album.id}/assign", data={"mbid": "merged-old-id"})
-    review = client.get(f"/assignments/{album.id}?cancel=true&on_album_page=true")
+    # A merged MBID is reviewed as the release MusicBrainz now has (#268).
+    dialog = client.get(
+        f"/review/{album.id}",
+        params={"release": "merged-old-id", "found_by": "mbid", "on_album_page": "true"},
+    )
+    loader = BeautifulSoup(dialog.text, "html.parser").select_one("[hx-trigger='load']")
+    assert loader is not None and "release=new-release" in loader["hx-get"]
+    review = client.get(loader["hx-get"])
     fields = test_web._confirmation_fields(review.text)
     assert fields["candidate_mbid"] == "new-release"
+    confirm = BeautifulSoup(review.text, "html.parser").select_one("button[hx-post*='/confirm/']")
+    assert confirm is not None
     numbering = BeautifulSoup(review.text, "html.parser").select(
         '[aria-label^="Track numbering changes"]'
     )
@@ -198,7 +214,7 @@ def test_multi_folder_confirmation_uses_reviewed_release_and_all_files(client, c
     monkeypatch.setattr(
         mb_cache, "fetch_release", lambda *a, **k: pytest.fail("review must not fetch")
     )
-    result = client.post(f"/confirm/{album.id}/accept", data=fields)
+    result = client.post(confirm["hx-post"], data=fields)
     assert result.headers["HX-Redirect"] == "/album/new-release"
     assert calls == ["merged-old-id"]
     after = scanner.scan(cfg.paths.music_dir)
@@ -269,6 +285,6 @@ def test_replacement_barcode_search_waits_for_selection(client, cfg, monkeypatch
     assert response.status_code == 200
     assert sc.read(root).mb_match_candidate is None
     soup = BeautifulSoup(response.text, "html.parser")
-    assert len(soup.select('form[hx-post$="/assign"]')) == 1
+    assert len(soup.select(f'button[hx-get^="/review/{aid}?release="]')) == 1
     assert search.call_count == 1 and fetch.call_count == 0
     assert track.read_bytes() == before

@@ -57,10 +57,10 @@ session — don't try to power through all of them in one sitting.
 8. [ ] Verify ignores.test.txt got the item_id appended by bandcampsync
        (back-fill happens during sync).
 9. [ ] Press **Search** with **Store URL** selected. One of three outcomes:
-       - [ ] One match → suggestion on the card; **Review** opens the
+       - [ ] One match → one release row; **Review** opens the
              side-by-side table; click **Confirm suggestion** → DONE
              (disappears from inbox)
-       - [ ] Several matches → a list of releases; **Use** one, review, confirm
+       - [ ] Several matches → a list of releases; **Review** one, confirm
        - [ ] No MB match → album stays Held. Open in Harmony, seed there,
              wait, press **Search** again.
 10. [ ] When Done, open the file in mutagen (`python -c

@@ -51,15 +51,16 @@ def test_forget_then_choose_another_release(
         htmx_ready(panel.get_by_role("button", name="Search", exact=True)).click()
     choices = panel.get_by_role("list", name="Release candidates")
     pw_api.expect(choices).to_contain_text("Another release")
-    with page.expect_response(lambda r: r.url.endswith(f"/manual/{aid}/assign") and r.ok):
-        htmx_ready(choices.get_by_role("button", name="Use", exact=True)).click()
+    with page.expect_response(lambda r: f"/review/{aid}?" in r.url and r.ok):
+        htmx_ready(choices.get_by_role("button", name="Review", exact=True)).click()
     review = review_dialog(page)
     confirm = review.get_by_role("button", name="Confirm suggestion", exact=True)
     pw_api.expect(confirm).to_be_visible()
     pw_api.expect(review).to_contain_text("Another release")
-    assert sidecar.read(folder).mb_match_candidate.mb_release_id == "demo-rel-picker-other"
+    # Reviewing a choice stores nothing: the forgotten album has no sidecar yet.
+    assert sidecar.read(folder) is None
     assert {p: p.read_bytes() for p in originals} == originals
-    with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept") and r.ok):
+    with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url and r.ok):
         htmx_ready(confirm).click()
     if on_album:
         page.wait_for_url(f"{base}/album/demo-rel-picker-other")
@@ -104,7 +105,7 @@ def test_sibling_cancel_and_restore_keep_album_context(
     panel, dialogs, _ = _open_picker(page, release_picker_server, htmx_ready)
     choices = panel.get_by_role("region", name="Releases in this release group")
     row = choices.get_by_role("listitem").filter(has_text="Alternate pressing")
-    htmx_ready(row.get_by_role("button", name="Use", exact=True)).press("Enter")
+    htmx_ready(row.get_by_role("button", name="Review", exact=True)).press("Enter")
     review = review_dialog(page)
     pw_api.expect(review.get_by_role("button", name="Confirm suggestion")).to_be_visible()
     pw_api.expect(review).to_contain_text("Alternate pressing")
@@ -132,14 +133,12 @@ def test_reviewed_incomplete_release_applies_with_one_confirmation(
         panel.get_by_placeholder("Album", exact=True).fill("Another release")
         htmx_ready(panel.get_by_role("button", name="Search", exact=True)).click()
         results = panel.locator('[id^="mbid-results-"]')
-        htmx_ready(results.get_by_role("button", name="Use", exact=True)).click()
+        htmx_ready(results.get_by_role("button", name="Review", exact=True)).click()
     else:
         panel.get_by_role("radio", name="By MBID", exact=True).check()
-        paste = panel.locator('form[hx-post$="/assign"]').filter(
-            has=page.locator('input[name="mbid"][type="text"]')
-        )
+        paste = panel.locator('form[hx-get^="/review/"]')
         paste.get_by_placeholder("MB release URL or 36-char MBID").fill("demo-rel-picker-other")
-        htmx_ready(paste.get_by_role("button", name="Use", exact=True)).click()
+        htmx_ready(paste.get_by_role("button", name="Review", exact=True)).click()
     review = review_dialog(page)
     confirm = review.get_by_role("button", name="Confirm suggestion")
     pw_api.expect(confirm).to_be_visible()
@@ -175,7 +174,7 @@ def test_missing_disc_numbers_confirm_review_once(
         panel = page.locator(f"#task-{aid}")
     choices = panel.get_by_role("region", name="Releases in this release group")
     row = choices.get_by_role("listitem").filter(has_text="Alternate pressing")
-    htmx_ready(row.get_by_role("button", name="Use", exact=True)).click()
+    htmx_ready(row.get_by_role("button", name="Review", exact=True)).click()
     review = review_dialog(page)
     pw_api.expect(review.locator("[data-assignment-row]")).to_have_count(3)
     pw_api.expect(review.locator('[aria-label^="Track numbering changes"]')).to_have_count(0)
@@ -242,13 +241,13 @@ def test_release_modes_show_one_result_list_even_after_a_late_search(
     pw_api.expect(revert).to_be_visible()
     assert panel.evaluate("""panel =>
             panel.querySelector('button[hx-post$="/rematch/undo"]').getBoundingClientRect().top >
-            panel.querySelector('input[name="mbid"][type="text"]').getBoundingClientRect().bottom
+            panel.querySelector('input[name="release"][type="text"]').getBoundingClientRect().bottom
         """)
     page.unroute("**/manual/*/search")
     panel.get_by_role("radio", name="By name", exact=True).check()
     pw_api.expect(paste).not_to_be_visible()
     htmx_ready(panel.get_by_role("button", name="Search", exact=True)).click()
-    use = results.get_by_role("button", name="Use", exact=True)
+    use = results.get_by_role("button", name="Review", exact=True)
     pw_api.expect(use).to_be_visible()
     review = review_dialog(page)
     pw_api.expect(review).to_have_count(0)
@@ -283,7 +282,7 @@ def test_no_siblings_automatically_searches_by_name(
         panel = page.locator(f"#task-{aid}")
     pw_api.expect(panel.get_by_role("radio", name="By name", exact=True)).to_be_checked()
     results = panel.locator('[id^="mbid-results-"]')
-    pw_api.expect(results.get_by_role("button", name="Use", exact=True)).to_be_visible()
+    pw_api.expect(results.get_by_role("button", name="Review", exact=True)).to_be_visible()
     pw_api.expect(panel.get_by_role("button", name="Revert to Previous")).to_be_visible()
     pw_api.expect(
         panel.get_by_role("region", name="Releases in this release group")
@@ -342,7 +341,7 @@ def test_missing_file_id_recovers_to_working_search(
         panel = page.locator(f"#task-{aid}")
     pw_api.expect(panel.get_by_role("radio", name="By name", exact=True)).to_be_checked()
     results = panel.locator('[id^="mbid-results-"]')
-    use = results.get_by_role("button", name="Use", exact=True).first
+    use = results.get_by_role("button", name="Review", exact=True).first
     pw_api.expect(use).to_be_visible()
     pw_api.expect(panel.get_by_role("button", name="Revert to Previous")).to_have_count(0)
     panel.get_by_role("radio", name="In this release group", exact=True).check()

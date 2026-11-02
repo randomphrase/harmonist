@@ -1,9 +1,11 @@
 {# Reusable Jinja rendering helpers.
    Import in a template with:  {% from 'macros.html' import release_name %} #}
 
-{# Carry a page-local replacement through every step of the shared review. #}
-{% macro review_url(path, replacement) -%}
-{{ path }}{% if replacement %}{{ '&' if '?' in path else '?' }}replacement={{ replacement|urlencode }}{% endif %}
+{# Carry an unstored release through every step of the shared review: a
+   sibling from the release group check, or a release the user chose (#933).
+   `review` is that query, already encoded (`_ctx`'s `review`). #}
+{% macro review_url(path, review) -%}
+{{ path }}{% if review %}{{ '&' if '?' in path else '?' }}{{ review }}{% endif %}
 {%- endmacro %}
 
 {# An MB release name with its disambiguation rendered visually distinct —
@@ -154,22 +156,6 @@
 {% if active %}hx-on::after-request="if (event.detail.successful) window.location.reload()"{% endif %}
 {%- endmacro %}
 
-{# The same, for a control whose response is sometimes a list to READ rather
-   than a change to absorb (#150).
-
-   The Barcode and Store URL searches do this. Each queries MusicBrainz and then
-   either writes a suggestion — one match, to review — or comes back with the
-   several releases that share the barcode or URL, for the user to pick from.
-   The second answer arrives as `HX-Retarget` pointing at the
-   results box, and reloading the page on it would throw away the very list the
-   press went to fetch, leaving the album looking unchanged for no stated reason.
-
-   So the absence of that header IS the "it acted" signal, which is better than
-   guessing from the flash text and is set by the one place that knows
-   (`_render_release_picker`). #}
-{% macro reload_unless_retargeted(active) -%}
-{% if active %}hx-on::after-request="if (event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget')) window.location.reload()"{% endif %}
-{%- endmacro %}
 
 {# The pill saying the album's own tracks disagree about one thing, and the
    popover naming which files and what each of them says instead.

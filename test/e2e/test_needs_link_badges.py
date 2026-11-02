@@ -76,7 +76,9 @@ def test_needs_link_badge_action(
             htmx_ready(corrected.get_by_role("button", name="Search", exact=True)).click()
         assert search.value.ok
         playwright_sync.expect(
-            corrected.locator('[id^="mbid-results-"]').get_by_role("button", name="Use", exact=True)
+            corrected.locator('[id^="mbid-results-"]').get_by_role(
+                "button", name="Review", exact=True
+            )
         ).to_be_visible()
     elif on_album:
         # Reload must expose the new state and remove the live Needs Linking control.

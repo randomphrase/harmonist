@@ -1,5 +1,5 @@
 {% from 'macros.html' import release_name %}
-{% from 'partials/_release_candidate.html' import release_candidate %}
+{% from 'partials/_release_candidate.html' import release_candidate, review_button %}
 {% from 'partials/_contribution_barcode.html' import barcode_contribution %}
 {# The discovery result owns what the album page shows (#618): a Possible
    mismatch section with the evidence and the releases to choose between, and an
@@ -11,11 +11,8 @@
 {% set store_host = contribution.store_url.split('/')[2] if contribution.store_url else none %}
 {% set row_ids = (check.editions | map(attribute='id') | list) if check else [] %}
 {% set heading = "text-sm font-bold text-ink uppercase tracking-widest" %}
-{% macro use_edition(edition, suggested) %}
-<button type="button" hx-get="/review/{{ album.id }}?replacement={{ (album.sidecar.mb_release_id ~ ':' ~ edition.id)|urlencode }}&amp;on_album_page=true"
-        hx-target="#modal" hx-swap="innerHTML" hx-disabled-elt="this"
-        hx-indicator="#edition-reviewing-{{ album.id }}"
-        class="px-2 py-1 {% if suggested %}bg-accent hover:bg-accent-dark text-white{% else %}bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30{% endif %} rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Use</button>
+{% macro review_edition(edition, suggested) %}
+{{ review_button('/review/' ~ album.id ~ '?replacement=' ~ ((album.sidecar.mb_release_id ~ ':' ~ edition.id)|urlencode) ~ '&on_album_page=true', suggested, '#edition-reviewing-' ~ album.id) }}
 {% endmacro %}
 {# Silencing the warning is a persisted boolean, so the native checkbox, worded
    and muted like the incomplete-album one. Ticked posts accept=true; unticked
@@ -54,7 +51,7 @@
         {% set suggested = suggested_edition and edition.id == suggested_edition.id %}
         {% set on_store = check.same_store | selectattr('id', 'equalto', edition.id) | first %}
         {% call release_candidate(edition, album.track_count, album.artist, suggested, edition.store_linked is sameas true, edition.upc_matches is sameas true, on_store.store_pages if on_store else none) %}
-            {{ use_edition(edition, suggested) }}
+            {{ review_edition(edition, suggested) }}
         {% endcall %}
     {% endfor %}
     </div>

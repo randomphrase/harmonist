@@ -39,7 +39,7 @@ def test_review_outcome_matches_the_images_written(
     use = (
         page.locator("#contribution-editions-demo-rel-dingoes")
         .get_by_role("listitem", name="Suggested digital release")
-        .get_by_role("button", name="Use", exact=True)
+        .get_by_role("button", name="Review", exact=True)
     )
     htmx_ready(use).click()
     review = review_dialog(page)
@@ -121,22 +121,20 @@ def test_review_outcome_matches_the_images_written(
     page.context.close()
 
 
+#: The release these tests review in place of the album's own: a choice the
+#: user makes in the paste box, which stores nothing until it is confirmed.
+CHOSEN = "demo-rel-thamesmen"
+
+
 def _suggest(page, base):
     headers = {"HX-Request": "true"}
     assert page.request.post(f"{base}/library/demo-rel-dingoes/rematch", headers=headers).ok
     page.goto(base)
-    # Let the card's automatic candidate lookup finish before choosing a
-    # different release, so that response cannot overwrite the test's choice.
-    page.wait_for_load_state("networkidle")
     card = page.locator('div[id^="task-"].relative').filter(
         has_text="Little Bit o' Hoot, Whole Lotta Nanny"
     )
     pw.expect(card).to_have_count(1)
-    aid = card.get_attribute("id").removeprefix("task-")
-    assert page.request.post(
-        f"{base}/manual/{aid}/assign", headers=headers, form={"mbid": "demo-rel-thamesmen"}
-    ).ok
-    return aid
+    return card.get_attribute("id").removeprefix("task-")
 
 
 @pytest.mark.parametrize("engine", ["chromium", "webkit"])
@@ -174,7 +172,7 @@ def test_stale_assignment_response_preserves_current_artwork(
     page.goto(reset_demo_server)
     # The review opens in a dialog (#933), outside the card the Inbox
     # re-renders: its read lands after the card has gone and come back.
-    review = open_review(page, page.locator(f"#task-{aid}"))
+    review = open_review(page, page.locator(f"#task-{aid}"), CHOSEN)
     page.wait_for_function("window.assignmentResponseHeld === true")
     page.route(
         "**/tasks",
@@ -207,7 +205,7 @@ def test_inbox_refresh_preserves_artwork_inspection(
     aid = _suggest(page, base)
     page.goto(base)
     page.wait_for_load_state("networkidle")
-    artwork = open_review(page, page.locator(f"#task-{aid}")).locator(".assignment-artwork")
+    artwork = open_review(page, page.locator(f"#task-{aid}"), CHOSEN).locator(".assignment-artwork")
     pw.expect(artwork.get_by_alt_text("Artwork for selected release")).to_be_visible()
     thumb = artwork.locator("button[popovertarget]").first
     thumb.click()
@@ -274,6 +272,7 @@ def test_review_artwork_inspection_and_refresh_preserve_draft(
     review = open_review(
         page,
         page.locator("#album-inbox-actions") if on_album else page.locator(f"#task-{aid}"),
+        CHOSEN,
     )
     artwork = review.locator(".assignment-artwork")
     pw.expect(artwork.get_by_alt_text("Artwork for selected release")).to_be_visible()
@@ -342,13 +341,14 @@ def test_confirmation_applies_only_included_artwork(
     aid = _suggest(page, base)
     page.goto(f"{base}/album/{aid}" if on_album else base)
     host = page.locator("#album-inbox-actions") if on_album else page.locator(f"#task-{aid}")
-    review = open_review(page, host)
+    review = open_review(page, host, CHOSEN)
     candidate = review.get_by_alt_text("Artwork for selected release")
     pw.expect(candidate).to_be_visible()
     page.wait_for_function(
         "() => document.querySelector('.assignment-editor img[alt=\"Artwork for selected release\"]').naturalWidth > 0"
     )
-    candidate_digest = candidate.get_attribute("src").rsplit("/", 1)[-1]
+    # The image is named by its digest; the review's query rides after it.
+    candidate_digest = candidate.get_attribute("src").split("?")[0].rsplit("/", 1)[-1]
     before = review.locator('img[alt^="Current artwork"]').evaluate_all(
         "els => els.map(e => e.src.split('/').pop())"
     )
@@ -362,7 +362,7 @@ def test_confirmation_applies_only_included_artwork(
     pw.expect(review.locator('[name="disk_order"]')).to_have_value("0,1,2")
     review.locator('[name="assignment_action"][value="cancel"]').click()
     pw.expect(checkbox).to_be_checked(checked=included)
-    with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as confirmed:
+    with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url) as confirmed:
         review.get_by_role("button", name="Confirm suggestion", exact=True).click()
     assert "confirmation-applied" in confirmed.value.headers.get("hx-trigger", "")
     assert (
@@ -396,9 +396,9 @@ def test_pending_artwork_does_not_block_tags_only_acceptance(browser_factory, re
     pending = []
     page.route("**/assignments/*/artwork?*", lambda route: pending.append(route))
     page.goto(base)
-    review = open_review(page, page.locator(f"#task-{aid}"))
+    review = open_review(page, page.locator(f"#task-{aid}"), CHOSEN)
     pw.expect(review).to_contain_text("Loading artwork")
-    with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
+    with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url) as applied:
         review.get_by_role("button", name="Confirm suggestion", exact=True).click()
     assert pending
     assert parse_qs(applied.value.request.post_data)["include_artwork"] == ["false"]
@@ -429,7 +429,7 @@ def test_current_artwork_keeps_actions_in_place_while_loading(
     page.route(f"**/assignments/{aid}/artwork?*", hold)
     page.goto(f"{base}/album/{aid}" if on_album else base)
     host = page.locator("#album-inbox-actions") if on_album else page.locator(f"#task-{aid}")
-    review = open_review(page, host)
+    review = open_review(page, host, CHOSEN)
     artwork = review.locator(".assignment-artwork")
     pw.expect(artwork).to_contain_text("Loading artwork")
     current = artwork.locator('img[alt^="Current artwork:"]')
@@ -480,7 +480,7 @@ def test_changed_confirmation_preserves_review_and_artwork_choice(
     page.on("dialog", lambda dialog: dialog.accept())
     aid = _suggest(page, base)
     page.goto(base)
-    review = open_review(page, page.locator(f"#task-{aid}"))
+    review = open_review(page, page.locator(f"#task-{aid}"), CHOSEN)
     pw.expect(review.locator(".assignment-artwork")).to_contain_text("CAA checked")
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
     review.get_by_role("button", name="Edit track assignments").click()
@@ -507,7 +507,7 @@ def test_changed_confirmation_preserves_review_and_artwork_choice(
             name="Read this release from MusicBrainz again and reset assignment changes",
         ).click()
     pw.expect(editor.locator('[name="release_fingerprint"]')).to_have_value(fingerprint)
-    with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
+    with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url) as applied:
         htmx_ready(review.get_by_role("button", name="Confirm suggestion", exact=True)).click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
     page.context.close()

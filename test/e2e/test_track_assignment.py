@@ -11,8 +11,8 @@ pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e di
 pw = pytest.importorskip("playwright.sync_api")
 
 
-def _opened(page, host):
-    review = open_review(page, host)
+def _opened(page, host, release=None):
+    review = open_review(page, host, release)
     pw.expect(review.locator(".assignment-artwork")).to_contain_text("CAA checked")
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
     return review
@@ -104,21 +104,16 @@ def test_suggested_release_link_follows_review_and_confirmation(
     pw.expect(dismiss).to_be_enabled()
     pw.expect(link).to_be_visible()
 
-    # Replace the candidate through the application's normal assignment path.
-    assert page.request.post(
-        f"{base}/manual/{aid}/assign",
-        headers={"HX-Request": "true"},
-        form={"mbid": "demo-rel-folksmen"},
-    ).ok
+    # Review another release instead, chosen the way a user chooses one.
     page.reload()
-    open_review(page, host)
+    open_review(page, host, "demo-rel-folksmen")
     pw.expect(link).to_have_attribute("href", "https://musicbrainz.org/release/demo-rel-folksmen")
     pw.expect(edit).to_have_class(re.compile("bg-amber-50"))
     pw.expect(groups.nth(0)).to_contain_text("1 file unassigned")
     pw.expect(review.locator(".assignment-artwork")).to_contain_text("CAA checked")
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
     pw.expect(review).to_contain_text("Unassigned files will receive the album's MusicBrainz ID")
-    with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
+    with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url) as applied:
         review.get_by_role("button", name="Confirm suggestion", exact=True).click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
     if on_album:
@@ -364,14 +359,9 @@ def test_partial_confirmation_can_be_applied_and_reviewed(browser_factory, reset
     page.on("dialog", lambda dialog: dialog.accept())
     aid, review = _review(page, base)
     # Three files against a two-track release leaves one file unassigned.
-    assert page.request.post(
-        f"{base}/manual/{aid}/assign",
-        headers={"HX-Request": "true"},
-        form={"mbid": "demo-rel-folksmen"},
-    ).ok
     page.reload()
-    review = _opened(page, page.locator(f"#task-{aid}"))
-    with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
+    review = _opened(page, page.locator(f"#task-{aid}"), "demo-rel-folksmen")
+    with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url) as applied:
         review.get_by_role("button", name="Confirm suggestion", exact=True).click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
     page.goto(f"{base}/album/demo-rel-folksmen")
@@ -441,7 +431,7 @@ def test_arrow_mapping_survives_refresh_review_and_apply(browser_factory, reset_
     editor.get_by_role("button", name="Cancel", exact=True).click()
     pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
     # Only final confirmation writes the accepted pairing.
-    with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
+    with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url) as applied:
         editor.get_by_role("button", name="Confirm suggestion").click()
     assert parse_qs(applied.value.request.post_data)["disk_order"] == ["1,0,2"]
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
@@ -457,13 +447,8 @@ def test_gap_can_move_on_either_side_and_cancel_discards_the_draft(
     page = browser.new_page()
     aid, review = _review(page, base)
     # Three local files against the demo's four-track release.
-    assert page.request.post(
-        f"{base}/manual/{aid}/assign",
-        headers={"HX-Request": "true"},
-        form={"mbid": "demo-rel-electric-mayhem"},
-    ).ok
     page.reload()
-    review = _opened(page, page.locator(f"#task-{aid}"))
+    review = _opened(page, page.locator(f"#task-{aid}"), "demo-rel-electric-mayhem")
     review.get_by_role("button", name="Edit track assignments").click()
     editor = review.locator(".assignment-editor")
     pw.expect(editor.locator('[name="disk_order"]')).to_have_value("0,1,2,-")
@@ -488,13 +473,8 @@ def test_failed_partial_confirmation_preserves_review_during_inbox_refresh(
     page = browser.new_page()
     page.on("dialog", lambda dialog: dialog.accept())
     aid, review = _review(page, base)
-    assert page.request.post(
-        f"{base}/manual/{aid}/assign",
-        headers={"HX-Request": "true"},
-        form={"mbid": "demo-rel-folksmen"},
-    ).ok
     page.reload()
-    review = _opened(page, page.locator(f"#task-{aid}"))
+    review = _opened(page, page.locator(f"#task-{aid}"), "demo-rel-folksmen")
     review.get_by_role("button", name="Edit track assignments").click()
     editor = review.locator(".assignment-editor")
     before = editor.locator('[name="disk_order"]').input_value()
@@ -517,18 +497,19 @@ def test_failed_partial_confirmation_preserves_review_during_inbox_refresh(
         pw.expect(editor.locator('[name="disk_order"]')).to_have_value(before)
         route.fulfill(response=response)
 
-    page.route(f"**/confirm/{aid}/accept", poll_during_accept)
+    # A chosen release's confirm carries the review's query.
+    page.route(f"**/confirm/{aid}/accept?*", poll_during_accept)
     with page.expect_response(lambda r: r.url.endswith("/tasks")):
         accept.click()
     pw.expect(editor.get_by_role("alert")).to_contain_text("Refresh the comparison")
     pw.expect(accept).to_be_enabled()
     pw.expect(accept).to_have_css("opacity", "1")
     pw.expect(editor.locator('[name="disk_order"]')).to_have_value(before)
-    page.unroute(f"**/confirm/{aid}/accept", poll_during_accept)
+    page.unroute(f"**/confirm/{aid}/accept?*", poll_during_accept)
     editor.locator('[name="release_fingerprint"]').evaluate(
         "(e, value) => e.value = value", fingerprint
     )
-    with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
+    with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url) as applied:
         accept.click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
     page.context.close()

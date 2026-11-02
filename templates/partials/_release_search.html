@@ -1,17 +1,33 @@
 {# One search mode and results box; the parent preserves both across inbox polls. #}
-{% from 'macros.html' import reload_unless_retargeted %}
 {% set sc = album.sidecar %}
 {% set on_album = on_album_page | default(false) %}
 {% set public_url = sc and sc.store_url and not (sc.bandcamp and sc.bandcamp.is_private) and not show_siblings|default(false) %}
 {% set prefer_name = request.query_params.get('search') == 'name' %}
+{# The suggestion stored on the album is a release row in these results, as the
+   lookup that found it would have listed it (#933), under that lookup's mode.
+   A surrender's candidate is the album's own release, not a suggestion. #}
+{% set waiting = sc.mb_match_candidate if sc and sc.mb_match_candidate and not sc.mb_match_candidate.unmatched_purchase else none %}
+{% set waiting_url = waiting and waiting.found_by == 'store_url' and public_url %}
 {% set siblings_default = show_siblings|default(false) and not prefer_name %}
-{% set barcode_default = album.barcode and not prefer_name and not siblings_default %}
+{% set barcode_default = album.barcode and not prefer_name and not siblings_default and not waiting_url %}
 {# Look up on render only when nothing already names a release. Files tagged with
    an MBID are reconcile's to adopt; a lookup fired here races it and loses (#671). #}
 {% set auto_lookup = not album.has_tag_mbid and not (sc and sc.mb_match_candidate) %}
+{% macro seed() %}{% if waiting %}
+{% with results=[suggested_row(waiting)], album_id=album.id, local_track_count=album.track_count,
+        local_artist=album.artist, on_album_page=on_album, heading=none, more_count=none,
+        store_url=sc.store_url if waiting.found_by == 'store_url' else none,
+        barcode=album.barcode if waiting.found_by == 'barcode' else none,
+        found_by=waiting.found_by, suggested=none, waiting=waiting.mb_release_id,
+        restored=waiting.found_by == 'undo' %}
+{% include 'partials/manual_search_results.html' %}
+{% endwith %}
+{% endif %}{% endmacro %}
+{# Changing mode clears the last search's results, and puts the suggestion back:
+   it is a row in every mode until it is confirmed or dismissed. #}
 <div class="find-mode mb-2"
      hx-on:release-group-empty="const mode = this.querySelector('input[value=siblings]'); if (mode && mode.checked) { const name = this.querySelector('input[value=name]'); name.checked = true; htmx.trigger(name, 'change'); this.querySelector('.find-mode__panel--name form').requestSubmit(); }"
-     hx-on:change="if (event.target.type === 'radio') document.getElementById('mbid-results-{{ album.id }}').replaceChildren()">
+     hx-on:change="if (event.target.type === 'radio') { const box = document.getElementById('mbid-results-{{ album.id }}'); const seed = document.getElementById('mbid-seed-{{ album.id }}'); box.replaceChildren(...(seed ? seed.content.cloneNode(true).childNodes : [])); if (seed) htmx.process(box); }">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-xs">
         <span class="text-muted font-bold uppercase tracking-widest text-2xs">Find release:</span>
         {% if show_siblings|default(false) %}
@@ -71,7 +87,7 @@
                  listener after inbox swaps. Retire only that automatic trigger. #}
               hx-on::before-request="this.setAttribute('hx-trigger', 'submit, change from:#barcode-mode-{{ album.id }}')"
               hx-disabled-elt="find button" hx-indicator="#lookup-progress-{{ album.id }}"
-              {{ reload_unless_retargeted(on_album) }} class="flex items-center gap-2">
+              class="flex items-center gap-2">
             <input type="hidden" name="on_album_page" value="{{ 'true' if on_album else 'false' }}">
             <span class="flex-1 text-xs text-muted">{{ album.barcode }}</span>
             <button type="submit" class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Search</button>
@@ -85,7 +101,7 @@
               hx-trigger="{% if not barcode_default and not prefer_name and auto_lookup %}load delay:1ms, {% endif %}submit, change from:#url-mode-{{ album.id }}"
               hx-on::before-request="this.setAttribute('hx-trigger', 'submit, change from:#url-mode-{{ album.id }}')"
               hx-disabled-elt="find button" hx-indicator="#lookup-progress-{{ album.id }}"
-              {{ reload_unless_retargeted(on_album) }} class="flex items-center gap-2">
+              class="flex items-center gap-2">
             <input type="hidden" name="on_album_page" value="{{ 'true' if on_album else 'false' }}">
             <span class="flex-1 min-w-0 truncate text-xs text-muted" title="{{ sc.store_url }}">{{ sc.store_url }}</span>
             <button type="submit" class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Search</button>
@@ -96,5 +112,6 @@
        what it is doing rather than borrowing the card's "Tagging…" overlay
        (#638), which claimed a tagging that wasn't happening. #}
     <span id="lookup-progress-{{ album.id }}" class="hidden [&.htmx-request]:inline text-xs text-muted" role="status">Looking up on MusicBrainz…</span>
-    <div id="mbid-results-{{ album.id }}" class="find-mode__results mt-2"></div>
+    <div id="mbid-results-{{ album.id }}" class="find-mode__results mt-2">{{ seed() }}</div>
+    {% if waiting %}<template id="mbid-seed-{{ album.id }}">{{ seed() }}</template>{% endif %}
 </div>

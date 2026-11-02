@@ -133,7 +133,7 @@ def test_contribution_actions_and_review_progress_layout(
     if scenario != "empty":
         pending = []
         page.route("**/review/**", lambda route: pending.append(route))
-        panel.get_by_role("button", name="Use", exact=True).first.click()
+        panel.get_by_role("button", name="Review", exact=True).first.click()
         playwright_sync.expect(progress).to_be_visible()
         page.wait_for_function(
             "() => document.querySelector('[id^=\"edition-reviewing-\"].htmx-request') !== null"
@@ -167,7 +167,7 @@ def test_sibling_without_release_cover_keeps_local_artwork(browser_factory, sibl
     page.route("**/assignments/*/artwork?*", hold)
     results = page.locator(f"#contribution-editions-{ALBUM}")
     results.get_by_role("listitem", name="Suggested digital release").get_by_role(
-        "button", name="Use", exact=True
+        "button", name="Review", exact=True
     ).click()
     review = review_dialog(page)
     artwork = review.locator(".assignment-artwork")
@@ -293,7 +293,7 @@ def test_contribution_check_and_library_filter(
     # Closing it leaves the choices and the ordinary findings where they were.
     suggestion = results.get_by_role("listitem", name="Suggested digital release")
     playwright_sync.expect(suggestion).to_contain_text("Bandcamp download")
-    suggestion.get_by_role("button", name="Use", exact=True).click()
+    suggestion.get_by_role("button", name="Review", exact=True).click()
     review = review_dialog(page)
     playwright_sync.expect(review).to_contain_text("Suggested match")
     playwright_sync.expect(
@@ -323,7 +323,7 @@ def test_contribution_check_and_library_filter(
     # An unlinked sibling is still a valid choice. After tagging, its missing
     # URL must trigger discovery again before any link edit is offered.
     results.get_by_role("listitem").filter(has_text="Digital reissue").get_by_role(
-        "button", name="Use", exact=True
+        "button", name="Review", exact=True
     ).click()
     review.get_by_role("button", name="Edit track assignments", exact=True).click()
     playwright_sync.expect(review.get_by_role("button", name="Cancel", exact=True)).to_have_count(1)

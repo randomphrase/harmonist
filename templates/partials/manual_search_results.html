@@ -3,8 +3,14 @@
    dicts), `album_id`, and the local facts for mismatch cues. Optional:
    `heading` (a label above the list), `more_count` (total found when the
    list was truncated), `mb_query` (the search a truncated list hands over to
-   musicbrainz.org) and `region_label` (names the scroll box). #}
-{% from 'partials/_release_candidate.html' import release_candidate %}
+   musicbrainz.org) and `region_label` (names the scroll box).
+
+   `suggested` marks the row the evidence points to. `waiting` is the release
+   of the suggestion stored on the album (#933): its row IS that suggestion, so
+   its Review opens it as stored, where Dismiss can clear it, rather than as a
+   fresh choice. `restored` says the waiting one came back from an undo. #}
+{% set flag = 'true' if on_album_page|default(false) else 'false' %}
+{% from 'partials/_release_candidate.html' import release_candidate, review_button %}
 {% if heading %}
 <p class="text-2xs uppercase tracking-widest text-muted font-bold mb-1 px-1">{{ heading }}</p>
 {% endif %}
@@ -21,22 +27,17 @@
 <div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label="{{ region_label|default('Matching releases') }}">
 <div class="space-y-1" role="list" aria-label="Release candidates">
     {% for r in results %}
-    {% call release_candidate(r, local_track_count, local_artist, store_match=store_url, barcode_match=barcode) %}
+    {% set is_waiting = r.id == waiting|default(none) %}
+    {% set is_suggested = is_waiting or r.id == suggested|default(none) %}
+    {% call release_candidate(r, local_track_count, local_artist, suggested=is_suggested, store_match=store_url, barcode_match=barcode, restored=is_waiting and restored|default(false), suggested_label='Suggested release') %}
             {# Rendered by a route, not included from a card, so the flag has to
                be carried into this response rather than inherited from a
-               surrounding template (#150) — see `_render_release_picker`.
-               The route redirects to the current album after a successful
-               selection. #}
-            <form hx-post="/manual/{{ album_id }}/assign" hx-swap="none" hx-disabled-elt="this"
-                  hx-indicator="#tagging-{{ album_id }}">
-                <input type="hidden" name="mbid" value="{{ r.id }}">
-                <input type="hidden" name="on_album_page" value="{{ 'true' if on_album_page|default(false) else 'false' }}">
-                <input type="hidden" name="found_by" value="{{ found_by }}">
-                <button type="submit"
-                        class="px-2 py-1 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">
-                    Use
-                </button>
-            </form>
+               surrounding template (#150) — see `_render_release_picker`. #}
+            {% if is_waiting %}
+            {{ review_button('/review/' ~ album_id ~ '?on_album_page=' ~ flag, true) }}
+            {% else %}
+            {{ review_button('/review/' ~ album_id ~ '?release=' ~ (r.id|urlencode) ~ '&found_by=' ~ found_by ~ '&on_album_page=' ~ flag, is_suggested) }}
+            {% endif %}
     {% endcall %}
     {% endfor %}
 </div>

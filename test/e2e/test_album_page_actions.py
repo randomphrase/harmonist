@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 
 import pytest
-from test.e2e.conftest import open_review
+from test.e2e.conftest import open_review, review_dialog
 
 # Opt-in like every other module here: `make check` stays browser-free.
 pytestmark = pytest.mark.skipif(
@@ -44,8 +44,10 @@ def test_dismissed_suggestion_returns_to_selectable_store_results(
     if on_album:
         page.goto(f"{reset_demo_server}/album/{aid}")
     host = page.locator("#album-inbox-actions") if on_album else card
-    tools = host.locator(f"#mbid-tools-{aid}")
-    playwright_sync.expect(tools).to_be_hidden()
+    # Keyed to the waiting suggestion, so its id changes when that is dismissed.
+    tools = host.locator(f'[id^="mbid-tools-{aid}"]')
+    # A waiting suggestion leaves the search beside it, for a wrong one (#933).
+    playwright_sync.expect(tools).to_be_visible()
     review = open_review(page, host)
     dismiss = review.get_by_role("button", name="Dismiss suggestion", exact=True)
     playwright_sync.expect(dismiss).to_be_visible()
@@ -64,7 +66,7 @@ def test_dismissed_suggestion_returns_to_selectable_store_results(
             page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
         page.wait_for_load_state("networkidle")
         playwright_sync.expect(tools).to_be_visible()
-    # A fresh search lists the release; only Use opens another review.
+    # A fresh search lists the release; only its Review opens another review.
     tools.get_by_role("radio", name="By name", exact=True).check()
     with page.expect_response(lambda r: "/candidates" in r.url):
         tools.get_by_role("radio", name="Store URL", exact=True).check()
@@ -72,10 +74,10 @@ def test_dismissed_suggestion_returns_to_selectable_store_results(
     playwright_sync.expect(rows).to_have_count(1)
     playwright_sync.expect(rows).to_contain_text("Store URL matches")
     playwright_sync.expect(tools).to_be_visible()
-    htmx_ready(rows.get_by_role("button", name="Use", exact=True)).press("Enter")
-    # The release just chosen opens its review without another click (#933).
-    playwright_sync.expect(dismiss).to_be_visible()
-    playwright_sync.expect(tools).to_be_hidden()
+    htmx_ready(rows.get_by_role("button", name="Review", exact=True)).press("Enter")
+    playwright_sync.expect(
+        review.get_by_role("button", name="Confirm suggestion", exact=True)
+    ).to_be_visible()
     dialogs = []
 
     def dismiss_dialog(dialog):
@@ -85,7 +87,7 @@ def test_dismissed_suggestion_returns_to_selectable_store_results(
     page.on("dialog", dismiss_dialog)
     # The click starts tag writing; the card can leave only after the
     # confirmation finishes, which can exceed an assertion's timeout in CI.
-    with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
+    with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url) as applied:
         htmx_ready(review.get_by_role("button", name="Confirm suggestion", exact=True)).click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
     assert dialogs == []
@@ -106,7 +108,7 @@ def test_automatic_url_search_runs_once_across_inbox_refreshes(
     page.goto(reset_demo_server)
     card = page.locator('div[id^="task-"].relative').filter(has_text=ALBUM_TITLE)
     results = card.get_by_role("list", name="Release candidates")
-    playwright_sync.expect(results.get_by_role("button", name="Use", exact=True)).to_be_visible()
+    playwright_sync.expect(results.get_by_role("button", name="Review", exact=True)).to_be_visible()
     page.wait_for_load_state("networkidle", timeout=10_000)
     assert len(lookups) == 1
     # A real inbox swap must preserve the form without repeating its load search.
@@ -121,7 +123,7 @@ def test_automatic_url_search_runs_once_across_inbox_refreshes(
         card.get_by_role("button", name="Search", exact=True).click()
     page.wait_for_load_state("networkidle", timeout=10_000)
     assert len(lookups) == 2
-    playwright_sync.expect(results.get_by_role("button", name="Use", exact=True)).to_be_visible()
+    playwright_sync.expect(results.get_by_role("button", name="Review", exact=True)).to_be_visible()
     page.context.close()
 
 
@@ -148,19 +150,18 @@ def test_a_card_links_to_its_album_page_and_the_decision_can_be_taken_there(
     page.wait_for_selector("#album-inbox-actions", timeout=10_000)
     results = page.get_by_role("list", name="Release candidates")
     playwright_sync.expect(results).to_contain_text("Store URL matches")
-    htmx_ready(results.get_by_role("button", name="Use", exact=True)).click()
-    playwright_sync.expect(page.get_by_role("heading", name="Suggested match:")).to_be_visible()
+    htmx_ready(results.get_by_role("button", name="Review", exact=True)).click()
+    review = review_dialog(page)
+    playwright_sync.expect(review.get_by_role("heading", name="Suggested match:")).to_be_visible()
     assert any("/candidates" in u for u in requests)
     assert page.locator("#album-tags").count() == 0
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
-    with page.expect_response(lambda r: "/reject/" in r.url, timeout=15_000) as got:
-        page.get_by_role("button", name="Dismiss suggestion", exact=True).click()
-    assert got.value.ok
-    playwright_sync.expect(page.get_by_role("radio", name="By name", exact=True)).to_be_checked()
-    # Selecting URL is an explicit fresh search after dismissal.
-    with page.expect_response(lambda r: "/candidates" in r.url):
-        page.get_by_role("radio", name="Store URL", exact=True).check()
-    htmx_ready(results.get_by_role("button", name="Use", exact=True)).click()
-    playwright_sync.expect(page.get_by_role("heading", name="Suggested match:")).to_be_visible()
+    # A chosen release was never stored: Cancel closes, and the list it was
+    # chosen from is where it was, to choose again.
+    review.get_by_role("button", name="Cancel", exact=True).click()
+    playwright_sync.expect(review).to_have_count(0)
+    htmx_ready(results.get_by_role("button", name="Review", exact=True)).click()
+    playwright_sync.expect(review.get_by_role("heading", name="Suggested match:")).to_be_visible()
+    assert not any("/reject/" in u for u in requests)
 
     page.context.close()

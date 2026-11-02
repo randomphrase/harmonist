@@ -16,7 +16,7 @@ def _open(page, base, review):
     if review:
         page.locator("#contribution-editions-demo-rel-dingoes").get_by_role(
             "listitem", name="Suggested digital release"
-        ).get_by_role("button", name="Use", exact=True).click()
+        ).get_by_role("button", name="Review", exact=True).click()
         host = review_dialog(page).locator(".assignment-artwork")
         # These tests inspect the complete gallery. Current images are already
         # usable before the asynchronous selected-release image arrives.

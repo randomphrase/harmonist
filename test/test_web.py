@@ -7,7 +7,6 @@ templates render without crashing for each AlbumState.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -338,7 +337,7 @@ def test_tasks_groups_albums_by_state_with_headers_and_instructions(client, cfg)
     # The public store URL is available as an automatic search mode.
     assert "Store URL" in r.text
     # Manual MBID form appears too
-    assert 'name="mbid"' in r.text
+    assert 'name="release"' in r.text
 
 
 def test_tasks_state_group_omitted_when_empty(client, cfg):
@@ -449,7 +448,7 @@ def test_needs_mbid_private_release_suppresses_harmony_and_store_url_search(clie
     assert 'value="url"' not in r.text
     assert "Find release" in r.text
     # The manual resolution path remains.
-    assert 'name="mbid"' in r.text
+    assert 'name="release"' in r.text
 
 
 def test_needs_mbid_card_without_store_url_rendered(client, cfg):
@@ -458,7 +457,7 @@ def test_needs_mbid_card_without_store_url_rendered(client, cfg):
     r = client.get("/tasks")
     assert ">MBID</abbr>" in r.text  # the "Needs MBID" header (MBID is an <abbr>)
     # Manual MBID form is included
-    assert 'name="mbid"' in r.text
+    assert 'name="release"' in r.text
     assert "/manual/" in r.text
 
 
@@ -1548,7 +1547,7 @@ def test_manual_search_returns_results(client, cfg, monkeypatch):
     assert "Result A" in r.text
     assert "Result B" in r.text
     assert "rel-1" in r.text
-    assert 'name="mbid"' in r.text  # hidden mbid input on each "Use" button
+    assert f'hx-get="/review/{aid}?release=rel-1&amp;' in r.text  # each row's Review
     # Each row links out to the release on MusicBrainz for closer inspection.
     assert "musicbrainz.org/release/rel-1" in r.text
     assert "musicbrainz.org/release/rel-2" in r.text
@@ -1703,7 +1702,7 @@ def test_manual_search_results_carry_heading(client, cfg, monkeypatch):
 def test_name_search_use_reviews_before_writing_and_confirms_without_refetching(
     client, cfg, monkeypatch, on_album_page, exact
 ):
-    """Submit the rendered choice, not a hand-built review_only request (#848)."""
+    """Review the rendered choice, not a hand-built request (#848, #933)."""
     from bs4 import BeautifulSoup
 
     from harmonist import activity, formats, mb_cache
@@ -1735,34 +1734,21 @@ def test_name_search_use_reviews_before_writing_and_confirms_without_refetching(
         data={"artist": "Artist", "title": "Title", "on_album_page": on_album_page},
     )
     assert search.status_code == 200
-    choice = BeautifulSoup(search.text, "html.parser").select_one("form")
+    choice = BeautifulSoup(search.text, "html.parser").select_one("button[hx-get^='/review/']")
     assert choice is not None
-    fields = {field["name"]: field.get("value", "") for field in choice.select("input[name]")}
-    selected = client.post(choice["hx-post"], data=fields)
-    assert selected.status_code == 200
-    assert audio.read_bytes() == before
-    saved = sc.read(folder)
-    assert saved.mb_release_id is None
-    assert saved.mb_match_candidate.mb_release_id == mbid
-    assert saved.mb_match_candidate.confidence == ("exact" if exact else "approximate")
-    assert fetches == [mbid]
-
-    aid = _id_for(cfg, folder)
-    if on_album_page:
-        assert selected.headers["HX-Redirect"] == f"/album/{aid}?review=chosen"
-        opened = client.get(selected.headers["HX-Redirect"])
-        assert f'hx-get="/review/{aid}?chosen=true&amp;on_album_page=true"' in opened.text
-    else:
-        assert "HX-Redirect" not in selected.headers
-        assert json.loads(selected.headers["HX-Trigger"])["review-chosen"] == {"album": aid}
-    dialog = client.get(f"/review/{aid}", params={"chosen": "true", "on_album_page": on_album_page})
-    assert f'hx-get="/assignments/{aid}?cancel=true' in dialog.text
-    review = client.get(
-        f"/assignments/{aid}", params={"cancel": "true", "on_album_page": on_album_page}
-    )
+    dialog = client.get(choice["hx-get"])
+    assert dialog.status_code == 200
+    loader = BeautifulSoup(dialog.text, "html.parser").select_one("[hx-trigger='load']")
+    assert loader is not None
+    review = client.get(loader["hx-get"])
     assert review.status_code == 200
+    # However well it fits, a choice is reviewed and nothing is written
+    # until it is confirmed (#848, #933).
+    assert audio.read_bytes() == before
+    assert sc.read(folder) is None
+    assert fetches == [mbid]
     soup = BeautifulSoup(review.text, "html.parser")
-    confirm = soup.select_one(f'button[hx-post="/confirm/{aid}/accept"]')
+    confirm = soup.select_one(f'button[hx-post^="/confirm/{aid}/accept?"]')
     assert confirm is not None
     assert confirm.get_text(strip=True) == "Confirm suggestion"
     form = confirm.find_parent("form")
@@ -1791,6 +1777,8 @@ def test_name_search_use_reviews_before_writing_and_confirms_without_refetching(
     assert fetches == [mbid]
     matched = [event for event in activity.recent() if event.message.startswith("Matched")]
     assert len(matched) == 1
+    # How it was found travelled with the review, not a stored suggestion (#639).
+    assert "chosen from a name search" in matched[0].message
 
 
 def test_manual_candidates_lists_store_url_releases(client, cfg, monkeypatch):
@@ -1839,7 +1827,7 @@ def test_manual_candidates_lists_store_url_releases(client, cfg, monkeypatch):
     assert "musicbrainz.org/release/rel-24" in r.text
     assert "(24-bit)" in r.text  # disambiguation rendered distinctly
     assert f"2{cross}CD" in r.text  # media summary
-    assert r.text.count('name="mbid"') == 2  # a Use button per release
+    assert r.text.count(f'hx-get="/review/{aid}?release=') == 2  # a Review per release
 
 
 def test_store_url_search_escapes_mb_error_text_in_the_flash(client, cfg, monkeypatch):
@@ -1922,62 +1910,26 @@ def test_store_url_search_with_several_matches_lists_them_without_suggesting(
     assert loaded.mb_match_candidate is None
 
 
-def test_manual_assign_with_full_url(client, cfg, monkeypatch):
-    """Pasting an MB release URL should extract the MBID."""
-    d = _make_album(cfg, "AssignURL")
-    aid = _id_for(cfg, d)
-    captured = {}
-
-    def fake_fetch(mbid):
-        captured["mbid"] = mbid
-        return _release_for_match(mbid, n_tracks=1)
-
-    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fake_fetch)
-    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
-
-    r = client.post(
-        f"/manual/{aid}/assign",
-        data={"mbid": "https://musicbrainz.org/release/abc12345-1234-1234-1234-1234567890ab"},
-    )
-    assert r.status_code == 200
-    assert captured["mbid"] == "abc12345-1234-1234-1234-1234567890ab"
-    loaded = sc.read(d)
-    assert loaded.store_url is None
-    assert loaded.mb_match_candidate.mb_release_id == "abc12345-1234-1234-1234-1234567890ab"
-
-
-def test_manual_assign_with_bare_mbid(client, cfg, monkeypatch):
-    d = _make_album(cfg, "AssignMBID")
-    aid = _id_for(cfg, d)
-
-    monkeypatch.setattr(
-        "harmonist.mb_lookup.fetch_release",
-        lambda mbid: _release_for_match(mbid, n_tracks=1),
-    )
-    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
-
-    r = client.post(
-        f"/manual/{aid}/assign",
-        data={"mbid": "abc12345-1234-1234-1234-1234567890ab"},
-    )
-    assert r.status_code == 200
-    loaded = sc.read(d)
-    assert loaded.mb_match_candidate.mb_release_id == "abc12345-1234-1234-1234-1234567890ab"
-
-
 _ASSIGN_MBID = "abc12345-1234-1234-1234-1234567890ab"
 
 
 def _paste_and_confirm(client, aid: str, mbid: str = _ASSIGN_MBID):
-    """Paste `mbid`, then confirm the suggestion it opens (#880) — the way a
-    pasted release now gets tagged. Returns the confirm response."""
+    """Paste `mbid` into the card's box, then confirm the review it opens
+    (#880, #933) — the way a pasted release gets tagged. Nothing is stored
+    before the confirm. Returns the confirm response."""
     from bs4 import BeautifulSoup
 
-    pasted = client.post(f"/manual/{aid}/assign", data={"mbid": mbid})
-    assert pasted.status_code == 200
-    review = client.get(f"/assignments/{aid}", params={"cancel": "true"})
+    paste = BeautifulSoup(client.get("/tasks").text, "html.parser").select_one(
+        f'form[hx-get="/review/{aid}"]'
+    )
+    assert paste is not None
+    fields = {field["name"]: field.get("value", "") for field in paste.select("input[name]")}
+    dialog = client.get(paste["hx-get"], params=fields | {"release": mbid})
+    loader = BeautifulSoup(dialog.text, "html.parser").select_one("[hx-trigger='load']")
+    assert loader is not None, dialog.text
+    review = client.get(loader["hx-get"])
     confirm = BeautifulSoup(review.text, "html.parser").select_one(
-        f'button[hx-post="/confirm/{aid}/accept"]'
+        f'button[hx-post^="/confirm/{aid}/accept?"]'
     )
     assert confirm is not None, review.text
     form = confirm.find_parent("form")
@@ -1994,7 +1946,7 @@ def _state_of(cfg, album_dir):
     raise AssertionError(f"no album at {album_dir}")
 
 
-def test_manual_assign_derives_store_url_from_embedded_comment(client, cfg, monkeypatch):
+def test_a_pasted_release_derives_store_url_from_embedded_comment(client, cfg, monkeypatch):
     """A manual download with a precise /album/ URL in ©cmt → store_url recorded
     from the comment (no MB url-rel lookup) → album lands in Needs Linking."""
     from harmonist.models import AlbumState
@@ -2017,7 +1969,7 @@ def test_manual_assign_derives_store_url_from_embedded_comment(client, cfg, monk
     assert _state_of(cfg, d) == AlbumState.NEEDS_SYNC
 
 
-def test_manual_assign_uses_artist_root_placeholder_without_asking_mb(client, cfg, monkeypatch):
+def test_a_pasted_release_uses_artist_root_placeholder_without_asking_mb(client, cfg, monkeypatch):
     """Artist-root ©cmt → keep the artist-root as a placeholder store_url so it's
     still recognised as a Bandcamp purchase. Confirming a review never fetches
     (#532), so MB's url-rels aren't asked for; linking finds the album URL."""
@@ -2041,7 +1993,7 @@ def test_manual_assign_uses_artist_root_placeholder_without_asking_mb(client, cf
     assert _state_of(cfg, d) == AlbumState.NEEDS_SYNC
 
 
-def test_manual_assign_store_url_derivation_error_is_swallowed(client, cfg, monkeypatch):
+def test_a_pasted_release_store_url_derivation_error_is_swallowed(client, cfg, monkeypatch):
     """If store_url derivation raises, tagging still succeeds (store_url stays None)."""
     d = _make_album(cfg, "BoomURL")
     aid = _id_for(cfg, d)
@@ -2060,55 +2012,6 @@ def test_manual_assign_store_url_derivation_error_is_swallowed(client, cfg, monk
     loaded = sc.read(d)
     assert loaded.mb_release_id == _ASSIGN_MBID  # tagged despite the derivation error
     assert loaded.store_url is None
-
-
-def test_manual_assign_invalid_input(client, cfg):
-    """Input that's neither an MBID-shaped token nor an MB URL is rejected."""
-    d = _make_album(cfg, "Bad")
-    aid = _id_for(cfg, d)
-    # Whitespace + punctuation that can't be an MBID
-    r = client.post(f"/manual/{aid}/assign", data={"mbid": "this has spaces!"})
-    assert r.status_code == 200
-    assert "Could not parse" in r.text
-    assert not sc.has_sidecar(d)
-
-
-@pytest.mark.parametrize("confidence", ["exact", "approximate"])
-def test_pasted_mbid_is_suggested_for_review_however_well_it_fits(
-    client, cfg, monkeypatch, confidence
-):
-    """A pasted MBID is a choice like a search result's Use, so even an exact
-    fit opens review rather than tagging (#880)."""
-    from bs4 import BeautifulSoup
-
-    from harmonist.models import FoundBy
-
-    d = _make_album(cfg, "Pasted")
-    audio = d / "01 Track.m4a"
-    before = audio.read_bytes()
-    aid = _id_for(cfg, d)
-    length_ms = 1000 if confidence == "exact" else 99999
-    monkeypatch.setattr(
-        "harmonist.mb_lookup.fetch_release",
-        lambda mbid: _release_for_match(mbid, n_tracks=1, length_ms=length_ms),
-    )
-
-    # Submit the paste box as rendered, not a hand-built request.
-    card = BeautifulSoup(client.get("/tasks").text, "html.parser")
-    paste = card.select_one(f'form[hx-post="/manual/{aid}/assign"]')
-    assert paste is not None
-    assert paste.select_one('button[type="submit"]').get_text(strip=True) == "Use"
-    fields = {field["name"]: field.get("value", "") for field in paste.select("input[name]")}
-    r = client.post(paste["hx-post"], data=fields | {"mbid": _ASSIGN_MBID})
-
-    assert r.status_code == 200
-    assert "review and confirm" in r.text
-    assert audio.read_bytes() == before
-    loaded = sc.read(d)
-    assert loaded.mb_release_id is None
-    assert loaded.mb_match_candidate.mb_release_id == _ASSIGN_MBID
-    assert loaded.mb_match_candidate.confidence == confidence
-    assert loaded.mb_match_candidate.found_by == FoundBy.MBID
 
 
 # ---------- URL recovery ----------
@@ -3614,7 +3517,7 @@ def test_the_album_page_offers_the_inbox_decisions_for_an_untagged_album(client,
     html = client.get(f"/album/{aid}").text
 
     assert 'id="album-inbox-actions"' in html
-    assert f'hx-post="/manual/{aid}/assign"' in html
+    assert f'hx-get="/review/{aid}"' in html
 
 
 def test_a_page_that_cannot_re_tag_does_not_offer_to(client, cfg, monkeypatch):
@@ -3665,7 +3568,7 @@ def test_an_action_rendered_on_the_album_page_re_renders_it(client, cfg):
 
     for url, expected in ((f"/album/{aid}", "true"), ("/tasks", "false")):
         soup = BeautifulSoup(client.get(url).text, "html.parser")
-        form = soup.select_one(f'form[hx-post="/manual/{aid}/assign"]')
+        form = soup.select_one(f'form[hx-get="/review/{aid}"]')
         assert form is not None
         field = form.select_one('[name="on_album_page"]')
         assert field is not None and field["value"] == expected
@@ -5525,9 +5428,11 @@ def test_forget_adds_path_to_exemption_set(client, cfg):
 
 @pytest.mark.parametrize("on_album_page", [False, True])
 def test_forgotten_album_can_review_another_release(client, cfg, monkeypatch, on_album_page):
-    """Forget retains embedded IDs; choosing a different release must still work."""
+    """Forget retains embedded IDs; choosing a different release must still work,
+    with no sidecar written before the review is confirmed (#933)."""
+    from bs4 import BeautifulSoup
+
     from harmonist import formats
-    from harmonist.models import FoundBy
 
     d = _make_tagged_album(cfg, "ChooseAfterForget", mbid="rel-old", tagged_at=datetime.now(UTC))
     audio = d / "01 Track.m4a"
@@ -5542,72 +5447,35 @@ def test_forgotten_album_can_review_another_release(client, cfg, monkeypatch, on
         return _release_for_match(mbid, n_tracks=1)
 
     monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fetch)
-    result = client.post(
-        f"/manual/{aid}/assign",
-        data={
-            "mbid": _ASSIGN_MBID,
-            "found_by": FoundBy.NAME_SEARCH.value,
-            "on_album_page": on_album_page,
-        },
+    monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
+    dialog = client.get(
+        f"/review/{aid}",
+        params={"release": _ASSIGN_MBID, "found_by": "name_search", "on_album_page": on_album_page},
     )
-    assert "Needs review" in result.text
-    current = sc.read(d)
-    assert current is not None and current.mb_release_id is None
-    assert current.mb_match_candidate.mb_release_id == _ASSIGN_MBID
-    assert current.mb_match_candidate.found_by == FoundBy.NAME_SEARCH
+    loader = BeautifulSoup(dialog.text, "html.parser").select_one("[hx-trigger='load']")
+    assert loader is not None
+    review = client.get(loader["hx-get"])
+    assert review.status_code == 200
+    assert sc.read(d) is None
     assert audio.read_bytes() == original
-    assert formats.read_album_id(audio) == "rel-old"
     assert calls == [_ASSIGN_MBID]
 
-    # A repeated Use must leave the pending choice alone, without another fetch.
-    before = sc.sidecar_path(d).read_bytes()
-    repeated = client.post(f"/manual/{aid}/assign", data={"mbid": _ASSIGN_MBID})
-    assert repeated.status_code == 204
-    assert sc.sidecar_path(d).read_bytes() == before
-    assert calls == [_ASSIGN_MBID]
-
-
-@pytest.mark.parametrize("change", ["match", "suggestion", "forget"])
-def test_tagged_manual_choice_preserves_changes_during_lookup(client, cfg, monkeypatch, change):
-    from harmonist.models import MatchCandidate
-
-    d = _make_album(cfg, "CompetingChoice", mbid="rel-old")
-    sc.write(d, Sidecar(added_at=datetime.now(UTC), notes="Keep this metadata"))
-    aid = _id_for(cfg, d)
-    original = (d / "01 Track.m4a").read_bytes()
-    concurrent = Sidecar(
-        mb_release_id="rel-concurrent" if change == "match" else None,
-        mb_match_candidate=(
-            MatchCandidate(
-                mb_release_id="rel-concurrent", confidence="no_match", file_count=1, track_count=1
-            )
-            if change == "suggestion"
-            else None
-        ),
-        notes="Written during lookup",
+    confirm = BeautifulSoup(review.text, "html.parser").select_one(
+        f'button[hx-post^="/confirm/{aid}/accept?"]'
     )
-    after_change = []
-
-    def fetch(mbid):
-        if change == "forget":
-            sc.sidecar_path(d).unlink()
-            client.app.state.forgotten_paths.add(d)
-        else:
-            sc.write(d, concurrent)
-            after_change.append(sc.sidecar_path(d).read_bytes())
-        return _release_for_match(mbid, n_tracks=1)
-
-    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fetch)
-    result = client.post(f"/manual/{aid}/assign", data={"mbid": _ASSIGN_MBID})
-    if change == "suggestion":
-        assert result.status_code == 204
-    else:
-        assert "MB lookup failed" in result.text
-    if change == "forget":
-        assert sc.read(d) is None
-    else:
-        assert sc.sidecar_path(d).read_bytes() == after_change[0]
-    assert (d / "01 Track.m4a").read_bytes() == original
+    assert confirm is not None
+    form = confirm.find_parent("form")
+    assert form is not None
+    payload = {field["name"]: field.get("value", "") for field in form.select("input[name]")}
+    applied = client.post(confirm["hx-post"], data=payload)
+    assert applied.status_code == 200
+    assert formats.read_album_id(audio) == _ASSIGN_MBID
+    current = sc.read(d)
+    assert current.mb_release_id == _ASSIGN_MBID
+    # The user chose this release for files tagged as another: it's the one
+    # they say they have (#618), as it was when Use stored a suggestion first.
+    assert current.accepted_release_id == _ASSIGN_MBID
+    assert calls == [_ASSIGN_MBID]
 
 
 def test_explicit_reconcile_clears_exemption(client, cfg):
@@ -13482,10 +13350,11 @@ def test_exact_reassignment_waits_for_artwork_review(client, cfg, monkeypatch):
     current = sc.read(d)
     assert current is not None
     sc.write(d, replace(current, mb_match_candidate=None))
+    before = sc.sidecar_path(d).read_bytes()
     aid = _id_for(cfg, d)
-    result = client.post(f"/manual/{aid}/assign", data={"mbid": release["id"]})
-    assert "Needs review" in result.text
-    assert sc.read(d).mb_match_candidate.mb_release_id == release["id"]
+    review = client.get(f"/assignments/{aid}", params={"release": release["id"], "cancel": "true"})
+    assert "Confirm suggestion" in review.text
+    assert sc.sidecar_path(d).read_bytes() == before
     assert all(
         formats.read_owned(path)["mb_album_id"] == "rel-old-confirm" for path in d.glob("*.m4a")
     )

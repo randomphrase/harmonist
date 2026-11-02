@@ -1,11 +1,21 @@
 {% from 'macros.html' import release_name %}
 {# All release pickers share metadata, evidence and mismatch cues. The caller
-   supplies its existing assignment/review action, without changing semantics. #}
-{% macro release_candidate(r, local_track_count, local_artist, suggested=false, store_match=false, barcode_match=false, store_pages=none) %}
+   supplies the row's action: almost always `review_button`. #}
+
+{#- The one way into the Review dialog (#933): a release row's Review. The
+    suggested row's is the primary action; the others are the ordinary choice.
+    Nothing is written until the review is confirmed. #}
+{% macro review_button(url, suggested=false, indicator=none) -%}
+<button type="button" hx-get="{{ url }}" hx-target="#modal" hx-swap="innerHTML" hx-disabled-elt="this"
+        {% if indicator %}hx-indicator="{{ indicator }}"{% endif %}
+        class="px-2 py-1 {% if suggested %}bg-accent hover:bg-accent-dark text-white border border-accent{% else %}bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30{% endif %} rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Review</button>
+{%- endmacro %}
+
+{% macro release_candidate(r, local_track_count, local_artist, suggested=false, store_match=false, barcode_match=false, store_pages=none, restored=false, suggested_label='Suggested digital release') %}
 {% set tc_mismatch = r.track_count and local_track_count and r.track_count != local_track_count %}
 {% set artist_mismatch = local_artist and r.artist and (r.artist | lower | trim) != (local_artist | lower | trim) %}
 <div class="release-candidate flex flex-wrap items-center justify-between gap-2 p-2 rounded border border-line hover:border-mb-purple/40 transition {% if suggested %}bg-amber-50/40{% else %}bg-surface{% endif %}"
-     role="listitem"{% if suggested %} aria-label="Suggested digital release"{% endif %}>
+     role="listitem"{% if suggested %} aria-label="{{ suggested_label }}"{% endif %}>
     <div class="min-w-0 flex-1">
         <div class="text-sm text-ink break-words">
             {# The title is the link to the release: browsing it is navigation,
@@ -27,10 +37,12 @@
         </div>
     </div>
     <div class="flex items-center gap-2 flex-shrink-0">
-        {% if store_match or barcode_match or store_pages %}
+        {% if store_match or barcode_match or store_pages or restored %}
         <div class="text-xs {% if suggested %}text-amber-700 font-bold{% else %}text-muted{% endif %}">
             {% if store_match %}<div class="text-accent font-bold">Store URL matches</div>{% endif %}
             {% if barcode_match %}<div>Barcode matches</div>{% endif %}
+            {# The release an undone tagging unlinked, offered back. #}
+            {% if restored %}<div>Previously tagged</div>{% endif %}
             {# The store the download came from, not the download's own page:
                weaker than a match, so it names the host and shows the page. #}
             {% if store_pages and not store_match %}<div title="{{ store_pages | join('\n') }}">Links {{ store_pages[0].split('/')[2] }}</div>{% endif %}

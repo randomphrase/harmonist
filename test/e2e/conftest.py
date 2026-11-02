@@ -238,15 +238,23 @@ def review_dialog(page):
     return page.locator("dialog.review-dialog")
 
 
-def open_review(page, host):
-    """Open the release review from the suggestion waiting on `host` (#933).
+def open_review(page, host, release: str | None = None):
+    """Open the Review dialog from `host`, an Inbox card or the album page's
+    actions section (#933).
 
-    `host` is an Inbox card or the album page's actions section. Returns the
-    dialog once it is open; what it must have loaded is the caller's to wait for.
+    By default from the suggestion waiting there; with `release`, from the
+    paste box, the way a user reviews a release they chose. Returns the dialog
+    once it is open; what it must have loaded is the caller's to wait for.
     """
-    ready = ":not(.htmx-added, .htmx-added *, .htmx-settling, .htmx-settling *)"
-    review = host.get_by_role("button", name="Review", exact=True)
-    review.and_(page.locator(ready)).click()
+    ready = page.locator(":not(.htmx-added, .htmx-added *, .htmx-settling, .htmx-settling *)")
+    if release is None:
+        row = host.get_by_role("listitem", name="Suggested release")
+        row.get_by_role("button", name="Review", exact=True).and_(ready).click()
+    else:
+        host.get_by_role("radio", name="By MBID", exact=True).and_(ready).check()
+        paste = host.locator('form[hx-get^="/review/"]')
+        paste.get_by_placeholder("MB release URL or 36-char MBID").fill(release)
+        paste.get_by_role("button", name="Review", exact=True).and_(ready).click()
     dialog = review_dialog(page)
     playwright_sync.expect(dialog).to_be_visible()
     return dialog

@@ -27,19 +27,19 @@
               title="Over {{ limit }} bytes">over image size limit</span>
         {% endif %}{% endif %}</span>
 {%- endmacro %}
-{% macro thumbnail(image, album_id, who, prefix='art-', alt='', replacement='') %}
+{% macro thumbnail(image, album_id, who, prefix='art-', alt='', review='') %}
 <button type="button" class="art-row__art"
         popovertarget="{{ prefix }}{{ image.digest[:12] }}"
         aria-label="View {{ who }} full size">
-    <img src="{{ review_url('/artwork/image/' ~ album_id ~ '/' ~ image.digest, replacement) }}" alt="{{ alt }}" loading="lazy">
+    <img src="{{ review_url('/artwork/image/' ~ album_id ~ '/' ~ image.digest, review) }}" alt="{{ alt }}" loading="lazy">
 </button>
 {% endmacro %}
 
-{% macro full_size(image, album_id, who, prefix='art-', replacement='', gallery=()) %}
+{% macro full_size(image, album_id, who, prefix='art-', review='', gallery=()) %}
 {% set options = [] %}
 {% for other, caption in gallery %}{% set _ = options.append((prefix ~ other.digest[:12], caption)) %}{% endfor %}
 {{ viewer(prefix ~ image.digest[:12], prefix ~ album_id,
-          review_url('/artwork/image/' ~ album_id ~ '/' ~ image.digest, replacement), who,
+          review_url('/artwork/image/' ~ album_id ~ '/' ~ image.digest, review), who,
           describe_image(image), image.size, options or [(prefix ~ image.digest[:12], who)]) }}
 {% endmacro %}
 

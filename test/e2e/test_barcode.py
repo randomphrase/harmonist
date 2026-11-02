@@ -3,7 +3,7 @@
 import os
 
 import pytest
-from test.e2e.conftest import open_review
+from test.e2e.conftest import review_dialog
 
 pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e disabled")
 playwright_sync = pytest.importorskip("playwright.sync_api")
@@ -35,15 +35,19 @@ def test_barcode_choices_open_review_without_tagging(browser_factory, barcode_se
         page.get_by_role("radio", name="By barcode", exact=True).check()
     playwright_sync.expect(results.get_by_role("listitem")).to_have_count(2)
     playwright_sync.expect(results.get_by_role("listitem").first).to_contain_text("Barcode matches")
-    playwright_sync.expect(results.get_by_role("button", name="Use", exact=True)).to_have_count(2)
+    playwright_sync.expect(results.get_by_role("button", name="Review", exact=True)).to_have_count(
+        2
+    )
     assert sidecar.read(album.path).mb_match_candidate is None
-    with page.expect_response(lambda r: r.url.endswith("/assign")):
-        results.get_by_role("button", name="Use", exact=True).first.click()
-    playwright_sync.expect(page.get_by_role("heading", name="Suggested match:")).to_be_visible()
+    with page.expect_response(lambda r: "/review/" in r.url):
+        results.get_by_role("button", name="Review", exact=True).first.click()
+    review = review_dialog(page)
+    playwright_sync.expect(review.get_by_role("heading", name="Suggested match:")).to_be_visible()
     playwright_sync.expect(
-        page.get_by_role("button", name="Confirm suggestion", exact=True)
+        review.get_by_role("button", name="Confirm suggestion", exact=True)
     ).to_be_visible()
     assert sidecar.read(album.path).mb_release_id is None
+    assert sidecar.read(album.path).mb_match_candidate is None
     assert file.read_bytes() == before
     page.context.close()
 
@@ -60,16 +64,20 @@ def test_automatic_barcode_outcomes(browser_factory, barcode_outcome_server, htm
     page.on("request", lambda r: searches.append(r.url) if r.url.endswith("/barcode") else None)
     page.goto(f"{server}/album/barcode-demo")
     if outcome == "1":
-        # Found by the automatic lookup, so it waits on the page for Review.
-        review = open_review(page, page.locator("#album-inbox-actions"))
+        # The one release the barcode points to leads the list, marked as the
+        # suggestion; a search stores nothing, so it waits for Review (#933).
+        suggested = page.locator("#mbid-results-barcode-demo").get_by_role(
+            "listitem", name="Suggested release"
+        )
+        playwright_sync.expect(suggested).to_contain_text("Barcode matches")
+        assert sidecar.read(folder).mb_match_candidate is None
+        htmx_ready(suggested.get_by_role("button", name="Review", exact=True)).click()
+        review = review_dialog(page)
         playwright_sync.expect(
             review.get_by_role("heading", name="Suggested match:")
         ).to_be_visible()
-        assert sidecar.read(folder).mb_match_candidate is not None
-        htmx_ready(review.get_by_role("button", name="Dismiss suggestion", exact=True)).click()
-        playwright_sync.expect(
-            page.get_by_role("radio", name="By name", exact=True)
-        ).to_be_checked()
+        htmx_ready(review.get_by_role("button", name="Cancel", exact=True)).click()
+        playwright_sync.expect(review).to_have_count(0)
         assert sidecar.read(folder).mb_match_candidate is None
     else:
         results = page.locator("#mbid-results-barcode-demo")

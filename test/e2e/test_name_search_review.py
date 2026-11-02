@@ -47,42 +47,44 @@ def test_exact_choice_reviews_before_one_confirmation(
             htmx_ready(panel.get_by_role("button", name="Search", exact=True)).click()
         results = panel.get_by_role("list", name="Release candidates")
         choice = results.get_by_role("listitem").filter(
-            has=page.locator(f'form input[name="mbid"][value="{mbid}"]')
+            has=page.locator(f'button[hx-get*="release={mbid}"]')
         )
         pw.expect(choice).to_contain_text("1 tracks")
-        use = choice.get_by_role("button", name="Use", exact=True)
+        review_button = choice.get_by_role("button", name="Review", exact=True)
     else:
-        # The last mode of the one find-release cluster: one field and Use.
+        # The last mode of the one find-release cluster: one field and Review.
         field = panel.get_by_placeholder("MB release URL or 36-char MBID")
         pw.expect(field).to_be_hidden()
         htmx_ready(panel.get_by_role("radio", name="By MBID", exact=True)).check()
         pw.expect(field).to_be_visible()
         pw.expect(panel.get_by_role("button", name="Search", exact=True)).to_be_hidden()
         field.fill(f"https://musicbrainz.org/release/{mbid}")
-        use = panel.get_by_role("button", name="Use", exact=True)
+        review_button = panel.locator('form[hx-get^="/review/"]').get_by_role(
+            "button", name="Review", exact=True
+        )
 
-    # A failed selection retains the usable choice and leaves the files alone.
-    assign_url = f"{base}/manual/{aid}/assign"
-    page.route(assign_url, lambda route: route.fulfill(status=503, body="Temporarily unavailable"))
-    with page.expect_response(lambda r: r.url == assign_url and r.status == 503):
-        htmx_ready(use).click()
-    pw.expect(use).to_be_enabled()
+    # A failed review leaves the choice usable and the album alone.
+    review_url = f"{base}/review/{aid}?*"
+    page.route(review_url, lambda route: route.fulfill(status=503, body="Temporarily unavailable"))
+    with page.expect_response(lambda r: f"/review/{aid}?" in r.url and r.status == 503):
+        htmx_ready(review_button).click()
+    pw.expect(review_button).to_be_enabled()
     assert audio.read_bytes() == original
     assert sidecar.read(folder).mb_match_candidate is None
-    page.unroute(assign_url)
+    page.unroute(review_url)
 
-    with page.expect_response(lambda r: r.url == assign_url and r.ok):
-        htmx_ready(use).click()
-    # The review of the release just chosen opens over the page (#933).
+    with page.expect_response(lambda r: f"/review/{aid}?" in r.url and r.ok):
+        htmx_ready(review_button).click()
+    # The Review dialog opens over the page, and nothing is stored (#933).
     review = review_dialog(page)
     confirm = review.get_by_role("button", name="Confirm suggestion", exact=True)
     pw.expect(confirm).to_be_visible()
     pw.expect(review.get_by_role("heading", name="Suggested match:")).to_be_visible()
     assert audio.read_bytes() == original
     assert sidecar.read(folder).mb_release_id is None
-    assert sidecar.read(folder).mb_match_candidate.mb_release_id == mbid
+    assert sidecar.read(folder).mb_match_candidate is None
 
-    with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept") and r.ok):
+    with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url and r.ok):
         htmx_ready(confirm).click()
     if on_album_page:
         page.wait_for_url(f"{base}/album/{mbid}?from_q=LFO")

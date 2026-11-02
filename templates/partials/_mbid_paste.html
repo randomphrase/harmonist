@@ -1,20 +1,20 @@
 {# Direct entry: paste a MusicBrainz release URL or 36-char MBID. The exact,
    no-search path — shared by the New and Needs MBID cards. A pasted release
-   is a choice like a search result's, so it is the same Use and opens the
-   same review (#880).
+   is a choice like a search result's, so it is the same Review into the same
+   dialog (#880, #933), and nothing is written until that is confirmed.
    Expects: album (album.id).
 
-   `on_album_page` rides in on the including context (#150): the route redirects
-   to the current album after a successful selection. #}
-<form hx-post="/manual/{{ album.id }}/assign"
-      hx-swap="none" hx-disabled-elt="this" hx-indicator="#tagging-{{ album.id }}"
-      class="flex gap-2">
+   `on_album_page` rides in on the including context (#150): it decides where
+   a confirm in that review sends the page. #}
+<form hx-get="/review/{{ album.id }}" hx-target="#modal" hx-swap="innerHTML"
+      hx-disabled-elt="find button" class="flex gap-2">
+    <input type="hidden" name="found_by" value="mbid">
     <input type="hidden" name="on_album_page" value="{{ 'true' if on_album_page|default(false) else 'false' }}">
-    <input type="text" name="mbid" required
+    <input type="text" name="release" required
            placeholder="MB release URL or 36-char MBID"
            class="flex-grow bg-white border border-line rounded px-3 py-1.5 text-xs text-ink focus:border-mb-purple outline-none font-mono">
     <button type="submit"
             class="px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">
-        Use
+        Review
     </button>
 </form>

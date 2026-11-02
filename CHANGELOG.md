@@ -13,9 +13,10 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
-- **A suggested release is reviewed in a dialog over the page**, opened with
-  **Review** from the Inbox card or album page. Closing it leaves a suggestion
-  Harmonist found waiting, and discards a release you chose with Use (#933).
+- **A release is reviewed in a dialog over the page**, opened by the **Review**
+  button on its row (formerly **Use**). A suggestion is the first row of the
+  search results, with the search beside it; nothing is written until a review
+  is confirmed, so closing one changes nothing (#933).
 
 ### Fixed
 

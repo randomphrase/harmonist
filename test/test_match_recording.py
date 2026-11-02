@@ -41,7 +41,16 @@ def _activity(album_dir) -> list[str]:
 # ---------- suggestions ----------
 
 
-def test_a_barcode_suggestion_is_flashed_but_not_recorded(client, cfg, monkeypatch):
+def _review(response):
+    """The one row's Review: the request a reviewed choice is made from."""
+    from bs4 import BeautifulSoup
+
+    button = BeautifulSoup(response.text, "html.parser").select_one("button[hx-get^='/review/']")
+    assert button is not None
+    return button["hx-get"]
+
+
+def test_a_barcode_search_is_not_recorded(client, cfg, monkeypatch):
     path, _ = barcode_album.album(cfg.paths.music_dir)
     sidecar.write(path, Sidecar())
     aid = scanner.scan(cfg.paths.music_dir)[0].id
@@ -49,13 +58,12 @@ def test_a_barcode_suggestion_is_flashed_but_not_recorded(client, cfg, monkeypat
 
     response = client.post(f"/manual/{aid}/barcode")
 
-    assert "Barcode match found" in response.headers["HX-Trigger"]
-    candidate = sidecar.read(path).mb_match_candidate
-    assert candidate is not None and candidate.found_by is FoundBy.BARCODE
-    assert not any("match found" in m for m in _activity(path))
+    assert f"found_by={FoundBy.BARCODE}" in _review(response)
+    assert sidecar.read(path).mb_match_candidate is None
+    assert _activity(path) == []
 
 
-def test_a_store_url_choice_remembers_how_without_recording_a_match(client, cfg, monkeypatch):
+def test_a_store_url_choice_carries_how_without_recording_a_match(client, cfg, monkeypatch):
     path, _ = barcode_album.album(cfg.paths.music_dir)
     sidecar.write(path, Sidecar(store_url="https://lfo.bandcamp.com/album/frequencies"))
     aid = scanner.scan(cfg.paths.music_dir)[0].id
@@ -65,23 +73,22 @@ def test_a_store_url_choice_remembers_how_without_recording_a_match(client, cfg,
 
     response = client.post(f"/manual/{aid}/candidates", data={"suggest": "true"})
 
-    use = _confirmation_fields(response.text)
-    assert use["found_by"] == FoundBy.STORE_URL
+    review = _review(response)
+    assert f"found_by={FoundBy.STORE_URL}" in review
+    client.get(review)
     assert sidecar.read(path).mb_match_candidate is None
-    client.post(f"/manual/{aid}/assign", data=use)
-    candidate = sidecar.read(path).mb_match_candidate
-    assert candidate is not None and candidate.found_by is FoundBy.STORE_URL
     assert not any("match found" in m for m in _activity(path))
 
 
-def test_a_release_picked_from_a_name_search_remembers_how(client, cfg, monkeypatch):
-    """A picker's Use carries how its rows were found, so the suggestion it
-    stashes can say so at confirm — the one route where the lookup and the
-    choice are separate requests."""
+def test_a_release_picked_from_a_name_search_carries_how(client, cfg, monkeypatch):
+    """A picker's Review carries how its rows were found, through the review to
+    the confirm that records it — the one route where the lookup and the choice
+    are separate requests."""
     path, _ = barcode_album.album(cfg.paths.music_dir)
     sidecar.write(path, Sidecar())
     aid = scanner.scan(cfg.paths.music_dir)[0].id
-    barcode_album.services(monkeypatch, [barcode_album.release()])
+    # Fetched through the cache, which keeps it for every step of the review.
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", lambda mbid: barcode_album.release())
     monkeypatch.setattr(
         "harmonist.mb_search.search_releases",
         lambda artist, title, limit=10: (
@@ -91,12 +98,17 @@ def test_a_release_picked_from_a_name_search_remembers_how(client, cfg, monkeypa
     )
 
     results = client.post(f"/manual/{aid}/search", data={"artist": "LFO", "title": "Frequencies"})
-    use = _confirmation_fields(results.text)
-    assert use["found_by"] == FoundBy.NAME_SEARCH
-    client.post(f"/manual/{aid}/assign", data=use)
+    review = _review(results)
+    assert f"found_by={FoundBy.NAME_SEARCH}" in review
+    # Every step of the review carries it on to the confirm (`review_url`).
+    from bs4 import BeautifulSoup
 
-    candidate = sidecar.read(path).mb_match_candidate
-    assert candidate is not None and candidate.found_by is FoundBy.NAME_SEARCH
+    loader = BeautifulSoup(client.get(review).text, "html.parser").select_one("[hx-trigger='load']")
+    assert loader is not None
+    editor = BeautifulSoup(client.get(loader["hx-get"]).text, "html.parser")
+    confirm = editor.select_one("button[hx-post*='/confirm/']")
+    assert confirm is not None and f"found_by={FoundBy.NAME_SEARCH}" in confirm["hx-post"]
+    assert sidecar.read(path) == Sidecar(temp_uid=sidecar.read(path).temp_uid)
 
 
 def test_found_by_survives_the_sidecar(tmp_path):

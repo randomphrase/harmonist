@@ -5,6 +5,7 @@ import shutil
 from unittest.mock import Mock
 
 import pytest
+from bs4 import BeautifulSoup
 from mutagen.flac import FLAC
 from mutagen.mp4 import MP4
 
@@ -118,22 +119,24 @@ def test_barcode_lookup_uses_effective_qobuz_origin(client, cfg, monkeypatch, ov
     sidecar.write(path, Sidecar(origin_override=override))
     aid = scanner.scan(cfg.paths.music_dir)[0].id
     before = file.read_bytes()
-    search, fetch = services(monkeypatch, [release(), qobuz_release()])
+    _, fetch = services(monkeypatch, [release(), qobuz_release()])
 
     response = client.post(f"/manual/{aid}/barcode")
 
     assert response.status_code == 200
-    suggestion = sidecar.read(path).mb_match_candidate
+    # A search lists; it stores nothing, a narrowed suggestion included (#933).
+    assert sidecar.read(path).mb_match_candidate is None
+    assert MBID in response.text and OTHER in response.text
+    rows = BeautifulSoup(response.text, "html.parser").select('[role="listitem"]')
+    suggested = [row for row in rows if row.get("aria-label") == "Suggested release"]
     if override in {None, Origin.QOBUZ}:
-        assert suggestion is not None and suggestion.mb_release_id == OTHER
-        assert suggestion.confidence == "approximate"
+        # The release the Qobuz origin narrows the barcode to leads, marked.
+        assert len(suggested) == 1 and rows[0] is suggested[0]
+        assert suggested[0].select_one(f'button[hx-get^="/review/{aid}?release={OTHER}"]')
         assert fetch.call_count == 2
         assert all(c.kwargs["max_age"] == mb_cache.FRESH for c in fetch.call_args_list)
-        assert client.post(f"/manual/{aid}/barcode").status_code == 204
-        assert search.call_count == 1 and fetch.call_count == 2
     else:
-        assert suggestion is None
-        assert MBID in response.text and OTHER in response.text
+        assert suggested == []
         assert fetch.call_count == 0
     assert sidecar.read(path).mb_release_id is None
     assert file.read_bytes() == before
@@ -234,13 +237,11 @@ def test_qobuz_lookup_preserves_decisions_made_during_fetch(client, cfg, monkeyp
     fetch.side_effect = meanwhile
     response = client.post(f"/manual/{aid}/barcode")
 
+    # A search writes nothing, so what changed while it ran stands (#933).
+    assert response.status_code == 200
     assert sidecar.read(path).origin_override == current.origin_override
     assert sidecar.read(path).mb_match_candidate == current.mb_match_candidate
     assert sidecar.read(path).mb_release_id == current.mb_release_id
-    if change == "suggestion":
-        assert response.status_code == 204
-    else:
-        assert "Barcode lookup failed" in response.text
 
 
 def test_qobuz_suggestion_follows_a_merged_release_id(tmp_path, monkeypatch):
@@ -391,7 +392,7 @@ def test_barcode_search_lists_lfo_choices(client, cfg, monkeypatch):
     assert sidecar.read(path).mb_match_candidate is None
 
 
-def test_barcode_search_suggests_and_uses_fresh_release(client, cfg, monkeypatch):
+def test_barcode_search_marks_its_suggestion_from_a_fresh_release(client, cfg, monkeypatch):
     path, file = album(cfg.paths.music_dir)
     sidecar.write(path, Sidecar())
     aid = scanner.scan(cfg.paths.music_dir)[0].id
@@ -399,7 +400,11 @@ def test_barcode_search_suggests_and_uses_fresh_release(client, cfg, monkeypatch
     _, fetch = services(monkeypatch, [release()])
     response = client.post(f"/manual/{aid}/barcode")
     assert response.status_code == 200
-    assert sidecar.read(path).mb_match_candidate.mb_release_id == MBID
+    row = BeautifulSoup(response.text, "html.parser").select_one(
+        '[role="listitem"][aria-label="Suggested release"]'
+    )
+    assert row is not None and row.select_one(f'button[hx-get^="/review/{aid}?release={MBID}"]')
+    assert sidecar.read(path).mb_match_candidate is None
     assert fetch.call_args.kwargs["max_age"] == mb_cache.FRESH
     assert file.read_bytes() == before
 
@@ -449,17 +454,20 @@ def test_barcode_selection_requires_review_even_with_exact_lengths(client, cfg, 
     before = file.read_bytes()
     exact = release()
     exact["medium-list"][0]["track-list"][0]["length"] = str(round(MP4(file).info.length * 1000))
-    services(monkeypatch, [exact])
-    response = client.post(f"/manual/{aid}/assign", data={"mbid": MBID})
+    # Fetched through the cache, which keeps it for every step of the review.
+    monkeypatch.setattr("harmonist.mb_lookup.fetch_release", lambda mbid: exact)
+    response = client.get(f"/review/{aid}", params={"release": MBID, "found_by": "barcode"})
     assert response.status_code == 200
-    assert sidecar.read(path).mb_match_candidate.confidence == "exact"
+    loader = BeautifulSoup(response.text, "html.parser").select_one("[hx-trigger='load']")
+    assert loader is not None
+    review = client.get(loader["hx-get"])
+    assert "Confirm suggestion" in review.text
+    assert sidecar.read(path).mb_match_candidate is None
     assert sidecar.read(path).mb_release_id is None
     assert file.read_bytes() == before
 
 
 def test_barcode_search_failure_is_reported_and_writes_nothing(client, cfg, monkeypatch):
-    """With no suggestion waiting — one that is waiting is never looked past at
-    all (test_a_lookup_never_replaces_a_suggestion_awaiting_the_user)."""
     path, _ = album(cfg.paths.music_dir)
     _, fetch = services(monkeypatch, [release()])
     sidecar.write(path, Sidecar())
@@ -524,9 +532,9 @@ def test_a_lookup_never_replaces_a_suggestion_awaiting_the_user(client, cfg, mon
     store-URL lookup each wrote a suggestion, the second silently replacing the
     first while the user may have been reviewing it.
 
-    The search tools are hidden while a suggestion waits, so a lookup arriving
-    then is not one the user asked for. It is answered without asking
-    MusicBrainz, and the suggestion stays as it was."""
+    A search only lists (#933), so the tools stay usable beside a waiting
+    suggestion: the user can look for another release, and the suggestion stays
+    as it was until they confirm one."""
     path, _ = album(cfg.paths.music_dir)
     waiting = MatchCandidate(
         mb_release_id=OTHER,
@@ -540,23 +548,22 @@ def test_a_lookup_never_replaces_a_suggestion_awaiting_the_user(client, cfg, mon
         Sidecar(store_url="https://lfo.bandcamp.com/album/frequencies", mb_match_candidate=waiting),
     )
     aid = scanner.scan(cfg.paths.music_dir)[0].id
-    search, fetch = services(monkeypatch, [release()])
+    services(monkeypatch, [release()])
     by_url = Mock(return_value=([{"id": MBID}], 1))
     monkeypatch.setattr("harmonist.mb_lookup.candidate_summaries_for_url", by_url)
     before = (path / ".harmonist.json").read_bytes()
 
     response = client.post(f"/manual/{aid}/{lookup}", data={"suggest": "true"})
 
-    assert response.status_code == 204
+    assert response.status_code == 200
+    assert f'hx-get="/review/{aid}?release={MBID}' in response.text
     assert (path / ".harmonist.json").read_bytes() == before
-    assert search.call_count == by_url.call_count == fetch.call_count == 0
 
 
 @pytest.mark.parametrize("lookup", ["barcode", "candidates"])
 def test_a_suggestion_written_while_a_lookup_runs_is_kept(client, cfg, monkeypatch, lookup):
-    """#638, the race: a lookup takes seconds against MusicBrainz, and the other
-    one can land its suggestion meanwhile. The later lookup must not write over
-    it."""
+    """#638, the race: a lookup takes seconds against MusicBrainz, and a
+    suggestion can land meanwhile. A search writes nothing, so it stands."""
     store_url = "https://lfo.bandcamp.com/album/frequencies"
     path, _ = album(cfg.paths.music_dir)
     sidecar.write(path, Sidecar(store_url=store_url))
@@ -585,7 +592,7 @@ def test_a_suggestion_written_while_a_lookup_runs_is_kept(client, cfg, monkeypat
 
     response = client.post(f"/manual/{aid}/{lookup}", data={"suggest": "true"})
 
-    assert response.status_code == 204
+    assert response.status_code == 200
     kept = sidecar.read(path).mb_match_candidate
     assert kept is not None and kept.mb_release_id == OTHER
 

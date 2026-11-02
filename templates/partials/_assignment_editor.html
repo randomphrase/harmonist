@@ -19,7 +19,7 @@
 {% endif %}
 <div class="assignment-content track-display space-y-3">
         {% if error %}<p role="alert" class="text-sm text-amber-700">{{ error }}</p>{% endif %}
-        {% set has_suggestion = replacement or (album.sidecar and album.sidecar.mb_match_candidate) %}
+        {% set has_suggestion = replacement or chosen or (album.sidecar and album.sidecar.mb_match_candidate) %}
         {% if has_suggestion or panel %}
         <div class="flex flex-wrap items-center justify-between gap-2">
             {% if has_suggestion %}
@@ -51,7 +51,7 @@
         {% for entry in panel.disk + panel.mb %}
             {% if entry.number.split('.')[0] not in ['?', '1'] %}{% set counts.multidisc = true %}{% endif %}
         {% endfor %}
-        <form hx-post="{{ review_url('/assignments/' ~ album.id, replacement) }}" hx-target="closest .assignment-content"
+        <form hx-post="{{ review_url('/assignments/' ~ album.id, review) }}" hx-target="closest .assignment-content"
               {% if not on_album_page %}hx-sync="body:queue last" hx-disinherit="hx-sync"{% endif %}
               {# One change trigger for every control that redraws the review: htmx
                  counts an event handled by the form at its first change listener,
@@ -226,12 +226,12 @@
                 <button type="submit" name="assignment_action" value="reset"
                         class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Reset</button>
                 {% else %}
-                <button type="button" hx-post="{{ review_url('/confirm/' ~ album.id ~ '/accept', replacement) }}" hx-include="closest form"
+                <button type="button" hx-post="{{ review_url('/confirm/' ~ album.id ~ '/accept', review) }}" hx-include="closest form"
                         {% if not on_album_page %}hx-sync="body:queue last"{% endif %}
                         hx-target="#assignment-error-{{ album.id }}-tracks" hx-swap="none" hx-disabled-elt="this"
                         hx-indicator="#assignment-progress-{{ album.id }}"
                         class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest transition">Accept changes</button>
-                <button type="button" hx-get="{{ review_url('/assignments/' ~ album.id ~ '?album_tracks=' ~ ('true' if album_tracks else 'false') ~ '&on_album_page=' ~ ('true' if on_album_page else 'false'), replacement) }}"
+                <button type="button" hx-get="{{ review_url('/assignments/' ~ album.id ~ '?album_tracks=' ~ ('true' if album_tracks else 'false') ~ '&on_album_page=' ~ ('true' if on_album_page else 'false'), review) }}"
                         hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
                         class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Reset</button>
                 {% endif %}
@@ -258,7 +258,7 @@
             {% set fill_query %}{% for disc, part in added.items() %}&fill={{ disc }}%3A{{ part.id|urlencode }}{% endfor %}{% endset %}
             <div id="assignment-artwork-{{ album.id }}-{{ release_fingerprint | replace(':', '_') }}{% for disc, part in added.items() %}-{{ disc }}_{{ part.id }}{% endfor %}" hx-preserve
                  class="assignment-artwork py-3 border-t border-line">
-                <div hx-get="{{ review_url('/assignments/' ~ album.id ~ '/artwork?release_fingerprint=' ~ release_fingerprint ~ fill_query, replacement) }}"
+                <div hx-get="{{ review_url('/assignments/' ~ album.id ~ '/artwork?release_fingerprint=' ~ release_fingerprint ~ fill_query, review) }}"
                      hx-trigger="load" hx-target="closest .assignment-artwork" hx-swap="innerHTML settle:0ms"
                      hx-indicator="find [role='status']" hx-disabled-elt="this">
                     {% with artwork_pending=true %}
@@ -277,7 +277,7 @@
         </form>
         {% else %}
         <div class="flex flex-wrap gap-3 text-xs">
-            <button hx-get="{{ review_url('/assignments/' ~ album.id ~ '?reread=true&cancel=' ~ ('true' if cancel else 'false') ~ '&album_tracks=' ~ ('true' if album_tracks else 'false') ~ '&on_album_page=' ~ ('true' if on_album_page else 'false'), replacement) }}"
+            <button hx-get="{{ review_url('/assignments/' ~ album.id ~ '?reread=true&cancel=' ~ ('true' if cancel else 'false') ~ '&album_tracks=' ~ ('true' if album_tracks else 'false') ~ '&on_album_page=' ~ ('true' if on_album_page else 'false'), review) }}"
                     hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this" class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded font-bold uppercase tracking-widest transition">{{ 'Read MusicBrainz' if cancel else 'Refresh MusicBrainz and reset' }}</button>
             {% if not cancel %}{% include 'partials/_assignment_cancel.html' %}{% else %}{% include 'partials/_assignment_edit_button.html' %}{% include 'partials/_assignment_view_actions.html' %}{% endif %}
         </div>

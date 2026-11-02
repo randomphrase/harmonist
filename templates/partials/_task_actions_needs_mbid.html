@@ -88,28 +88,10 @@
 {% endif %}
 {% endif %}
 
-{% if candidate and not is_surrender %}
-{# The suggestion is stored and waits here; reviewing it is a task with an
-   end, so it opens in a dialog over the page (#933). #}
-<div class="candidate-notice flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/40 p-3 mb-3">
-    <p class="flex flex-wrap items-center gap-2 text-sm min-w-0">
-        <span class="text-xs font-bold text-ink uppercase tracking-widest">Suggested match:</span>
-        {% with mb_release_id=candidate.mb_release_id %}
-            {% include 'partials/_release_title_link.html' %}
-        {% endwith %}
-    </p>
-    <button type="button" hx-get="/review/{{ album.id }}?on_album_page={{ 'true' if on_album else 'false' }}"
-            hx-target="#modal" hx-swap="innerHTML" hx-disabled-elt="this"
-            class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest shrink-0 transition">Review</button>
-</div>
-{% endif %}
-
-{# Resolve the current suggestion before offering another release search.
-   Keep visibility outside hx-preserve so candidate changes take effect while
-   the inner search state survives polling and dismissal. Surrender has no
-   confirm/dismiss decision, so its recovery tools remain available. #}
-<div {% if candidate and not is_surrender %}hidden{% endif %}>
-<div id="mbid-tools-{{ album.id }}" hx-preserve="true">
+{# The search tools keep their state across Inbox refreshes. A suggestion stored
+   on the album is the first row of their results (#933), so the preserved
+   element is keyed to it: one arriving, or being dismissed, draws them afresh. #}
+<div id="mbid-tools-{{ album.id }}{% if candidate and not is_surrender %}-{{ candidate.mb_release_id }}{% endif %}" hx-preserve="true">
 {% if is_surrender %}
 {# Surrender: the primary action ("Keep in Library") is in the panel above. The
    album is already correctly tagged, so the release tools are just an escape
@@ -125,5 +107,4 @@
 {% else %}
 {% include 'partials/_needs_mbid_tools.html' %}
 {% endif %}
-</div>
 </div>

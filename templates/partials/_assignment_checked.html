@@ -1,7 +1,7 @@
 <div class="flex items-center gap-2 text-xs">
     <span class="text-2xs text-muted uppercase tracking-widest">MB checked</span>
     <span class="text-ink tabular-nums whitespace-nowrap" title="MusicBrainz release last read {{ checked_at }}">{{ ago(checked_at) }}</span>
-    <button type="button" hx-get="{{ review_url('/assignments/' ~ album.id ~ '?reread=true&cancel=' ~ ('true' if cancel else 'false') ~ '&album_tracks=' ~ ('true' if album_tracks else 'false') ~ '&on_album_page=' ~ ('true' if on_album_page else 'false'), replacement) }}"
+    <button type="button" hx-get="{{ review_url('/assignments/' ~ album.id ~ '?reread=true&cancel=' ~ ('true' if cancel else 'false') ~ '&album_tracks=' ~ ('true' if album_tracks else 'false') ~ '&on_album_page=' ~ ('true' if on_album_page else 'false'), review) }}"
             hx-target="closest .assignment-content" hx-swap="outerHTML" hx-disabled-elt="this"
             hx-indicator="#assignment-refreshing-{{ album.id }}"
             title="Read this release from MusicBrainz again and reset assignment changes"

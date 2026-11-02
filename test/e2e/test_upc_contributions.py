@@ -76,7 +76,7 @@ def test_upc_sibling_review_prioritizes_rematch(browser_factory, upc_contributio
     assert len(discoveries) == 1
     playwright_sync.expect(panel.get_by_role("link", name="Add Release")).to_have_count(0)
     before = file.read_bytes()
-    suggested.get_by_role("button", name="Use", exact=True).click()
+    suggested.get_by_role("button", name="Review", exact=True).click()
     review = review_dialog(page)
     playwright_sync.expect(
         review.get_by_role("button", name="Confirm suggestion", exact=True)
@@ -89,7 +89,7 @@ def test_upc_sibling_review_prioritizes_rematch(browser_factory, upc_contributio
     # it is the release bought (#618), so its warning starts dismissed and
     # its own missing barcode is offered.
     results.get_by_role("listitem").filter(has_text="Reissue").get_by_role(
-        "button", name="Use", exact=True
+        "button", name="Review", exact=True
     ).click()
     review.get_by_role("button", name="Confirm suggestion", exact=True).click()
     page.wait_for_url("**/album/upc-unlinked*")
@@ -125,7 +125,7 @@ def test_upc_sibling_review_prioritizes_rematch(browser_factory, upc_contributio
     ).not_to_be_checked()
     playwright_sync.expect(panel).to_contain_text(barcode_elsewhere, use_inner_text=True)
     panel.get_by_role("listitem", name="Suggested digital release").get_by_role(
-        "button", name="Use", exact=True
+        "button", name="Review", exact=True
     ).click()
     review_dialog(page).get_by_role("button", name="Confirm suggestion", exact=True).click()
     page.wait_for_url("**/album/upc-digital*")
