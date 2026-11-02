@@ -20,6 +20,9 @@ versions follow [semantic versioning](https://semver.org).
 - **Composer, lyricist and writer share one Credits column** in the track list
   when no track has more than one of them, each value labelled with its tag
   (#940).
+- **A track's title leads its row in the track list**, with the work and
+  credits beside it in a quieter colour unless they differ from MusicBrainz
+  (#942).
 
 ### Fixed
 

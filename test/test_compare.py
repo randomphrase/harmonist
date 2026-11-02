@@ -1823,6 +1823,34 @@ def test_one_credits_column_leaves_a_slot_for_another_tag():
     assert not tl.overflowed
 
 
+@pytest.mark.parametrize(
+    ("credits", "quiet"),
+    [
+        pytest.param(
+            [
+                {"artist": "Massive Attack", "writers": ["Ann Lee"]},
+                {"artist": "Mad Professor", "composers": ["Bo Day"]},
+            ],
+            {"Work", "Credits"},
+            id="shared",
+        ),
+        pytest.param(
+            [{"writers": ["Ann Lee"]}, {"composers": ["Bo Day"], "writers": ["Cy Fox"]}],
+            {"Work", "Composer", "Writer"},
+            id="separate",
+        ),
+    ],
+)
+def test_the_credit_columns_are_quiet_beside_the_title(credits, quiet):
+    """#942. A track's credits are a run of linked names, and the title has
+    none: drawn alike, the title is the least of the row. So the work and the
+    people credited on it are muted, in one Credits column or in their own, and
+    the title and the track's own artist are not."""
+    tl = _credit_album(credits)
+
+    assert {c.label for c in tl.columns if c.quiet} == quiet
+
+
 def test_a_tag_musicbrainz_does_not_have_is_stated_as_a_removal():
     """A per-track tag the files carry and MusicBrainz does not is deliberately
     NOT a difference — ONLY_DISK never reads as a finding, or the recovered

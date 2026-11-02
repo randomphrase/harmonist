@@ -7657,6 +7657,30 @@ def test_a_shared_credits_cell_names_its_tag_on_both_lines(client):
     assert re.search(role.format("Writer"), mb)
 
 
+def test_a_credit_is_quiet_beside_the_title_until_it_differs(client):
+    """#942. The credits are muted so the title leads the row, but a credit
+    that differs from MusicBrainz is a finding, and keeps the full colour: the
+    muting must never make a difference quieter."""
+    from test.test_compare import _credit_album
+
+    tl = _credit_album(
+        [{"writers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}],
+        files=[{"composers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}],
+    )
+    html = client.app.state.templates.env.get_template("partials/_track_list.html").render(
+        tracklist=tl, mb_names={}, mb_credits={}, album={"id": "a1"}
+    )
+
+    differing, matching = (
+        body.split('<tr class="track-diff__mb')[0]
+        for body in html.split('<tbody class="track-diff__track">')[1:3]
+    )
+    credits = r'<td class="[^"]*">\s*<span class="track-diff__role">'
+    assert "track-diff__quiet" in re.search(credits, matching).group(0)
+    assert "track-diff__quiet" not in re.search(credits, differing).group(0)
+    assert re.search(r'<td class="[^"]*track-diff__lead[^"]*"', matching), "the title leads"
+
+
 def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):
     """#328, and web-ui rule 4: rare and hard to undo belongs out of the path.
 

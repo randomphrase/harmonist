@@ -1929,6 +1929,10 @@ _CREDIT_ROLES: tuple[Owned, ...] = (Owned.COMPOSERS, Owned.LYRICISTS, Owned.WRIT
 #: The heading of the column the credit roles share.
 CREDITS_LABEL = "Credits"
 
+#: The columns drawn muted beside the title (#942): the work and the people
+#: credited on it. See `TrackColumn.quiet`.
+_QUIET: frozenset[Owned] = frozenset({Owned.WORKS, *_CREDIT_ROLES})
+
 
 #: The album-level tag each per-track tag is measured against for rule 3.
 #:
@@ -1971,6 +1975,11 @@ class TrackColumn:
     #: one: nothing writes a duration into a file, so its column is evidence
     #: beside the file's own figure rather than a change waiting to be applied.
     advisory: bool = False
+    #: A column of relationship credits, drawn muted so the title leads the
+    #: row (#942): a track's writers are a run of linked names, and the title,
+    #: which identifies the row, has none. A cell that differs from MusicBrainz
+    #: keeps the full colour, so the muting never makes a difference quieter.
+    quiet: bool = False
 
 
 @dataclass(frozen=True)
@@ -3098,6 +3107,7 @@ def _columns(
                 c.label,
                 tuple(f for m in c.shows for f in (m.value, *absorbed.get(m.value, ()))),
                 identifier=c.owned in _IDENTIFIERS,
+                quiet=any(m in _QUIET for m in c.shows),
             )
             for c in kept
         ),

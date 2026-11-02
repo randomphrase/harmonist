@@ -214,7 +214,10 @@
             <tr>
                 {% for f in t.fields %}
                 {%- set col = tracklist.columns[loop.index0] -%}
-                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}"{#
+                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}{{ ' track-diff__lead' if col.label == 'Title' }}{{ ' track-diff__quiet' if col.quiet and not f.differs }}"{#
+                    The title leads the row, and the credits beside it are
+                    quiet unless they differ (#942).
+
                     The explanation is on the FIGURE as well as on the heading.
                     The heading alone was where this started and it is the wrong
                     target: the numbers are what raise the question, they are
@@ -383,7 +386,7 @@
             <tr class="track-diff__mb{{ ' track-diff__id' if t.mb_only_identifiers }}">
                 {% for f in t.fields %}
                 {%- set col = tracklist.columns[loop.index0] -%}
-                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}">
+                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}{{ ' track-diff__lead' if col.label == 'Title' }}">
                     {%- if loop.first -%}
                     <span class="mb-mark" role="img" aria-label="MusicBrainz" title="MusicBrainz's values for this track"><svg
                         viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden="true"

@@ -943,6 +943,11 @@ button.library-update-option:focus-visible { background: var(--color-surface); c
    It carries `track-diff__len` too, from `TrackColumn.numeric`, which is what
    right-aligns both columns of figures against each other. */
 .track-diff .track-diff__advisory { color: var(--color-muted); }
+/* The title, or the file's name in its place, identifies the row; the work and
+   credits beside it are runs of linked names, drawn quieter so it leads (#942).
+   A credit that differs from MusicBrainz is not given the class. */
+.track-diff .track-diff__lead { font-weight: 500; }
+.track-diff .track-diff__quiet { color: var(--color-muted); }
 /* The heading and the figures both answer "then how do I fix this?" on hover,
    and say so the way the page's other explain-on-hover marks do — `cursor:
    help`, plus a dotted underline on the heading, because a tooltip nothing
