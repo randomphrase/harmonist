@@ -26,7 +26,7 @@ inventing an answer.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable, Hashable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from enum import StrEnum
@@ -243,6 +243,14 @@ class FieldComparison:
     #: behind an id isn't: it comes from the release payload, which this module
     #: never sees. This is the join key, not the data.
     key: str | None = None
+    #: Which tag each side's value is, in a cell that holds more than one kind
+    #: of tag: the tracklist's Credits column (#940). Composer, Lyricist and
+    #: Writer share it when no row has two of them, so each value names its tag.
+    #: The two sides can name different tags with the same names in them, and
+    #: that is a difference, since a re-tag moves the names from one tag to the
+    #: other.
+    disk_role: str | None = None
+    mb_role: str | None = None
 
     @property
     def differs(self) -> bool:
@@ -1905,6 +1913,23 @@ _SUBSUMED_BY: dict[Owned, Owned] = {
 }
 
 
+#: The relationship credits that can share one column (#940), in column order.
+#:
+#: Each says who wrote a track, at different levels of detail: MusicBrainz uses
+#: "writer" when it isn't known whether someone wrote the music or the words.
+#: An album often credits some works one way and some another, so each tag
+#: earns a column that most rows leave empty. When no row has two of them,
+#: they share one column, `CREDITS_LABEL`, and each value names its tag.
+#:
+#: Only all-or-nothing. Where a row has two, every one of them keeps its own
+#: column: a partial merge would give the same tag a column on one album and a
+#: share of one on the next for reasons nobody could see from the table.
+_CREDIT_ROLES: tuple[Owned, ...] = (Owned.COMPOSERS, Owned.LYRICISTS, Owned.WRITERS)
+
+#: The heading of the column the credit roles share.
+CREDITS_LABEL = "Credits"
+
+
 #: The album-level tag each per-track tag is measured against for rule 3.
 #:
 #: Only the three that HAVE a counterpart. An ISRC or a recording id has no
@@ -2003,6 +2028,14 @@ class _Candidate:
     kind: Kind
     entity: str | None = None
     credit: bool = False
+    #: The tags a shared column holds, when this is one (#940); `owned` is then
+    #: the first of them. Empty for a column of one tag.
+    members: tuple[Owned, ...] = ()
+
+    @property
+    def shows(self) -> tuple[Owned, ...]:
+        """The tags this column states."""
+        return self.members or (self.owned,)
 
 
 def _in_column_order(fields: Sequence[Owned]) -> list[Owned]:
@@ -2195,8 +2228,51 @@ def _in_step(companion: Owned, column: Owned, present: Sequence[_Present]) -> bo
     )
 
 
+def _credit_rows(files: Iterable[TrackTags], mb: Iterable[MBTrack]) -> list[frozenset[Owned]]:
+    """Which credit roles each side of each row of the table carries (#940).
+
+    Every row the table draws, not just the pairings columns are judged over: a
+    track nobody ripped shows MusicBrainz's credits and a file MusicBrainz
+    doesn't list shows its own, and a shared cell would lose one of two on
+    either. `files` is the readable ones; an unreadable file shows no tags.
+    """
+    return [
+        *(
+            frozenset(r for r in _CREDIT_ROLES if _disk_value(t, r.value) is not None)
+            for t in files
+        ),
+        *(
+            frozenset(r for r in _CREDIT_ROLES if _as_display(getattr(m.tags, r.value)) is not None)
+            for m in mb
+        ),
+    ]
+
+
+def _shared_credits(
+    present: Sequence[_Present], multi_disc: bool, credit_rows: Sequence[frozenset[Owned]]
+) -> _Candidate | None:
+    """The Credits column, when the credit roles that earn columns can share one.
+
+    Two or more must earn, or there is nothing to save: a single credit column
+    keeps its own heading and needs no labels. And no row may carry two of
+    them, since a cell holds one.
+    """
+    earning = tuple(
+        c.owned
+        for c in _CANDIDATES
+        if c.owned in _CREDIT_ROLES and _earns_column(c, present, multi_disc)
+    )
+    if len(earning) < 2 or any(len(row & set(earning)) > 1 for row in credit_rows):
+        return None
+    return _Candidate(earning[0], CREDITS_LABEL, Kind.TEXT, credit=True, members=earning)
+
+
 def _choose_columns(
-    present: Sequence[_Present], multi_disc: bool, rolled_up: bool = False
+    present: Sequence[_Present],
+    multi_disc: bool,
+    rolled_up: bool = False,
+    *,
+    credit_rows: Sequence[frozenset[Owned]],
 ) -> tuple[
     list[_Candidate],
     tuple[CollapsedField, ...],
@@ -2220,13 +2296,30 @@ def _choose_columns(
     Last, what OVERFLOWED: a candidate that earned a column and lost to
     `MAX_EARNED_COLUMNS`, which each row then states on a line of its own
     (#863).
+
+    `credit_rows` is `_credit_rows` over every row the table draws, which
+    decides whether the credit roles share one column (#940).
     """
     kept: list[_Candidate] = []
     collapsed: list[CollapsedField] = []
     absorbed: dict[str, tuple[str, ...]] = {}
     overflowed: list[_Candidate] = []
     earned = 0
+    shared = _shared_credits(present, multi_disc, credit_rows)
     for candidate in _CANDIDATES:
+        if shared is not None and candidate.owned in shared.members:
+            # The shared column takes the place of the first role that earned,
+            # and the rest are in it.
+            if candidate.owned is not shared.owned:
+                continue
+            if earned < MAX_EARNED_COLUMNS:
+                kept.append(shared)
+                earned += 1
+            else:
+                # Over the cap, each role is stated under its tracks as itself:
+                # the line under a track labels every value already.
+                overflowed.extend(c for c in _CANDIDATES if c.owned in shared.members)
+            continue
         if multi_disc and candidate.owned is Owned.DISC_NUM:
             continue  # the number column already states it
         if rolled_up and candidate.owned in _MEDIUM_DERIVED:
@@ -2263,7 +2356,7 @@ def _choose_columns(
         subsumer = _SUBSUMED_BY.get(candidate.owned)
         if (
             subsumer is not None
-            and any(c.owned is subsumer for c in kept)
+            and any(subsumer in c.shows for c in kept)
             and _in_step(candidate.owned, subsumer, present)
         ):
             key = subsumer.value
@@ -2569,7 +2662,10 @@ def tracklist(
     headings = (
         _disc_headings(on_disc, media, mb) if multi_disc and _per_disc_constant(on_disc) else ()
     )
-    kept, collapsed, absorbed, overflowed = _choose_columns(present, multi_disc, bool(headings))
+    files = [tags for _, tags in (*assigned.values(), *extras) if not tags.unreadable]
+    kept, collapsed, absorbed, overflowed = _choose_columns(
+        present, multi_disc, bool(headings), credit_rows=_credit_rows(files, mb)
+    )
 
     rows: list[ComparedTrack] = []
     for i, mb_track in enumerate(mb):
@@ -2720,8 +2816,9 @@ def disk_tracklist(
     # say, and what they say that is inconsistent is the only finding available.
     # What overflows here earned by the tracks disagreeing alone, and with no
     # MusicBrainz side it changes on no track, so no row has a line to draw.
+    readable = [tags for _, tags in tracks if not tags.unreadable]
     kept, collapsed, absorbed, _ = _choose_columns(
-        [(tags, None) for _, tags in tracks if not tags.unreadable], multi_disc
+        [(tags, None) for tags in readable], multi_disc, credit_rows=_credit_rows(readable, ())
     )
     rows = [
         ComparedTrack(
@@ -2999,7 +3096,7 @@ def _columns(
         *(
             TrackColumn(
                 c.label,
-                (c.owned.value, *absorbed.get(c.owned.value, ())),
+                tuple(f for m in c.shows for f in (m.value, *absorbed.get(m.value, ()))),
                 identifier=c.owned in _IDENTIFIERS,
             )
             for c in kept
@@ -3069,6 +3166,9 @@ def _track_fields(
         )
     ]
     for c in kept:
+        if c.members:
+            fields.append(_shared_cell(c, tags, mb, unreadable=unreadable))
+            continue
         key = c.owned.value
         row = compare_value(
             c.label,
@@ -3116,6 +3216,33 @@ def _track_fields(
     if mb is None:
         return tuple(replace(f, comparable=False) for f in fields)
     return tuple(fields)
+
+
+def _shared_cell(
+    c: _Candidate, tags: TrackTags | None, mb: MBTrack | None, *, unreadable: bool
+) -> FieldComparison:
+    """One row's cell in a column several tags share (#940).
+
+    Each side holds at most one of them, which `_shared_credits` checked over
+    every row before the column was made, so the first one found is the only
+    one there. A side whose tag differs from the other's differs even where the
+    names agree: a re-tag would move them from one tag to the other.
+    """
+
+    def held(read: Callable[[str], str | None]) -> tuple[Owned | None, str | None]:
+        return next(((m, v) for m in c.members if (v := read(m.value)) is not None), (None, None))
+
+    disk_role, disk = held(lambda k: _disk_value(tags, k)) if tags else (None, None)
+    mb_role, mb_value = held(lambda k: _as_display(getattr(mb.tags, k))) if mb else (None, None)
+    cell = compare_value(c.label, kind=c.kind, disk=disk, mb=mb_value, unreadable=unreadable)
+    if cell.agreement is Agreement.MATCHES and disk_role is not mb_role:
+        cell = replace(cell, agreement=Agreement.DIFFERS)
+    return replace(
+        cell,
+        credit=c.credit,
+        disk_role=LABELS[disk_role] if disk_role else None,
+        mb_role=LABELS[mb_role] if mb_role else None,
+    )
 
 
 def _length_field(disk_ms: int | None, mb_ms: int | None, *, unreadable: bool) -> FieldComparison:

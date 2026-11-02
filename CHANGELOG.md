@@ -17,6 +17,9 @@ versions follow [semantic versioning](https://semver.org).
   button on its row (formerly **Use**). A suggestion is the first row of the
   search results, with the search beside it; nothing is written until a review
   is confirmed, so closing one changes nothing (#933).
+- **Composer, lyricist and writer share one Credits column** in the track list
+  when no track has more than one of them, each value labelled with its tag
+  (#940).
 
 ### Fixed
 

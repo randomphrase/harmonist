@@ -7635,6 +7635,28 @@ def test_an_album_with_nothing_to_act_on_gets_no_note_at_all(client, cfg, monkey
     assert "album-update__legend" not in body
 
 
+def test_a_shared_credits_cell_names_its_tag_on_both_lines(client):
+    """#940. In the Credits column the label is the only thing that says which
+    tag a value is, so each line names its own: files that call a writer a
+    composer read "Composer" over MusicBrainz's "Writer", with the same name on
+    both. Without the MusicBrainz line's label the row would read as a match."""
+    from test.test_compare import _credit_album
+
+    tl = _credit_album(
+        [{"writers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}],
+        files=[{"composers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}],
+    )
+    html = client.app.state.templates.env.get_template("partials/_track_list.html").render(
+        tracklist=tl, mb_names={}, mb_credits={}, album={"id": "a1"}
+    )
+
+    first = html.split('<tbody class="track-diff__track">')[1]
+    own, mb = first.split('<tr class="track-diff__mb')
+    role = r'<span class="track-diff__role">{}</span>\s*Robert Del Naja'
+    assert re.search(role.format("Composer"), own)
+    assert re.search(role.format("Writer"), mb)
+
+
 def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):
     """#328, and web-ui rule 4: rare and hard to undo belongs out of the path.
 

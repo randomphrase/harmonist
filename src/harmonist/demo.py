@@ -478,6 +478,13 @@ LIBRARY: list[dict[str, Any]] = [
         "mbid": "demo-rel-blues-brothers",
         "cover": "blues.png",
         "fmt": "flac",
+        # Two songs credited to their writers and one to its composer, so the
+        # album page shows them in one Credits column (#940).
+        "works": [
+            {"title": "Rawhide", "composer": ["Dimitri Tiomkin"]},
+            {"title": "Stand By Your Man", "writer": ["Tammy Wynette", "Billy Sherrill"]},
+            {"title": "Minnie the Moocher", "writer": ["Cab Calloway", "Irving Mills"]},
+        ],
         # Four changes, so its Inbox update card has more than it leads with.
         "tags": {"label": [], "catalog_number": [], "date": "2024", "mb_album_country": None},
         # A Qobuz purchase: its per-track id (#634).

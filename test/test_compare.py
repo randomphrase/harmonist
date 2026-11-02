@@ -12,6 +12,8 @@ import shutil
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from harmonist import formats
 from harmonist.compare import (
     MAX_EARNED_COLUMNS,
@@ -1690,6 +1692,135 @@ def test_a_credit_id_that_changes_on_its_own_keeps_its_own_column():
     assert [c.label for c in tl.identifier_columns] == ["Composer IDs"]
     assert {c.label: c.fields for c in tl.columns}["Composer"] == ("composers",)
     assert tl.reveal_identifiers, "track 1's only change is in it"
+
+
+# ---------- one Credits column when no track needs two (#940) ----------
+
+_WORKS = ("Protection", "Karmacoma", "Three", "Weather Storm")
+
+
+def _credit_album(credits: list[dict], files: list[dict] | None = None, *, extra=(), missing=()):
+    """A track per work, each credited as `credits` says, with files that agree
+    unless `files` says otherwise. `missing` adds MusicBrainz tracks nobody
+    ripped; `extra` adds files MusicBrainz doesn't list."""
+    titles = _WORKS[: len(credits)]
+    on_disk = files or credits
+    n = len(titles)
+    return tracklist(
+        [
+            *(_file(i, t, works=[t], **f) for i, (t, f) in enumerate(zip(titles, on_disk), 1)),
+            *(_file(90 + i, f"Bonus {i}", **f) for i, f in enumerate(extra)),
+        ],
+        [
+            *(_mb_track(i, t, works=[t], **c) for i, (t, c) in enumerate(zip(titles, credits), 1)),
+            *(_mb_track(n + i, f"Unripped {i}", **c) for i, c in enumerate(missing, 1)),
+        ],
+    )
+
+
+def _credits_cells(tl) -> list[tuple[str | None, str | None]]:
+    index = _headings(tl).index("Credits")
+    return [(t.fields[index].disk_role, t.fields[index].disk) for t in tl.tracks]
+
+
+def test_credits_no_track_needs_two_of_share_one_column():
+    """#940. Mezzanine's remixes credit three works to their writers and one to
+    its composers. Composer and Writer each earned a column, and no row ever used
+    both: half the table's width for one fact per track.
+
+    One column, with each value labelled by the tag it is, so what a re-tag
+    compares stays on the page."""
+    tl = _credit_album(
+        [
+            {"writers": ["Robert Del Naja", "Grant Marshall"]},
+            {"writers": ["Robert Del Naja", "Bob Locke"]},
+            {"writers": ["Robert Del Naja", "Nellee Hooper"]},
+            {"composers": ["Craig Armstrong", "Robert Del Naja"]},
+        ]
+    )
+
+    assert _headings(tl) == ["#", "Title", "Work", "Credits", "Length"]
+    assert {c.label: c.fields for c in tl.columns}["Credits"] == ("composers", "writers")
+    assert _credits_cells(tl) == [
+        ("Writer", "Robert Del Naja; Grant Marshall"),
+        ("Writer", "Robert Del Naja; Bob Locke"),
+        ("Writer", "Robert Del Naja; Nellee Hooper"),
+        ("Composer", "Craig Armstrong; Robert Del Naja"),
+    ]
+    assert not any(t.differs for t in tl.tracks), "the files agree with MusicBrainz"
+
+
+def test_a_track_credited_two_ways_keeps_a_column_for_each():
+    """The guard on that. A cell holds one credit, so a row that needs two needs
+    two columns — and then every row gets them, because a table's columns are
+    its own, not its rows'."""
+    tl = _credit_album(
+        [
+            {"writers": ["Robert Del Naja"]},
+            {"composers": ["Craig Armstrong"], "writers": ["Bob Locke"]},
+        ]
+    )
+
+    assert _headings(tl) == ["#", "Title", "Work", "Composer", "Writer", "Length"]
+
+
+@pytest.mark.parametrize(
+    "where",
+    [
+        pytest.param(
+            {"missing": [{"composers": ["Ann Lee"], "writers": ["Bo Day"]}]}, id="missing"
+        ),
+        pytest.param({"extra": [{"composers": ["Ann Lee"], "writers": ["Bo Day"]}]}, id="extra"),
+    ],
+)
+def test_a_row_without_a_pairing_counts_towards_needing_two(where):
+    """Which columns EARN is judged over the tracks with a file and a
+    counterpart (#309), but whether one cell can hold a row's credits is a
+    question about every row the table draws. A track nobody ripped shows
+    MusicBrainz's credits, and a bonus file shows its own; merged, either would
+    lose one of its two."""
+    tl = _credit_album(
+        [{"writers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}], **where
+    )
+
+    assert {"Composer", "Writer"} <= set(_headings(tl))
+    assert "Credits" not in _headings(tl)
+
+
+def test_a_credit_that_changes_kind_differs_though_the_names_agree():
+    """Files that call a writer a composer: the names are the same, the tag a
+    re-tag writes is not. The label is what states it, so the cell has to differ
+    for the MusicBrainz line to be drawn at all."""
+    tl = _credit_album(
+        [{"writers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}],
+        files=[{"composers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}],
+    )
+
+    index = _headings(tl).index("Credits")
+    cell = tl.tracks[0].fields[index]
+    assert (cell.disk_role, cell.disk, cell.mb_role, cell.mb) == (
+        "Composer",
+        "Robert Del Naja",
+        "Writer",
+        "Robert Del Naja",
+    )
+    assert cell.differs
+    assert not tl.tracks[1].differs
+
+
+def test_one_credits_column_leaves_a_slot_for_another_tag():
+    """What the merge is for, beyond width: three columns are earned at most
+    (`MAX_EARNED_COLUMNS`), and two of them spent on one fact pushed a third tag
+    onto the line under each track (#863)."""
+    tl = _credit_album(
+        [
+            {"artist": "Massive Attack", "writers": ["Robert Del Naja"]},
+            {"artist": "Mad Professor", "composers": ["Craig Armstrong"]},
+        ]
+    )
+
+    assert _headings(tl) == ["#", "Title", "Artist", "Work", "Credits", "Length"]
+    assert not tl.overflowed
 
 
 def test_a_tag_musicbrainz_does_not_have_is_stated_as_a_removal():

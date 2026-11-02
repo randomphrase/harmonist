@@ -1199,6 +1199,19 @@ button.library-update-option:focus-visible { background: var(--color-surface); c
 }
 .track-diff__overflow dd { margin: 0; }
 
+/* The tag a value is, in the Credits column (#940): labelled the way the line
+   under a track labels its tags. On the MusicBrainz line it keeps that line's
+   purple, since it is MusicBrainz's tag too. */
+.track-diff__role {
+  margin-inline-end: .4rem;
+  font-size: .62rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--color-muted);
+  font-weight: 700;
+}
+.track-diff__mb .track-diff__role { color: inherit; }
+
 .track-diff__absent,
 .track-diff__unreadable { font-style: italic; }
 .track-diff__absent { color: var(--color-muted); }

@@ -299,6 +299,10 @@
                         "3:12" against "3:00" character by character emphasises
                         two digits, which says a length is a typo — when what it
                         actually says is that this is a different master. -#}
+                    {#- A column several tags share names the tag of each value
+                        (#940): Credits holds a composer on one row and a writer
+                        on the next. -#}
+                    {%- if f.disk_role -%}<span class="track-diff__role">{{ f.disk_role }}</span>{%- endif -%}
                     {%- with runs = none if f.advisory else f.disk_runs, value = f.disk, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith -%}
                     {%- endif -%}
                     {%- if col.label == 'Title' and t.file_name -%}
@@ -391,6 +395,7 @@
                         MusicBrainz's length twice on one row, once as a fact and
                         once as a pending change it can never be. -#}
                     {%- if f.agreement in ('differs', 'only_mb', 'unreadable') and f.mb and not f.advisory -%}
+                    {%- if f.mb_role -%}<span class="track-diff__role">{{ f.mb_role }}</span>{%- endif -%}
                     {%- with runs = f.mb_runs, value = f.mb, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith -%}
                     {%- endif -%}
                 </td>
