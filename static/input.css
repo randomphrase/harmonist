@@ -1982,9 +1982,11 @@ dialog::backdrop {
   clip-path: polygon(.8rem 0, 100% 0, 100% 100%, .8rem 100%, 0 50%);
 }
 /* ↑ at the start of the row's title line and ↓ at its end, as ‹ › are on
-   the shown image's. */
+   the shown image's. Above the row's caption, which shares their cell and
+   comes later in the page, so would otherwise take their clicks (#931). */
 .art-pick__picker:popover-open .art-pick__step[data-art-step] {
   grid-area: 3 / 1;
+  z-index: 1;
   align-self: start;
   margin: .35rem .85rem 0;
   translate: none;

@@ -12,6 +12,8 @@ versions follow [semantic versioning](https://semver.org).
   is reported** (#927).
 - **Embiggened, the artwork picker's two images are square and as large as the
   window allows**, with their details just under them (#929).
+- **Embiggened, the artwork picker's ↑ and ↓ step the rows when clicked**, not
+  only from the keyboard (#931).
 
 ## [1.32.0] - 2026-11-01
 

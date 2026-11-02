@@ -635,6 +635,28 @@ def test_embiggened_the_arrows_frame_the_titles(
     page.context.close()
 
 
+@pytest.mark.parametrize("engine", ["chromium", "webkit"])
+def test_embiggened_the_row_arrows_take_a_click(
+    browser_factory, reset_carousel_server: str, engine: str
+) -> None:
+    """Embiggened, ↑ and ↓ step the rows under the pointer, not only from the
+    keyboard (#931). They share the row's title line with its caption, which
+    comes later in the page and so is drawn over them unless they are lifted —
+    and the ↑ ↓ keys press them from script, which no caption can intercept."""
+    try:
+        _browser, page = _open(browser_factory, reset_carousel_server, engine)
+    except pw.Error:
+        pytest.skip(f"{engine} is not installed (playwright install {engine})")
+    panel = _maximize(page)
+    rows = page.locator("#album-artwork input[name='row']")
+    pw.expect(rows.nth(0)).to_be_checked()
+    panel.get_by_role("button", name="Next row").click()
+    pw.expect(rows.nth(1)).to_be_checked()
+    panel.get_by_role("button", name="Previous row").click()
+    pw.expect(rows.nth(0)).to_be_checked()
+    page.context.close()
+
+
 def test_a_section_swap_does_not_scroll_the_page_in_webkit(
     browser_factory, reset_carousel_server: str, htmx_complete
 ) -> None:
