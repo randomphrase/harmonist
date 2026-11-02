@@ -74,11 +74,12 @@ Albums in **New** and **Needs MBID** are waiting for a release. Each one either
 has a suggested match, to check against the side-by-side tracklist and confirm,
 or can be searched for on MusicBrainz by name, barcode or store URL.
 
-![A Needs MBID card for "Gimme Some Money" by The Thamesmen. Under "Suggested
-match", the three files on disk sit beside the three MusicBrainz tracks, with
-matching titles; each MusicBrainz length differs from the file's by a few
-seconds ("Δ 5s"). Below are "Tag changes", the artwork ("Keep existing
-artwork"), and Confirm suggestion and Dismiss suggestion
+![The Review dialog for "The Thamesmen — Gimme Some Money". Under "Suggested
+match: Gimme Some Money", the three files on disk sit beside the three
+MusicBrainz tracks, with matching titles; each MusicBrainz length differs from
+the file's by a few seconds ("Δ 5s"), and an Edit track assignments button sits
+above them. Below are "Tag changes", the artwork ("Keep existing artwork",
+"Identical to existing artwork"), and Confirm suggestion and Dismiss suggestion
 buttons.](images/suggested-match.png)
 
 A release missing from MusicBrainz can be added with **Open in Harmony**, after

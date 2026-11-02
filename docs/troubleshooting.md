@@ -120,7 +120,7 @@ Harmonist couldn't find the release on its own. On the album's card:
 ![An album card with "Find release:" options By name, By barcode (greyed out),
 Store URL (selected) and By MBID, showing the album's Bandcamp URL and a Search
 button. Below, the release the store URL is linked from, marked "Store URL
-matches", with a Use button.](images/release-search.png)
+matches", with a Review button.](images/release-search.png)
 
 ### Harmonist suggested a release but didn't tag it
 
