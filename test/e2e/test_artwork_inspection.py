@@ -13,10 +13,17 @@ pw = pytest.importorskip("playwright.sync_api")
 
 def _open(page, base, review):
     page.goto(f"{base}/album/demo-rel-dingoes")
+    # The releases check fills in above the artwork after the comparison, and
+    # grows the page there. Scroll anchoring keeps the artwork in place once
+    # laid out, but a click across the swap presses on a thumbnail and lets go
+    # on the heading the swap moved under the pointer: the click goes to the
+    # page, and no viewer opens. So nothing is clicked before it.
+    suggested = page.locator("#contribution-editions-demo-rel-dingoes").get_by_role(
+        "listitem", name="Suggested digital release"
+    )
+    pw.expect(suggested).to_be_visible()
     if review:
-        page.locator("#contribution-editions-demo-rel-dingoes").get_by_role(
-            "listitem", name="Suggested digital release"
-        ).get_by_role("button", name="Review", exact=True).click()
+        suggested.get_by_role("button", name="Review", exact=True).click()
         host = review_dialog(page).locator(".assignment-artwork")
         # These tests inspect the complete gallery. Current images are already
         # usable before the asynchronous selected-release image arrives.
