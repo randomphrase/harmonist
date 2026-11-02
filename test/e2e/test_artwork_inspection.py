@@ -5,6 +5,7 @@ import re
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+from test.e2e.conftest import review_dialog
 
 pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e disabled")
 pw = pytest.importorskip("playwright.sync_api")
@@ -16,9 +17,7 @@ def _open(page, base, review):
         page.locator("#contribution-editions-demo-rel-dingoes").get_by_role(
             "listitem", name="Suggested digital release"
         ).get_by_role("button", name="Use", exact=True).click()
-        host = page.get_by_role("region", name="Review suggested release").locator(
-            ".assignment-artwork"
-        )
+        host = review_dialog(page).locator(".assignment-artwork")
         # These tests inspect the complete gallery. Current images are already
         # usable before the asynchronous selected-release image arrives.
         pw.expect(host.get_by_alt_text("Artwork for selected release", exact=True)).to_be_visible()
@@ -293,19 +292,4 @@ def test_review_images_align_below_wrapping_headings(
         checkbox.set_checked(included)
         assert candidate.bounding_box()["y"] == pytest.approx(current.bounding_box()["y"], abs=1)
     pw.expect(host.get_by_text("Keep existing artwork", exact=True)).to_have_count(0)
-    page.context.close()
-
-
-def test_review_is_the_only_artwork_section_until_cancelled(
-    browser_factory, artwork_inspection_server
-):
-    browser = browser_factory("chromium")
-    page = browser.new_page()
-    review_artwork = _open(page, artwork_inspection_server, True)
-    pw.expect(review_artwork).to_be_visible()
-    pw.expect(page.locator("#album-artwork")).to_be_hidden()
-    page.get_by_role("region", name="Review suggested release").get_by_role(
-        "button", name="Cancel", exact=True
-    ).click()
-    pw.expect(page.locator("#album-artwork")).to_be_visible()
     page.context.close()

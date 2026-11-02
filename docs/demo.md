@@ -22,7 +22,7 @@ needed is the story and the choreography, rather than a replacement dataset.
 | --- | --- |
 | Update-significance filters and matching cover badges | Rawhide for Enrichment, Sex Bob-omb for Cosmetic, Stillwater for Structure, Soggy Bottom Boys for Identity; open each album first to discover its update. |
 | Origin detection, manual corrections and Library origin filters | Rawhide is Qobuz, Stillwater is Beatport, Electric Mayhem is CD, and linked Bandcamp albums carry store evidence. Mouse Rat starts Unknown. Additional tags show the evidence. |
-| Barcode discovery and more precise release review | Electric Mayhem has a UPC pointing to the UK pressing in its release group. **Barcode matches**, inline review and confirmation are demonstrable. General barcode search is not simulated. |
+| Barcode discovery and more precise release review | Electric Mayhem has a UPC pointing to the UK pressing in its release group. **Barcode matches**, review and confirmation are demonstrable. General barcode search is not simulated. |
 | Separate Possible mismatch and MB contributions findings | Electric Mayhem supplies a useful mismatch. The ordinary seed has no positive contribution example. |
 | Row-by-row artwork choices, full-size inspection and browsing other releases | Mouse Rat offers a larger front; Barry Jive offers a smaller alternative; Rural Juror preserves a distinct track image; Electric Mayhem has another pressing's image in the picker. |
 | Reviewed changes apply directly; clearer History and Activity | Apply an update once, inspect its field-level record, then Undo. Artwork has its own Undo. Release confirmations record the chosen match. |

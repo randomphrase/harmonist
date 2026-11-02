@@ -42,10 +42,6 @@
     {% include 'partials/library_detail.html' %}
     <div class="album-contribution-area">
         {% include 'partials/_contributions.html' %}
-        {# The current-release comparison only swaps the choices. The review
-           and its draft stay local to this page until confirmed or discarded. #}
-        <section id="contribution-review-{{ album.id }}" tabindex="-1" aria-label="Review suggested release"
-                 class="contribution-review border border-line rounded-lg p-4 space-y-3"></section>
     </div>
 
     {# What this album could be asked to do about itself, and the answers to it
@@ -134,6 +130,13 @@
             {% include _inbox_actions[album.state] %}
         {% endwith %}
     </section>
+    {% endif %}
+    {% if open_chosen_review %}
+    {# Use redirected here to review the release just chosen (#933). The address
+       drops `review` as it opens, so a reload doesn't open it a second time. #}
+    <div hidden hx-get="/review/{{ album.id }}?chosen=true&amp;on_album_page=true" hx-trigger="load"
+         hx-target="#modal" hx-swap="innerHTML"
+         hx-on::before-request="const url = new URL(window.location.href); url.searchParams.delete('review'); history.replaceState(history.state, '', url)"></div>
     {% endif %}
 
     {# Tags and Tracks each stand as their own section, siblings of the album
@@ -357,18 +360,6 @@
    The query string rides along — `from_page` / `from_filter` / `from_q` are what
    Back is built out of, and a re-tag is not a reason to lose the way home. #}
 <script>
-    function harmonistFocusReleaseReview(review) {
-        review.focus({preventScroll: true});
-        // The review replaces the picker in place. Reveal only its opening row,
-        // not the entire (potentially much taller than the viewport) review.
-        const top = review.getBoundingClientRect().top;
-        const bottom = review.querySelector('.assignment-content > :first-child').getBoundingClientRect().bottom;
-        const visibleTop = document.querySelector('body > header').getBoundingClientRect().bottom + 16;
-        const visibleBottom = window.innerHeight - 16;
-        const offset = top < visibleTop ? top - visibleTop : Math.max(0, bottom - visibleBottom);
-        if (offset) window.scrollBy({top: offset, behavior: 'instant'});
-    }
-
     // All artwork controls share a stable target, including the check in the
     // header and the primary action outside the section. Their settle:0ms swaps
     // process inserted controls before another click can submit them natively.

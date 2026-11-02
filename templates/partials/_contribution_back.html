@@ -1,3 +1,4 @@
-<button type="button"
-        onclick="const review = document.getElementById('contribution-review-{{ album.id }}'); review.replaceChildren(); document.getElementById('album-contributions-{{ album.id }}').querySelector('button')?.focus()"
+{# A release chosen from the release group check stores no suggestion, so
+   closing its review is all Cancel has to do (#933). #}
+<button type="button" onclick="this.closest('dialog').close()"
         class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Cancel</button>

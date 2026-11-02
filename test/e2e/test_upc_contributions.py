@@ -4,6 +4,7 @@ import os
 
 import pytest
 from mutagen.mp4 import MP4
+from test.e2e.conftest import review_dialog
 from test.test_upc_contributions import MBID, UPC
 
 pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e disabled")
@@ -76,13 +77,13 @@ def test_upc_sibling_review_prioritizes_rematch(browser_factory, upc_contributio
     playwright_sync.expect(panel.get_by_role("link", name="Add Release")).to_have_count(0)
     before = file.read_bytes()
     suggested.get_by_role("button", name="Use", exact=True).click()
-    review = page.get_by_role("region", name="Review suggested release")
+    review = review_dialog(page)
     playwright_sync.expect(
         review.get_by_role("button", name="Confirm suggestion", exact=True)
     ).to_be_enabled()
-    playwright_sync.expect(panel).to_be_hidden()
     assert file.read_bytes() == before
     review.get_by_role("button", name="Cancel", exact=True).click()
+    playwright_sync.expect(review).to_have_count(0)
     playwright_sync.expect(panel).to_be_visible()
     # An unbarcoded sibling stays selectable. Choosing and confirming it says
     # it is the release bought (#618), so its warning starts dismissed and
@@ -126,9 +127,7 @@ def test_upc_sibling_review_prioritizes_rematch(browser_factory, upc_contributio
     panel.get_by_role("listitem", name="Suggested digital release").get_by_role(
         "button", name="Use", exact=True
     ).click()
-    page.get_by_role("region", name="Review suggested release").get_by_role(
-        "button", name="Confirm suggestion", exact=True
-    ).click()
+    review_dialog(page).get_by_role("button", name="Confirm suggestion", exact=True).click()
     page.wait_for_url("**/album/upc-digital*")
     playwright_sync.expect(page.locator("#album-contributions-upc-digital section")).to_have_count(
         0

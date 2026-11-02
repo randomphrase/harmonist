@@ -268,7 +268,7 @@
             </div>
             {% endif %}
             <div id="assignment-error-{{ album.id }}-{{ candidate.mb_release_id if has_suggestion else 'tracks' }}"></div>
-            <div class="flex flex-wrap items-center gap-4">
+            <div class="assignment-actions flex flex-wrap items-center gap-4">
                 {% with actions_disabled=not cancel %}
                     {% include 'partials/_assignment_view_actions.html' %}
                 {% endwith %}

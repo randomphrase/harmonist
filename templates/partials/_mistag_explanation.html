@@ -1,0 +1,36 @@
+{% from 'macros.html' import release_name %}
+{# Why a possible mis-tag's suggestion was made: the "wrong release?" panel,
+   opened. Strictly store-URL based, so no track-count talk here; that is the
+   review's. On the Needs MBID card, and heading its review (#933).
+   Expects `candidate` carrying `mistag_owned_url`. #}
+<details open class="rounded-lg border border-amber-300 bg-amber-50/60 p-3 mb-3">
+    <summary class="cursor-pointer select-none text-sm font-bold text-amber-800">
+        Wrong release?
+    </summary>
+    <div class="mt-2 text-xs text-ink/80 leading-relaxed">
+        <p>
+            This album is tagged as
+            {% if candidate.mistag_tagged_mbid and candidate.mistag_tagged_label %}
+            <a href="https://musicbrainz.org/release/{{ candidate.mistag_tagged_mbid }}"
+               target="_blank" rel="noopener"
+               class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_tagged_label, candidate.mistag_tagged_disambig) }} ↗</a>,
+            {% else %}
+            a different release,
+            {% endif %}
+            but you purchased
+            <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}"
+               target="_blank" rel="noopener"
+               class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_owned_label, candidate.mistag_owned_disambig) }} ↗</a>
+            on <a href="{{ candidate.mistag_owned_url }}" target="_blank" rel="noopener"
+               class="text-bc-teal hover:underline">Bandcamp ↗</a>.
+            These are sibling releases in the same
+            {% if candidate.mistag_release_group_mbid %}
+            <a href="https://musicbrainz.org/release-group/{{ candidate.mistag_release_group_mbid }}"
+               target="_blank" rel="noopener"
+               class="text-mb-purple hover:underline">MusicBrainz release group ↗</a>.
+            {% else %}
+            MusicBrainz release group.
+            {% endif %}
+        </p>
+    </div>
+</details>

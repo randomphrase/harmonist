@@ -124,7 +124,11 @@
             }
             render(viewer);
         } else if (!peers(viewer).some(other => other.matches(':popover-open'))
-                   && (document.activeElement === document.body || viewer.contains(document.activeElement))) {
+                   && (document.activeElement === document.body
+                       // WebKit hands focus from a closing popover to the
+                       // modal dialog around it, the release review (#933).
+                       || document.activeElement === viewer.closest('dialog')
+                       || viewer.contains(document.activeElement))) {
             openers.get(viewer)?.focus();
         }
     }, true);

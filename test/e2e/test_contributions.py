@@ -6,6 +6,7 @@ import os
 import re
 
 import pytest
+from test.e2e.conftest import review_dialog
 
 pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e disabled")
 playwright_sync = pytest.importorskip("playwright.sync_api")
@@ -131,7 +132,7 @@ def test_contribution_actions_and_review_progress_layout(
         assert abs(bounds["y"] + bounds["height"] - action_bottom - padding - 1) <= 1
     if scenario != "empty":
         pending = []
-        page.route("**/assignments/**", lambda route: pending.append(route))
+        page.route("**/review/**", lambda route: pending.append(route))
         panel.get_by_role("button", name="Use", exact=True).first.click()
         playwright_sync.expect(progress).to_be_visible()
         page.wait_for_function(
@@ -140,11 +141,13 @@ def test_contribution_actions_and_review_progress_layout(
         assert len(pending) == 1
         assert progress.evaluate("el => el.getBoundingClientRect().height") > 0
         pending[0].continue_()
-        review = page.get_by_role("region", name="Review suggested release")
-        playwright_sync.expect(review).to_be_visible()
-        playwright_sync.expect(panel).to_be_hidden()
-        page.unroute("**/assignments/**")
+        review = review_dialog(page)
+        playwright_sync.expect(
+            review.get_by_role("button", name="Cancel", exact=True)
+        ).to_be_visible()
+        page.unroute("**/review/**")
         review.get_by_role("button", name="Cancel", exact=True).click()
+        playwright_sync.expect(review).to_have_count(0)
         playwright_sync.expect(browse).to_be_visible()
         assert progress.evaluate("el => el.getBoundingClientRect().height") == 0
     page.context.close()
@@ -156,17 +159,24 @@ def test_sibling_without_release_cover_keeps_local_artwork(browser_factory, sibl
     page = browser.new_page()
     page.goto(f"{server}/album/{ALBUM}")
     pending = []
-    page.route("**/assignments/*/artwork?*", lambda route: pending.append(route))
+
+    def hold(route):
+        pending.append(route)
+        page.evaluate("window.artworkRequestHeld = true")
+
+    page.route("**/assignments/*/artwork?*", hold)
     results = page.locator(f"#contribution-editions-{ALBUM}")
     results.get_by_role("listitem", name="Suggested digital release").get_by_role(
         "button", name="Use", exact=True
     ).click()
-    review = page.get_by_role("region", name="Review suggested release")
+    review = review_dialog(page)
     artwork = review.locator(".assignment-artwork")
     local = artwork.locator('img[alt^="Current artwork:"]')
     playwright_sync.expect(local.first).to_be_visible()
     confirm = review.get_by_role("button", name="Confirm suggestion", exact=True)
     before_y = confirm.evaluate("e => e.getBoundingClientRect().top + window.scrollY")
+    # The editor loads into the dialog, and its artwork after it.
+    page.wait_for_function("window.artworkRequestHeld === true")
     assert pending
     for route in pending:
         route.continue_()
@@ -279,48 +289,34 @@ def test_contribution_check_and_library_filter(
         .filter(has_text="Digital reissue")
         .get_by_text("Store URL matches", exact=True)
     ).to_have_count(0)
-    # Review replaces the choices inline without changing the confirmed
-    # match. Returning restores both the choices and the ordinary findings.
+    # Review opens over the page without changing the confirmed match (#933).
+    # Closing it leaves the choices and the ordinary findings where they were.
     suggestion = results.get_by_role("listitem", name="Suggested digital release")
     playwright_sync.expect(suggestion).to_contain_text("Bandcamp download")
     suggestion.get_by_role("button", name="Use", exact=True).click()
-    review = page.get_by_role("region", name="Review suggested release")
+    review = review_dialog(page)
     playwright_sync.expect(review).to_contain_text("Suggested match")
-    playwright_sync.expect(panel).to_be_hidden()
-    playwright_sync.expect(page.locator(f"#album-findings-{ALBUM}")).to_be_hidden()
     playwright_sync.expect(
         review.get_by_role("button", name="Confirm suggestion", exact=True)
     ).to_be_enabled()
     selected_art = review.get_by_alt_text("Artwork for selected release", exact=True)
     playwright_sync.expect(selected_art).to_be_visible()
     page.wait_for_function(
-        "() => { const img = document.querySelector('.contribution-review img[alt=\"Artwork for selected release\"]'); return img?.complete && img.naturalWidth > 0; }"
+        "() => { const img = document.querySelector('dialog.review-dialog img[alt=\"Artwork for selected release\"]'); return img?.complete && img.naturalWidth > 0; }"
     )
     selected_art.click()
     popover_image = review.locator("[popover]:popover-open img")
     playwright_sync.expect(popover_image).to_be_visible()
     page.wait_for_function(
-        "() => { const img = document.querySelector('.contribution-review [popover]:popover-open img'); return img?.complete && img.naturalWidth > 0; }"
+        "() => { const img = document.querySelector('dialog.review-dialog [popover]:popover-open img'); return img?.complete && img.naturalWidth > 0; }"
     )
+    # Escape closes the image, not the review under it.
     page.keyboard.press("Escape")
-    # A current-release refresh cannot tear down the replacement or browse
-    # siblings again while the user is reviewing it.
-    review.locator(".assignment-content").evaluate("e => e.dataset.reviewKept = 'true'")
-    panel.evaluate("e => e.dataset.choicesKept = 'true'")
-    with page.expect_response(lambda r: r.url.endswith(f"/library/{ALBUM}/compare?reread=1")):
-        page.get_by_role(
-            "button", name="Read this release from MusicBrainz again", exact=True
-        ).click()
-    playwright_sync.expect(
-        page.get_by_role("button", name="Read this release from MusicBrainz again", exact=True)
-    ).to_be_enabled()
-    playwright_sync.expect(panel).to_have_attribute("data-choices-kept", "true")
-    playwright_sync.expect(review.locator(".assignment-content")).to_have_attribute(
-        "data-review-kept", "true"
-    )
+    playwright_sync.expect(popover_image).to_have_count(0)
+    playwright_sync.expect(review).to_be_visible()
     assert len(discoveries) == 3
     review.get_by_role("button", name="Cancel", exact=True).click()
-    playwright_sync.expect(review).to_be_hidden()
+    playwright_sync.expect(review).to_have_count(0)
     playwright_sync.expect(panel).to_be_visible()
     playwright_sync.expect(panel).to_contain_text(linked)
     playwright_sync.expect(panel.locator("li > strong")).to_have_count(2)

@@ -128,8 +128,10 @@ Harmonist only tags on its own when a match is exact. A suggestion means it's
 likely but not certain: often track lengths differ by a few seconds, or the
 track count doesn't match.
 
-Check the side-by-side tracklist and **Tag changes**, then **Confirm
-suggestion**, or **Dismiss suggestion** to search for another release.
+**Review** it: check the side-by-side tracklist and **Tag changes**, then
+**Confirm suggestion**, or **Dismiss suggestion** to search for another release.
+Closing the review decides nothing, and the suggestion stays until one of those
+is chosen.
 
 ### An album's discs show up as separate albums
 

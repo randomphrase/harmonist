@@ -4,7 +4,7 @@ so does a pasted MBID, the find-release cluster's last mode (#880)."""
 import os
 
 import pytest
-from test.e2e.conftest import _run_demo_server
+from test.e2e.conftest import _run_demo_server, review_dialog
 
 from harmonist import formats, sidecar
 
@@ -73,9 +73,11 @@ def test_exact_choice_reviews_before_one_confirmation(
 
     with page.expect_response(lambda r: r.url == assign_url and r.ok):
         htmx_ready(use).click()
-    confirm = panel.get_by_role("button", name="Confirm suggestion", exact=True)
+    # The review of the release just chosen opens over the page (#933).
+    review = review_dialog(page)
+    confirm = review.get_by_role("button", name="Confirm suggestion", exact=True)
     pw.expect(confirm).to_be_visible()
-    pw.expect(panel.get_by_role("heading", name="Suggested match:")).to_be_visible()
+    pw.expect(review.get_by_role("heading", name="Suggested match:")).to_be_visible()
     assert audio.read_bytes() == original
     assert sidecar.read(folder).mb_release_id is None
     assert sidecar.read(folder).mb_match_candidate.mb_release_id == mbid

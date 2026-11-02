@@ -233,6 +233,25 @@ def htmx_ready():
     return ready
 
 
+def review_dialog(page):
+    """The release review, open or opening in the page's modal mount (#933)."""
+    return page.locator("dialog.review-dialog")
+
+
+def open_review(page, host):
+    """Open the release review from the suggestion waiting on `host` (#933).
+
+    `host` is an Inbox card or the album page's actions section. Returns the
+    dialog once it is open; what it must have loaded is the caller's to wait for.
+    """
+    ready = ":not(.htmx-added, .htmx-added *, .htmx-settling, .htmx-settling *)"
+    review = host.get_by_role("button", name="Review", exact=True)
+    review.and_(page.locator(ready)).click()
+    dialog = review_dialog(page)
+    playwright_sync.expect(dialog).to_be_visible()
+    return dialog
+
+
 @pytest.fixture(scope="module")
 def demo_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """Uvicorn in demo mode against throwaway dirs; yields the base URL."""

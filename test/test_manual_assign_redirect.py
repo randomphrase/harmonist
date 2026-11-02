@@ -49,4 +49,4 @@ def test_use_release_redirect_resolves_before_background_scan(
     destination = response.headers["HX-Redirect"]
     opened = client.get(destination)
     assert opened.status_code == 200, opened.text
-    assert destination == f"/album/{test_web._id_for(cfg, root)}"
+    assert destination == f"/album/{test_web._id_for(cfg, root)}?review=chosen"

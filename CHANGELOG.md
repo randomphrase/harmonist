@@ -11,6 +11,12 @@ versions follow [semantic versioning](https://semver.org).
 - **Browse artists on their own page**, with List and Cards views, search, artist-specific filters and links from album credits (#813).
 - **Read local artist NFOs and pictures throughout the library**, with metadata badges, automatic updates and visible conflicts, unmatched files and read errors (#813).
 
+### Changed
+
+- **A suggested release is reviewed in a dialog over the page**, opened with
+  **Review** from the Inbox card or album page. Closing it leaves a suggestion
+  Harmonist found waiting, and discards a release you chose with Use (#933).
+
 ### Fixed
 
 - **The artwork picker offers a new archive front as soon as an artwork update

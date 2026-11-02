@@ -94,8 +94,10 @@ def test_uncached_comparison_waits_for_explicit_refresh(client, cfg, monkeypatch
 
     d, _release, _big, _small, calls = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
     aid = _id_for(cfg, d)
-    page = client.get("/tasks")
-    loader = BeautifulSoup(page.text, "html.parser").select_one(
+    # Neither the card nor opening its review asks MusicBrainz anything.
+    client.get("/tasks")
+    dialog = client.get(f"/review/{aid}?on_album_page=false")
+    loader = BeautifulSoup(dialog.text, "html.parser").select_one(
         f'[hx-get="/assignments/{aid}?cancel=true&on_album_page=false"]'
     )
     assert loader is not None

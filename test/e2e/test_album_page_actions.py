@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 
 import pytest
+from test.e2e.conftest import open_review
 
 # Opt-in like every other module here: `make check` stays browser-free.
 pytestmark = pytest.mark.skipif(
@@ -44,13 +45,15 @@ def test_dismissed_suggestion_returns_to_selectable_store_results(
         page.goto(f"{reset_demo_server}/album/{aid}")
     host = page.locator("#album-inbox-actions") if on_album else card
     tools = host.locator(f"#mbid-tools-{aid}")
-    dismiss = host.get_by_role("button", name="Dismiss suggestion", exact=True)
+    playwright_sync.expect(tools).to_be_hidden()
+    review = open_review(page, host)
+    dismiss = review.get_by_role("button", name="Dismiss suggestion", exact=True)
     playwright_sync.expect(dismiss).to_be_visible()
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
-    playwright_sync.expect(tools).to_be_hidden()
 
     with page.expect_response(lambda r: "/reject/" in r.url):
         dismiss.click()
+    playwright_sync.expect(review).to_have_count(0)
     playwright_sync.expect(tools).to_be_visible()
     playwright_sync.expect(tools.get_by_role("radio", name="By name", exact=True)).to_be_visible()
     # Pasting an MBID is the cluster's last mode (#880), behind its radio.
@@ -70,6 +73,7 @@ def test_dismissed_suggestion_returns_to_selectable_store_results(
     playwright_sync.expect(rows).to_contain_text("Store URL matches")
     playwright_sync.expect(tools).to_be_visible()
     htmx_ready(rows.get_by_role("button", name="Use", exact=True)).press("Enter")
+    # The release just chosen opens its review without another click (#933).
     playwright_sync.expect(dismiss).to_be_visible()
     playwright_sync.expect(tools).to_be_hidden()
     dialogs = []
@@ -82,7 +86,7 @@ def test_dismissed_suggestion_returns_to_selectable_store_results(
     # The click starts tag writing; the card can leave only after the
     # confirmation finishes, which can exceed an assertion's timeout in CI.
     with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
-        htmx_ready(host.get_by_role("button", name="Confirm suggestion", exact=True)).click()
+        htmx_ready(review.get_by_role("button", name="Confirm suggestion", exact=True)).click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
     assert dialogs == []
     if on_album:

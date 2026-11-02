@@ -3,6 +3,7 @@
 import os
 
 import pytest
+from test.e2e.conftest import open_review
 
 pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e disabled")
 playwright_sync = pytest.importorskip("playwright.sync_api")
@@ -59,9 +60,13 @@ def test_automatic_barcode_outcomes(browser_factory, barcode_outcome_server, htm
     page.on("request", lambda r: searches.append(r.url) if r.url.endswith("/barcode") else None)
     page.goto(f"{server}/album/barcode-demo")
     if outcome == "1":
-        playwright_sync.expect(page.get_by_role("heading", name="Suggested match:")).to_be_visible()
+        # Found by the automatic lookup, so it waits on the page for Review.
+        review = open_review(page, page.locator("#album-inbox-actions"))
+        playwright_sync.expect(
+            review.get_by_role("heading", name="Suggested match:")
+        ).to_be_visible()
         assert sidecar.read(folder).mb_match_candidate is not None
-        htmx_ready(page.get_by_role("button", name="Dismiss suggestion", exact=True)).click()
+        htmx_ready(review.get_by_role("button", name="Dismiss suggestion", exact=True)).click()
         playwright_sync.expect(
             page.get_by_role("radio", name="By name", exact=True)
         ).to_be_checked()

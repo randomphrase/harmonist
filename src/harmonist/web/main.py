@@ -4361,7 +4361,18 @@ class _ReplacementUnavailable(Exception):
     """A page-local replacement cannot safely continue its review."""
 
 
-def _album_location(request: Request, album_id: str, *, edit_assignments: bool = False) -> str:
+def _chosen_review_trigger(album_id: str, active: bool) -> dict[str, Any] | None:
+    """Open the review of a release the user just chose, over the Inbox (#933).
+
+    The album page has no list to stay on: it is redirected to
+    `_album_location(..., review_chosen=True)` instead, which opens the same
+    review on the page's new address."""
+    return {"review-chosen": {"album": album_id}} if active else None
+
+
+def _album_location(
+    request: Request, album_id: str, *, edit_assignments: bool = False, review_chosen: bool = False
+) -> str:
     """Keep the Library return context when review replaces the album page."""
     query = request.headers.get("HX-Current-URL", "").partition("?")[2].split("#", 1)[0]
     context = {
@@ -4383,6 +4394,8 @@ def _album_location(request: Request, album_id: str, *, edit_assignments: bool =
     }
     if edit_assignments:
         context["edit_assignments"] = "true"
+    if review_chosen:
+        context["review"] = "chosen"
     location = "/album/" + quote(album_id, safe="")
     if context:
         location += "?" + urlencode(context)
@@ -5467,6 +5480,7 @@ def _register_routes(app: FastAPI) -> None:
         artist_new: bool = False,
         artist_view: str | None = None,
         edit_assignments: bool = False,
+        review: Literal["chosen"] | None = None,
     ) -> Response:
         """The standalone album page (#103) — full tracklist plus the album's
         history, neither of which fits a viewport-constrained dialog.
@@ -5634,6 +5648,11 @@ def _register_routes(app: FastAPI) -> None:
             ),
         )
         ctx["edit_assignments"] = edit_assignments
+        # Use redirects here to open the review of the release just chosen
+        # (#933). A reload after that suggestion was resolved has none to open.
+        ctx["open_chosen_review"] = bool(
+            review and album.sidecar and album.sidecar.mb_match_candidate
+        )
         # Format evidence exists before a release is chosen too. Keep the
         # header's link useful on an unmatched album, using files alone (#720).
         if not (album.sidecar and album.sidecar.mb_release_id):
@@ -7932,6 +7951,35 @@ def _register_routes(app: FastAPI) -> None:
             ),
         )
 
+    @app.get("/review/{album_id}", response_class=HTMLResponse)
+    def review_dialog(
+        request: Request, album_id: str, on_album_page: bool = False, chosen: bool = False
+    ) -> Response:
+        """The release review, in the page's modal mount (#933).
+
+        Only the shell: the editor loads into it as it did inline, so opening is
+        instant and spends nothing. `chosen` says the review opened because the
+        user picked the release, so closing it discards the suggestion as
+        Cancel did. Opened from a waiting suggestion, closing leaves it waiting:
+        Harmonist found that one, and #638 keeps it until the user decides."""
+        album = _find_album(request, album_id)
+        replacement = request.query_params.get("replacement", "")
+        candidate = album.sidecar.mb_match_candidate if album.sidecar else None
+        if not replacement and candidate is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no suggestion to review")
+        return _templates(request).TemplateResponse(
+            request,
+            "partials/_review_dialog.html",
+            _ctx(
+                request,
+                album=album,
+                candidate=None if replacement else candidate,
+                replacement=replacement,
+                on_album_page=on_album_page,
+                discard=chosen and not replacement,
+            ),
+        )
+
     @app.get("/assignments/{album_id}", response_class=HTMLResponse)
     def assignment_editor(
         request: Request,
@@ -8836,9 +8884,12 @@ def _register_routes(app: FastAPI) -> None:
                     "Review and confirm the selected release",
                     album=album,
                     record_activity=False,
+                    extra_triggers=_chosen_review_trigger(album.id, not on_album_page),
                 )
                 if on_album_page:
-                    response.headers["HX-Redirect"] = _album_location(request, album.id)
+                    response.headers["HX-Redirect"] = _album_location(
+                        request, album.id, review_chosen=True
+                    )
                 return response
             _, msg = _apply_best_match(
                 album.path,
@@ -8867,15 +8918,25 @@ def _register_routes(app: FastAPI) -> None:
             )
         # A suggestion to review, or nothing to act on: flashed, not recorded.
         # The decision is the confirm, which records how the release was found.
-        response = _flash_response("Needs review", msg, album=album, record_activity=False)
+        # Publish the new identity before the review or the redirected page asks
+        # for it (#798). Use the scanned id so duplicate copies remain distinct.
+        runner = request.app.state.scan_runner
+        if runner.is_engaged():
+            runner.refresh_album(album.folders)
+        refreshed_album = next(a for a in _albums(request) if album.path in a.folders)
+        written = sidecar_mod.read(album.path)
+        chosen = written is not None and written.mb_match_candidate is not None
+        response = _flash_response(
+            "Needs review",
+            msg,
+            album=album,
+            record_activity=False,
+            extra_triggers=_chosen_review_trigger(refreshed_album.id, chosen and not on_album_page),
+        )
         if on_album_page:
-            # Publish the new identity before the redirected GET can arrive
-            # (#798). Use the scanned id so duplicate copies remain distinct.
-            runner = request.app.state.scan_runner
-            if runner.is_engaged():
-                runner.refresh_album(album.folders)
-            refreshed_album = next(a for a in _albums(request) if album.path in a.folders)
-            response.headers["HX-Redirect"] = _album_location(request, refreshed_album.id)
+            response.headers["HX-Redirect"] = _album_location(
+                request, refreshed_album.id, review_chosen=chosen
+            )
         return response
 
     @app.post("/unconfirmed/{album_id}/manual", response_class=HTMLResponse)

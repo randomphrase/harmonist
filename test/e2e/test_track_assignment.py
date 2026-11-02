@@ -5,18 +5,25 @@ import re
 from urllib.parse import parse_qs
 
 import pytest
+from test.e2e.conftest import open_review
 
 pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e disabled")
 pw = pytest.importorskip("playwright.sync_api")
 
 
-def _card(page, base):
+def _opened(page, host):
+    review = open_review(page, host)
+    pw.expect(review.locator(".assignment-artwork")).to_contain_text("CAA checked")
+    page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
+    return review
+
+
+def _review(page, base):
+    """The demo's suggestion, with its review open (#933): (album id, dialog)."""
     page.goto(base)
     card = page.locator('div[id^="task-"].relative').filter(has_text="Gimme Some Money")
     pw.expect(card).to_have_count(1)
-    pw.expect(card.locator(".assignment-artwork")).to_contain_text("CAA checked")
-    page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
-    return card
+    return card.get_attribute("id").removeprefix("task-"), _opened(page, card)
 
 
 @pytest.mark.parametrize("on_album", [False, True])
@@ -27,17 +34,16 @@ def test_suggested_release_link_follows_review_and_confirmation(
     browser = browser_factory("chromium")
     page = browser.new_page(viewport={"width": 1280, "height": 1000})
     page.on("dialog", lambda dialog: dialog.accept())
-    card = _card(page, base)
-    aid = card.get_attribute("id").removeprefix("task-")
+    aid, review = _review(page, base)
+    host = page.locator("#album-inbox-actions") if on_album else page.locator(f"#task-{aid}")
     if on_album:
         page.goto(f"{base}/album/{aid}")
-    host = page.locator("main") if on_album else page.locator(f"#task-{aid}")
-    review = host.locator(".assignment-editor")
+        _opened(page, host)
     heading = review.get_by_role("heading", name=re.compile("Suggested match:"))
     link = heading.get_by_role("link")
     pw.expect(link).to_have_attribute("href", "https://musicbrainz.org/release/demo-rel-thamesmen")
     pw.expect(
-        host.locator('a[href="https://musicbrainz.org/release/demo-rel-thamesmen"]')
+        review.locator('a[href="https://musicbrainz.org/release/demo-rel-thamesmen"]')
     ).to_have_count(1)
     edit = review.get_by_role("button", name="Edit track assignments", exact=True)
     pw.expect(edit).to_be_visible()
@@ -105,6 +111,7 @@ def test_suggested_release_link_follows_review_and_confirmation(
         form={"mbid": "demo-rel-folksmen"},
     ).ok
     page.reload()
+    open_review(page, host)
     pw.expect(link).to_have_attribute("href", "https://musicbrainz.org/release/demo-rel-folksmen")
     pw.expect(edit).to_have_class(re.compile("bg-amber-50"))
     pw.expect(groups.nth(0)).to_contain_text("1 file unassigned")
@@ -131,10 +138,9 @@ def test_inbox_refresh_cannot_discard_assignment_reset(
 ):
     browser = browser_factory(engine_name)
     page = browser.new_page()
-    card = _card(page, reset_demo_server)
-    aid = card.get_attribute("id").removeprefix("task-")
-    card.get_by_role("button", name="Edit track assignments").click()
-    editor = card.locator(".assignment-editor")
+    aid, review = _review(page, reset_demo_server)
+    review.get_by_role("button", name="Edit track assignments").click()
+    editor = review.locator(".assignment-editor")
     editor.get_by_role("button", name="Move on-disk entry down", exact=True).first.click()
     pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
     held = []
@@ -175,9 +181,9 @@ def test_assignment_reset_preempts_inflight_inbox_refresh(
 ):
     browser = browser_factory(engine_name)
     page = browser.new_page()
-    card = _card(page, reset_demo_server)
-    card.get_by_role("button", name="Edit track assignments").click()
-    editor = card.locator(".assignment-editor")
+    _, review = _review(page, reset_demo_server)
+    review.get_by_role("button", name="Edit track assignments").click()
+    editor = review.locator(".assignment-editor")
     editor.get_by_role("button", name="Move on-disk entry down", exact=True).first.click()
     pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
     held = []
@@ -226,8 +232,8 @@ def test_inbox_refresh_keeps_the_preserved_editor_and_its_focus(
 ):
     browser = browser_factory(engine_name)
     page = browser.new_page()
-    card = _card(page, reset_demo_server)
-    editor = card.locator(".assignment-editor")
+    _, review = _review(page, reset_demo_server)
+    editor = review.locator(".assignment-editor")
     edit = editor.get_by_role("button", name="Edit track assignments", exact=True)
     edit.focus()
     editor.evaluate("el => { el.dataset.probe = ''; window.editorBefore = el; }")
@@ -243,8 +249,8 @@ def test_inbox_refresh_during_an_editor_settle_leaves_it_ready(
 ):
     browser = browser_factory(engine_name)
     page = browser.new_page()
-    card = _card(page, reset_demo_server)
-    editor = card.locator(".assignment-editor")
+    _, review = _review(page, reset_demo_server)
+    editor = review.locator(".assignment-editor")
     # Widen htmx's 20 ms settle so the refresh reliably lands inside it.
     page.evaluate("htmx.config.defaultSettleDelay = 1500")
     reread = "Read this release from MusicBrainz again and reset assignment changes"
@@ -263,12 +269,16 @@ def test_inbox_refresh_during_an_editor_settle_leaves_it_ready(
 def test_inbox_refresh_during_an_editor_load_reads_it_once(
     browser_factory, reset_demo_server, engine_name
 ):
-    """A refresh re-processes the card mid-load; that must not fire its load again (#821)."""
+    """Refreshes of the Inbox under an open review's load don't fire it again (#821).
+
+    The review is in a dialog now (#933), outside the card a refresh re-renders;
+    this keeps that so even when the card itself goes and comes back."""
     browser = browser_factory(engine_name)
     page = browser.new_page()
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
-    card = _card(page, reset_demo_server)
+    page.goto(reset_demo_server)
+    card = page.locator('div[id^="task-"].relative').filter(has_text="Gimme Some Money")
     aid = card.get_attribute("id").removeprefix("task-")
     held = []
 
@@ -277,8 +287,10 @@ def test_inbox_refresh_during_an_editor_load_reads_it_once(
         page.evaluate("window.editorReadHeld = true")
 
     page.route(f"**/assignments/{aid}?cancel=true*", hold)
+    review = open_review(page, card)
+    page.wait_for_function("window.editorReadHeld === true")
     # A reconcile renders the Inbox without cards; the next refresh brings
-    # this one back as a fresh loader.
+    # this one back.
     page.route(
         "**/tasks",
         lambda route: route.fulfill(
@@ -289,11 +301,10 @@ def test_inbox_refresh_during_an_editor_load_reads_it_once(
     page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
     pw.expect(page.locator("#task-list")).to_have_text("Sorting your library")
     _refresh_inbox(page)
-    page.wait_for_function("window.editorReadHeld === true")
     _refresh_inbox(page)
     for route, response in held:
         route.fulfill(response=response)
-    pw.expect(card.locator(".assignment-artwork")).to_contain_text("CAA checked")
+    pw.expect(review.locator(".assignment-artwork")).to_contain_text("CAA checked")
     assert len(held) == 1
     assert not errors
     page.context.close()
@@ -302,9 +313,9 @@ def test_inbox_refresh_during_an_editor_load_reads_it_once(
 def test_column_display_toggle_survives_moves_and_reset(browser_factory, reset_demo_server):
     browser = browser_factory("chromium")
     page = browser.new_page()
-    card = _card(page, reset_demo_server)
-    card.get_by_role("button", name="Edit track assignments").click()
-    editor = card.locator(".assignment-editor")
+    _, review = _review(page, reset_demo_server)
+    review.get_by_role("button", name="Edit track assignments").click()
+    editor = review.locator(".assignment-editor")
     filenames = editor.get_by_role("radio", name="Filename", exact=True)
     pw.expect(editor.locator("[data-assignment-row] .assignment-title").first).to_be_visible()
     pw.expect(
@@ -323,7 +334,7 @@ def test_column_display_toggle_survives_moves_and_reset(browser_factory, reset_d
     editor.get_by_role("button", name="Reset", exact=True).click()
     pw.expect(editor.locator('[name="disk_order"]')).to_have_value("0,1,2")
     editor.get_by_role("button", name="Cancel", exact=True).click()
-    pw.expect(card.get_by_role("button", name="Confirm suggestion", exact=True)).to_be_visible()
+    pw.expect(review.get_by_role("button", name="Confirm suggestion", exact=True)).to_be_visible()
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
     # Read-only mode keeps the same table geometry and display preference.
     columns = editor.locator("thead tr").last.locator("th")
@@ -351,8 +362,7 @@ def test_partial_confirmation_can_be_applied_and_reviewed(browser_factory, reset
     browser = browser_factory("chromium")
     page = browser.new_page()
     page.on("dialog", lambda dialog: dialog.accept())
-    card = _card(page, base)
-    aid = card.get_attribute("id").removeprefix("task-")
+    aid, review = _review(page, base)
     # Three files against a two-track release leaves one file unassigned.
     assert page.request.post(
         f"{base}/manual/{aid}/assign",
@@ -360,11 +370,9 @@ def test_partial_confirmation_can_be_applied_and_reviewed(browser_factory, reset
         form={"mbid": "demo-rel-folksmen"},
     ).ok
     page.reload()
-    card = page.locator(f"#task-{aid}")
-    pw.expect(card.locator(".assignment-artwork")).to_contain_text("CAA checked")
-    page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
+    review = _opened(page, page.locator(f"#task-{aid}"))
     with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept")) as applied:
-        card.get_by_role("button", name="Confirm suggestion", exact=True).click()
+        review.get_by_role("button", name="Confirm suggestion", exact=True).click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
     page.goto(f"{base}/album/demo-rel-folksmen")
     pw.expect(page.locator("main")).to_contain_text("Tracks unassigned")
@@ -395,10 +403,9 @@ def test_arrow_mapping_survives_refresh_review_and_apply(browser_factory, reset_
     browser = browser_factory("chromium")
     page = browser.new_page()
     page.on("dialog", lambda dialog: dialog.accept())
-    card = _card(page, base)
-    aid = card.get_attribute("id").removeprefix("task-")
-    card.get_by_role("button", name="Edit track assignments").click()
-    editor = card.locator(".assignment-editor")
+    aid, review = _review(page, base)
+    review.get_by_role("button", name="Edit track assignments").click()
+    editor = review.locator(".assignment-editor")
     down = editor.get_by_role("button", name="Move on-disk entry down", exact=True).first
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
     scan_before = page.request.get(f"{base}/scan/status").json()
@@ -418,7 +425,7 @@ def test_arrow_mapping_survives_refresh_review_and_apply(browser_factory, reset_
     pw.expect(note).to_have_text("2 → 1")
     assert note.evaluate("el => el.scrollWidth <= el.clientWidth")
     pw.expect(editor.locator(f'[id="move-{aid}-disk-0-down"]')).to_be_focused()
-    pw.expect(card.get_by_role("button", name="Confirm suggestion", exact=True)).to_be_disabled()
+    pw.expect(review.get_by_role("button", name="Confirm suggestion", exact=True)).to_be_disabled()
     # A normal inbox poll must not reset a corrected draft.
     with page.expect_response(lambda r: "/tasks" in r.url):
         page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
@@ -448,8 +455,7 @@ def test_gap_can_move_on_either_side_and_cancel_discards_the_draft(
     base = reset_demo_server
     browser = browser_factory("chromium")
     page = browser.new_page()
-    card = _card(page, base)
-    aid = card.get_attribute("id").removeprefix("task-")
+    aid, review = _review(page, base)
     # Three local files against the demo's four-track release.
     assert page.request.post(
         f"{base}/manual/{aid}/assign",
@@ -457,11 +463,9 @@ def test_gap_can_move_on_either_side_and_cancel_discards_the_draft(
         form={"mbid": "demo-rel-electric-mayhem"},
     ).ok
     page.reload()
-    card = page.locator(f"#task-{aid}")
-    pw.expect(card.locator(".assignment-artwork")).to_contain_text("CAA checked")
-    page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
-    card.get_by_role("button", name="Edit track assignments").click()
-    editor = card.locator(".assignment-editor")
+    review = _opened(page, page.locator(f"#task-{aid}"))
+    review.get_by_role("button", name="Edit track assignments").click()
+    editor = review.locator(".assignment-editor")
     pw.expect(editor.locator('[name="disk_order"]')).to_have_value("0,1,2,-")
     editor.get_by_role("button", name="Move on-disk entry up", exact=True).last.click()
     pw.expect(editor.locator('[name="disk_order"]')).to_have_value("0,1,-,2")
@@ -483,19 +487,16 @@ def test_failed_partial_confirmation_preserves_review_during_inbox_refresh(
     browser = browser_factory("chromium")
     page = browser.new_page()
     page.on("dialog", lambda dialog: dialog.accept())
-    card = _card(page, base)
-    aid = card.get_attribute("id").removeprefix("task-")
+    aid, review = _review(page, base)
     assert page.request.post(
         f"{base}/manual/{aid}/assign",
         headers={"HX-Request": "true"},
         form={"mbid": "demo-rel-folksmen"},
     ).ok
     page.reload()
-    card = page.locator(f"#task-{aid}")
-    pw.expect(card.locator(".assignment-artwork")).to_contain_text("CAA checked")
-    page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
-    card.get_by_role("button", name="Edit track assignments").click()
-    editor = card.locator(".assignment-editor")
+    review = _opened(page, page.locator(f"#task-{aid}"))
+    review.get_by_role("button", name="Edit track assignments").click()
+    editor = review.locator(".assignment-editor")
     before = editor.locator('[name="disk_order"]').input_value()
     editor.get_by_role("button", name="Accept changes").click()
     accept = editor.get_by_role("button", name="Confirm suggestion", exact=True)
@@ -594,8 +595,7 @@ def test_unassigned_files_are_proposed_and_remain_editable_until_acceptance(
     base = reset_demo_server
     browser = browser_factory("chromium")
     page = browser.new_page()
-    card = _card(page, base)
-    aid = card.get_attribute("id").removeprefix("task-")
+    aid, _ = _review(page, base)
     # Seed a release-only confirmation through the real guarded API. The
     # three files retain their numbers and receive no track identities.
     initial = page.request.get(f"{base}/confirm/{aid}/preview?release_only=true")

@@ -27,41 +27,8 @@
 {% set is_surrender = candidate and candidate.unmatched_purchase %}
 
 {% if is_mistag %}
-{# ---- (a) Possible mis-tag: the "wrong release?" panel, opened. Explains
-     WHY we're suggesting a different release — strictly store-URL based, so
-     no track-count talk here (that's the match-quality box below). ---- #}
-<details open class="rounded-lg border border-amber-300 bg-amber-50/60 p-3 mb-3">
-    <summary class="cursor-pointer select-none text-sm font-bold text-amber-800">
-        Wrong release?
-    </summary>
-    <div class="mt-2 text-xs text-ink/80 leading-relaxed">
-        <p>
-            This album is tagged as
-            {% if candidate.mistag_tagged_mbid and candidate.mistag_tagged_label %}
-            <a href="https://musicbrainz.org/release/{{ candidate.mistag_tagged_mbid }}"
-               target="_blank" rel="noopener"
-               class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_tagged_label, candidate.mistag_tagged_disambig) }} ↗</a>,
-            {% else %}
-            a different release,
-            {% endif %}
-            but you purchased
-            <a href="https://musicbrainz.org/release/{{ candidate.mb_release_id }}"
-               target="_blank" rel="noopener"
-               class="font-semibold text-mb-purple hover:underline">{{ release_name(candidate.mistag_owned_label, candidate.mistag_owned_disambig) }} ↗</a>
-            on <a href="{{ candidate.mistag_owned_url }}" target="_blank" rel="noopener"
-               class="text-bc-teal hover:underline">Bandcamp ↗</a>.
-            These are sibling releases in the same
-            {% if candidate.mistag_release_group_mbid %}
-            <a href="https://musicbrainz.org/release-group/{{ candidate.mistag_release_group_mbid }}"
-               target="_blank" rel="noopener"
-               class="text-mb-purple hover:underline">MusicBrainz release group ↗</a>.
-            {% else %}
-            MusicBrainz release group.
-            {% endif %}
-            Confirm below to re-tag.
-        </p>
-    </div>
-</details>
+{# ---- (a) Possible mis-tag: why a different release is suggested. ---- #}
+{% include 'partials/_mistag_explanation.html' %}
 {% endif %}
 
 {% if is_surrender %}
@@ -122,16 +89,18 @@
 {% endif %}
 
 {% if candidate and not is_surrender %}
-<div class="candidate-review rounded-lg border border-amber-200 bg-amber-50/40 p-3 mb-3">
-    <div id="assignments-{{ album.id }}-{{ candidate.mb_release_id }}" hx-preserve class="assignment-editor">
-        {# The indicator is the child, not the loader: htmx re-initialises a node
-           whose attributes change, and an Inbox refresh re-processes this card,
-           so `htmx-request` on the loader itself would fire `load` again (#821). #}
-        <div hx-get="/assignments/{{ album.id }}?cancel=true&amp;on_album_page={{ 'true' if on_album else 'false' }}"
-             hx-trigger="load" hx-swap="outerHTML" hx-indicator="find [role='status']" class="assignment-content">
-            <p role="status" class="text-xs text-muted">Loading track comparison…</p>
-        </div>
-    </div>
+{# The suggestion is stored and waits here; reviewing it is a task with an
+   end, so it opens in a dialog over the page (#933). #}
+<div class="candidate-notice flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/40 p-3 mb-3">
+    <p class="flex flex-wrap items-center gap-2 text-sm min-w-0">
+        <span class="text-xs font-bold text-ink uppercase tracking-widest">Suggested match:</span>
+        {% with mb_release_id=candidate.mb_release_id %}
+            {% include 'partials/_release_title_link.html' %}
+        {% endwith %}
+    </p>
+    <button type="button" hx-get="/review/{{ album.id }}?on_album_page={{ 'true' if on_album else 'false' }}"
+            hx-target="#modal" hx-swap="innerHTML" hx-disabled-elt="this"
+            class="px-3 py-1.5 bg-accent hover:bg-accent-dark text-white rounded text-xs font-bold uppercase tracking-widest shrink-0 transition">Review</button>
 </div>
 {% endif %}
 

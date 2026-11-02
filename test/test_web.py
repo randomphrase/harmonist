@@ -7,6 +7,7 @@ templates render without crashing for each AlbumState.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -511,10 +512,10 @@ def test_needs_review_card_renders_side_by_side(client, cfg):
         ),
     )
     r = client.get("/tasks")
-    # Merged into NEEDS_MBID: the card shows the suggestion side-by-side inline.
+    # Merged into NEEDS_MBID: the card names the suggestion, reviewed in a dialog.
     assert ">MBID</abbr>" in r.text  # the "Needs MBID" header (MBID is an <abbr>)
     aid = _id_for(cfg, d)
-    assert f"/assignments/{aid}?cancel=true" in r.text
+    assert f'hx-get="/review/{aid}?on_album_page=false"' in r.text
     # The comparison loads separately, without a network request per card.
     comparison = client.get(f"/assignments/{aid}?cancel=true")
     assert "Track comparison is not cached" in comparison.text
@@ -561,9 +562,12 @@ def test_mistag_card_renders_open_panel_with_sibling_explanation(client, cfg):
     assert ">Bandcamp ↗</a>" in r.text
     # Disambiguation is rendered in parentheses, visually distinct (muted span).
     assert ">(24-bit)</span>" in r.text
-    # The separate comparison uses the same loader as an ordinary suggestion.
+    # Reviewed in the same dialog as an ordinary suggestion, which repeats why.
     aid = _id_for(cfg, d)
-    assert f"/assignments/{aid}?cancel=true" in r.text
+    assert f'hx-get="/review/{aid}?on_album_page=false"' in r.text
+    review = client.get(f"/review/{aid}")
+    assert "https://ultimae.bandcamp.com/album/life" in review.text
+    assert f'hx-get="/assignments/{aid}?cancel=true' in review.text
 
 
 def test_mistag_renders_in_own_top_level_section(client, cfg):
@@ -1745,11 +1749,14 @@ def test_name_search_use_reviews_before_writing_and_confirms_without_refetching(
 
     aid = _id_for(cfg, folder)
     if on_album_page:
-        assert selected.headers["HX-Redirect"] == f"/album/{aid}"
+        assert selected.headers["HX-Redirect"] == f"/album/{aid}?review=chosen"
+        opened = client.get(selected.headers["HX-Redirect"])
+        assert f'hx-get="/review/{aid}?chosen=true&amp;on_album_page=true"' in opened.text
     else:
         assert "HX-Redirect" not in selected.headers
-    host = client.get(f"/album/{aid}" if on_album_page else "/tasks")
-    assert f'hx-get="/assignments/{aid}?cancel=true' in host.text
+        assert json.loads(selected.headers["HX-Trigger"])["review-chosen"] == {"album": aid}
+    dialog = client.get(f"/review/{aid}", params={"chosen": "true", "on_album_page": on_album_page})
+    assert f'hx-get="/assignments/{aid}?cancel=true' in dialog.text
     review = client.get(
         f"/assignments/{aid}", params={"cancel": "true", "on_album_page": on_album_page}
     )

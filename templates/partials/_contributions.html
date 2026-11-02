@@ -1,5 +1,4 @@
 <div id="album-contributions-{{ album.id }}" class="album-contributions"
-     hx-on::oob-before-swap="if (document.getElementById('contribution-review-{{ album.id }}')?.children.length) event.preventDefault()"
      {% if oob | default(false) %}hx-swap-oob="true"{% endif %}>
 {% if contribution is defined and contribution.has_findings %}
     {# Every finding first checks the release match. Only the discovery response

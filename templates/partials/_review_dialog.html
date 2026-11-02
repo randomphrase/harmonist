@@ -1,0 +1,38 @@
+{% from 'macros.html' import review_url %}
+{# The release review, in the page's modal mount (#933). It used to sit inline
+   in the Inbox card and on the album page, inside regions that re-render around
+   it; here nothing refreshes underneath a draft.
+
+   Sized as a work surface, not a popup: the album dialog #129 removed couldn't
+   hold enough, and a review can run to several discs. The editor loads into it
+   read-only first, exactly as it did inline.
+
+   Closing never rejects. `discard` is set when the review opened on the user's
+   own choice (Use, a pasted MBID): closing it then discards that suggestion,
+   as Cancel did. The close is the browser's, so base.html acts on it.
+
+   No backdrop click to close: a stray click would throw the draft away. #}
+{% set flag = 'true' if on_album_page else 'false' %}
+<dialog class="review-dialog" aria-labelledby="review-heading-{{ album.id }}"
+        {% if discard %}data-discard-on-close="/reject/{{ album.id }}"{% endif %}
+        {% if on_album_page %}data-on-album-page{% endif %}>
+    <header class="review-dialog__head">
+        <h2 id="review-heading-{{ album.id }}" class="min-w-0 truncate text-sm font-bold text-ink">{{ album.artist }} — {{ album.title }}</h2>
+        <button type="button" onclick="const d = this.closest('dialog'); if (!d.hasAttribute('data-writing')) d.close()"
+                title="Close" aria-label="Close"
+                class="inline-flex items-center justify-center w-7 h-7 rounded text-muted hover:text-ink hover:bg-surface transition shrink-0">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/>
+            </svg>
+        </button>
+    </header>
+    <div class="review-dialog__body">
+        {% if candidate and candidate.mistag_owned_url %}{% include 'partials/_mistag_explanation.html' %}{% endif %}
+        <div class="assignment-editor">
+            <div hx-get="{{ review_url('/assignments/' ~ album.id ~ '?cancel=true&on_album_page=' ~ flag, replacement) }}"
+                 hx-trigger="load" hx-swap="outerHTML" hx-indicator="find [role='status']" class="assignment-content">
+                <p role="status" class="text-xs text-muted">Loading track comparison…</p>
+            </div>
+        </div>
+    </div>
+</dialog>

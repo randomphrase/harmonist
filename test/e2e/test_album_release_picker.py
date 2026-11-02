@@ -3,6 +3,7 @@
 import os
 
 import pytest
+from test.e2e.conftest import review_dialog
 
 from harmonist import formats, sidecar
 
@@ -52,9 +53,10 @@ def test_forget_then_choose_another_release(
     pw_api.expect(choices).to_contain_text("Another release")
     with page.expect_response(lambda r: r.url.endswith(f"/manual/{aid}/assign") and r.ok):
         htmx_ready(choices.get_by_role("button", name="Use", exact=True)).click()
-    confirm = panel.get_by_role("button", name="Confirm suggestion", exact=True)
+    review = review_dialog(page)
+    confirm = review.get_by_role("button", name="Confirm suggestion", exact=True)
     pw_api.expect(confirm).to_be_visible()
-    pw_api.expect(panel).to_contain_text("Another release")
+    pw_api.expect(review).to_contain_text("Another release")
     assert sidecar.read(folder).mb_match_candidate.mb_release_id == "demo-rel-picker-other"
     assert {p: p.read_bytes() for p in originals} == originals
     with page.expect_response(lambda r: r.url.endswith(f"/confirm/{aid}/accept") and r.ok):
@@ -103,9 +105,11 @@ def test_sibling_cancel_and_restore_keep_album_context(
     choices = panel.get_by_role("region", name="Releases in this release group")
     row = choices.get_by_role("listitem").filter(has_text="Alternate pressing")
     htmx_ready(row.get_by_role("button", name="Use", exact=True)).press("Enter")
-    pw_api.expect(panel.get_by_role("button", name="Confirm suggestion")).to_be_visible()
-    pw_api.expect(panel).to_contain_text("Alternate pressing")
-    htmx_ready(panel.get_by_role("button", name="Cancel", exact=True)).click()
+    review = review_dialog(page)
+    pw_api.expect(review.get_by_role("button", name="Confirm suggestion")).to_be_visible()
+    pw_api.expect(review).to_contain_text("Alternate pressing")
+    htmx_ready(review.get_by_role("button", name="Cancel", exact=True)).click()
+    pw_api.expect(review).to_have_count(0)
     pw_api.expect(choices).to_be_visible()
     page.reload()
     pw_api.expect(choices).to_contain_text("Alternate pressing")
@@ -136,11 +140,12 @@ def test_reviewed_incomplete_release_applies_with_one_confirmation(
         )
         paste.get_by_placeholder("MB release URL or 36-char MBID").fill("demo-rel-picker-other")
         htmx_ready(paste.get_by_role("button", name="Use", exact=True)).click()
-    confirm = panel.get_by_role("button", name="Confirm suggestion")
+    review = review_dialog(page)
+    confirm = review.get_by_role("button", name="Confirm suggestion")
     pw_api.expect(confirm).to_be_visible()
-    pw_api.expect(panel).to_contain_text("Another release")
-    pw_api.expect(panel).to_contain_text("On disk · 3 files")
-    pw_api.expect(panel).to_contain_text("4 tracks")
+    pw_api.expect(review).to_contain_text("Another release")
+    pw_api.expect(review).to_contain_text("On disk · 3 files")
+    pw_api.expect(review).to_contain_text("4 tracks")
     htmx_ready(confirm).click()
     assert dialogs == []
     page.wait_for_url("**/album/demo-rel-picker-other?from_q=Dingoes")
@@ -171,7 +176,7 @@ def test_missing_disc_numbers_confirm_review_once(
     choices = panel.get_by_role("region", name="Releases in this release group")
     row = choices.get_by_role("listitem").filter(has_text="Alternate pressing")
     htmx_ready(row.get_by_role("button", name="Use", exact=True)).click()
-    review = panel.locator(".assignment-editor")
+    review = review_dialog(page)
     pw_api.expect(review.locator("[data-assignment-row]")).to_have_count(3)
     pw_api.expect(review.locator('[aria-label^="Track numbering changes"]')).to_have_count(0)
     assert [p.read_bytes() for p in files] == before
@@ -245,10 +250,12 @@ def test_release_modes_show_one_result_list_even_after_a_late_search(
     htmx_ready(panel.get_by_role("button", name="Search", exact=True)).click()
     use = results.get_by_role("button", name="Use", exact=True)
     pw_api.expect(use).to_be_visible()
-    pw_api.expect(panel.get_by_role("button", name="Confirm suggestion")).to_have_count(0)
+    review = review_dialog(page)
+    pw_api.expect(review).to_have_count(0)
     htmx_ready(use).click()
-    pw_api.expect(panel.get_by_role("button", name="Confirm suggestion")).to_be_visible()
-    htmx_ready(panel.get_by_role("button", name="Cancel", exact=True)).click()
+    pw_api.expect(review.get_by_role("button", name="Confirm suggestion")).to_be_visible()
+    htmx_ready(review.get_by_role("button", name="Cancel", exact=True)).click()
+    pw_api.expect(review).to_have_count(0)
     pw_api.expect(siblings).to_be_visible()
     siblings.check()
     pw_api.expect(choices).to_be_visible()
@@ -344,6 +351,8 @@ def test_missing_file_id_recovers_to_working_search(
     panel.get_by_role("radio", name="By name", exact=True).check()
     htmx_ready(panel.get_by_role("button", name="Search", exact=True)).click()
     htmx_ready(use).click()
-    pw_api.expect(panel.get_by_role("button", name="Confirm suggestion")).to_be_visible()
+    pw_api.expect(
+        review_dialog(page).get_by_role("button", name="Confirm suggestion")
+    ).to_be_visible()
     assert track.read_bytes() == before
     page.context.close()

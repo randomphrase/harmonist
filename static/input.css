@@ -170,13 +170,9 @@
 .settings-artists:has(option[value="all"]:checked) .settings-artists-list-credited,
 .settings-artists:has(input[name="always_standardize_multivalue_artist"]:checked) .settings-artists-list-credited { display: none; }
 
-/* An identity review replaces the contribution choices and findings about the
- * current release. Empty swap targets leave no card or gap on the album page. */
-.contribution-review:not(:has(> *)),
-.album-contribution-area:not(:has(.album-contributions section, .contribution-review > *)),
-.album-contribution-area:has(.contribution-review > *) > .album-contributions,
-.album-page:has(.contribution-review > *, #album-inbox-actions .assignment-editor) .album-findings { display: none; }
-.album-page:has(.contribution-review > *, #album-inbox-actions .assignment-editor) #album-artwork { display: none; }
+/* An empty swap target leaves no card or gap on the album page. A release
+ * review no longer needs the page tidied around it: it opens in a dialog (#933). */
+.album-contribution-area:not(:has(.album-contributions section)) { display: none; }
 /* The alert slot is empty until a fetch fills it, and an empty child still
    takes the page's `space-y` gap, doubling the space above the album panel. */
 .album-page > [id^="album-alert-"]:not(:has(> *)) { display: none; }
@@ -1401,6 +1397,42 @@ button.library-update-option:focus-visible { background: var(--color-surface); c
    card carries the visual chrome. */
 dialog::backdrop {
   background: rgb(0 0 0 / 0.4);
+}
+
+/* The release review (#933) is a work surface, not a popup: wide, as tall as
+   the viewport allows, scrolling inside. Its heading and the review's actions
+   stay in view, so Confirm is never below a long track table. Full screen on a
+   phone, where a margin is room the table needs. */
+.review-dialog {
+  width: min(72rem, calc(100vw - 2rem));
+  max-width: none;
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-line);
+  border-radius: .5rem;
+  background: #fff;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / .25);
+}
+.review-dialog__head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  padding: .75rem 1rem;
+  background: #fff;
+  border-bottom: 1px solid var(--color-line);
+}
+.review-dialog__body { padding: 1rem; }
+.review-dialog .assignment-actions {
+  position: sticky; bottom: 0; z-index: 2;
+  margin-inline: -1rem;
+  padding: .75rem 1rem;
+  background: #fff;
+  border-top: 1px solid var(--color-line);
+}
+@media (max-width: 639px) {
+  .review-dialog { width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
 }
 
 /* ---------------------------------------------------------------------------

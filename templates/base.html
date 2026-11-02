@@ -47,8 +47,52 @@
         // next open starts fresh. Esc is handled natively by <dialog>.
         document.addEventListener('close', function (e) {
             const m = e.target.parentElement;
-            if (m && m.id === 'modal') m.innerHTML = '';
+            if (!m || m.id !== 'modal') return;
+            // A review the user started by choosing a release is discarded when
+            // closed without a decision, as its Cancel was (#933). The album
+            // page showed that suggestion, so it reloads to show the search again.
+            const discard = e.target.dataset.discardOnClose;
+            if (discard && !e.target.dataset.settled) {
+                const reload = e.target.hasAttribute('data-on-album-page');
+                htmx.ajax('POST', discard, {swap: 'none'}).then(() => { if (reload) window.location.reload(); });
+            }
+            m.innerHTML = '';
         }, true);
+
+        // The release review (#933). Confirm and Dismiss settle it, so its close
+        // discards nothing. A failed confirm answers 200 with the error in the
+        // review, so the applied event, not the status, says it succeeded.
+        function harmonistOpenReview(url) {
+            htmx.ajax('GET', url, {target: '#modal', swap: 'innerHTML'});
+        }
+        function harmonistSettleReview() {
+            const d = document.querySelector('#modal dialog.review-dialog[open]');
+            if (!d) return;
+            d.dataset.settled = 'true';
+            d.close();
+        }
+        document.body.addEventListener('review-chosen', function (e) {
+            harmonistOpenReview('/review/' + encodeURIComponent(e.detail.album) + '?chosen=true');
+        });
+        document.body.addEventListener('confirmation-applied', harmonistSettleReview);
+        // A write in flight keeps the review open: its answer, an error
+        // included, needs somewhere to land, and closing a chosen review then
+        // would discard the suggestion under the write.
+        document.body.addEventListener('htmx:beforeRequest', function (e) {
+            const d = e.detail.elt.closest('dialog.review-dialog');
+            if (d && e.detail.requestConfig.verb === 'post') d.dataset.writing = 'true';
+        });
+        document.addEventListener('cancel', function (e) {
+            if (e.target.matches('dialog.review-dialog[data-writing]')) e.preventDefault();
+        }, true);
+        document.body.addEventListener('htmx:afterRequest', function (e) {
+            const d = e.detail.elt.closest('dialog.review-dialog');
+            if (!d) return;
+            delete d.dataset.writing;
+            if (!e.detail.successful) return;
+            const path = new URL(e.detail.requestConfig.path, window.location.href).pathname;
+            if (path.startsWith('/reject/')) harmonistSettleReview();
+        });
 
         // Disabling a pregap checkbox while its draft request runs blurs it
         // before HTMX snapshots focus. Restore keyboard focus when the request

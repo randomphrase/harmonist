@@ -101,7 +101,7 @@ def test_manual_rematch_reviews_original_release_even_if_exact(
     assert sc.read(root).mb_release_id is None
     assert sc.read(root).mb_match_candidate.mb_release_id == REL_A
     assert {p: p.read_bytes() for p in before} == before
-    assert response.headers["HX-Redirect"] == f"/album/{aid}"
+    assert response.headers["HX-Redirect"] == f"/album/{aid}?review=chosen"
     selected = sc.read(root)
     lookups = list(calls)
     monkeypatch.setattr(
