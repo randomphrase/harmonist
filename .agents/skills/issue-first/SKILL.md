@@ -62,6 +62,12 @@ branch + PR for trivial work (no issue required).
 4. **Branch off `main`.** The **branch name must carry the issue number** so the
    work is traceable from git alone — `<type>/<N>-<slug>`, e.g. `fix/27-track-title`,
    `feat/31-genre-tags`. Never commit functional work directly to `main`.
+
+   **Assign the issue when work starts:** `gh issue edit N --add-assignee @me`.
+   `gh` resolves `@me` to the authenticated account, the user's, so the issue
+   list shows which issues are in progress. This applies to an existing issue
+   you pick up as well as one you just filed. Assigning is not an approval to
+   push, publish or merge.
 5. **Do the work and commit.** Put `Fixes #N` (or `Closes #N`) in the commit body
    so the merge closes the issue. Run `review-gate` before committing, and add a
    `CHANGELOG.md` entry if the change is user-visible (`changelog` skill).
