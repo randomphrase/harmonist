@@ -735,10 +735,13 @@ button.library-update-option:focus-visible { background: var(--color-surface); c
    Dotted is MusicBrainz's, above, so this one is solid: the line says where the
    link goes before it is followed, which colour alone could not, since both
    inherit theirs. Underlined at rest rather than on hover only, because on a
-   Library tile there is nothing else to say the artist line is a link. */
+   Library tile there is nothing else to say the artist line is a link. One
+   pixel whatever the text: the font's own thickness grows with weight and size,
+   and on a bold card title it outweighed the title. */
 .app-link {
   color: inherit;
   text-decoration: underline solid color-mix(in srgb, currentColor 50%, transparent);
+  text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
 .app-link:hover, .app-link:focus-visible { color: var(--color-accent); text-decoration-color: currentColor; }
