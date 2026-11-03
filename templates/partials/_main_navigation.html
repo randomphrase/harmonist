@@ -1,14 +1,18 @@
-<nav class="flex gap-4 sm:gap-6 border-b border-line text-base overflow-x-auto whitespace-nowrap" aria-label="Main navigation">
+{# The rule is an inset shadow, not a bottom border, so each tab's underline can
+   paint over it from inside the nav. A tab pulled down onto a border (-mb-px)
+   overflows the nav by a pixel, and overflow-x-auto makes that scrollable: a
+   stray vertical scrollbar (#944). #}
+<nav class="flex gap-4 sm:gap-6 shadow-[inset_0_-1px_0_var(--color-line)] text-base overflow-x-auto whitespace-nowrap" aria-label="Main navigation">
     {% for key, label in [('inbox', 'Inbox'), ('library', 'Library'), ('artists', 'Artists'), ('activity', 'Activity')] %}
     {% if key == 'artists' or standalone_artists | default(false) %}
     <a href="{{ '/artists' if key == 'artists' else '/?tab=' ~ key }}"
        {% if key == 'artists' and standalone_artists | default(false) %}aria-current="page"{% endif %}
-       class="pb-2 -mb-px font-semibold border-b-2 transition {{ 'text-ink border-accent' if key == 'artists' and standalone_artists | default(false) else 'text-muted border-transparent' }}">
+       class="pb-2 font-semibold border-b-2 transition {{ 'text-ink border-accent' if key == 'artists' and standalone_artists | default(false) else 'text-muted border-transparent' }}">
         {{ label }}{% if key != 'activity' %} <span id="{{ key }}-count" class="font-normal text-muted">{{ artist_count if key == 'artists' else '' }}</span>{% endif %}
     </a>
     {% else %}
     <button type="button" data-tab="{{ key }}" onclick="harmonistTab('{{ key }}')"
-            class="hmt-tab pb-2 -mb-px font-semibold border-b-2 transition">
+            class="hmt-tab pb-2 font-semibold border-b-2 transition">
         {{ label }}{% if key != 'activity' %} <span id="{{ key }}-count" class="font-normal text-muted"></span>{% endif %}
     </button>
     {% endif %}
