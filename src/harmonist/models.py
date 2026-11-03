@@ -395,9 +395,6 @@ class AlbumArtist:
     name: str
     mbid: str | None = None
     sort_name: str | None = None
-    # Derived from files lacking album-artist IDs; keeps partial identification
-    # visible even when the remaining files establish one unambiguous identity.
-    missing_id_count: int = 0
 
 
 @dataclass

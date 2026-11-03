@@ -107,8 +107,7 @@ def test_requests_share_their_apps_diagnostics_and_keep_errors_visible(artist_cl
     path = cfg.paths.music_dir / "ArtistInfo" / "Different directory name" / "artist.nfo"
     original = path.read_bytes()
     path.write_text("<artist>")
-    listing = client.get("/artists")
-    assert listing.context["artists_view"]["nfo_errors"]
+    client.get("/artists")
     assert client.get(f"/artist/{ALICE}").context["nfo"].errors
     assert client.get(f"/artist/{ALICE}/image").status_code == 404
     assert len(errors(caplog)) == 1

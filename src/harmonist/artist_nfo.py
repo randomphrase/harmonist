@@ -392,10 +392,6 @@ class Inventory:
                 groups.setdefault(profile.mbid, []).append(profile)
         return {key: tuple(values) for key, values in groups.items()}
 
-    @cached_property
-    def conflicts(self) -> dict[str, tuple[Profile, ...]]:
-        return {key: profiles for key, profiles in self.by_mbid.items() if len(profiles) > 1}
-
     def for_artist(self, identity: str | None) -> Result:
         errors = (
             (
@@ -417,12 +413,6 @@ class Inventory:
         if profile and profile.image_error:
             errors = (*errors, profile.image_error)
         return Result(profile, errors=errors, candidates=paths)
-
-    def orphans(self, albums: Sequence[Album]) -> tuple[Profile, ...] | None:
-        if not self.identities_complete:
-            return None  # Unavailable, not an empty or exhaustive result.
-        credited = {c.mbid for a in albums for c in a.artist_credits if c.mbid}
-        return tuple(p for p in self.profiles if p.mbid is None or p.mbid not in credited)
 
 
 @dataclass

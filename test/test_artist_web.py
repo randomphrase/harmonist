@@ -169,7 +169,6 @@ def test_artist_badges_distinguish_conflicts_missing_and_unavailable_inventory(
         )
         unknown = client.get("/artists").context["artists_view"]
         assert unknown["badges"][BOB] == ()
-        assert unknown["nfo_errors"]
     network.assert_not_called()
 
 
@@ -205,7 +204,7 @@ def test_search_refresh_and_nfo_errors_recover_without_hiding_albums(artist_clie
     original = path.read_bytes()
     path.write_text("<artist>")
     broken = client.get(f"/artist/{ALICE}")
-    assert client.get("/artists").context["artists_view"]["nfo_errors"]
+    assert broken.context["nfo"].errors
     assert len(broken.context["rows"]) == 2
     path.write_bytes(original)
     assert client.get(f"/artist/{ALICE}").context["nfo"].profile is not None
@@ -229,12 +228,6 @@ def test_tracks_without_artist_ids_do_not_split_an_identified_artist(artist_clie
     response = client.get("/artists?artist_q=Alice")
     rows = response.context["artists_view"]["rows"]
     assert [(a.key, len(a.albums)) for a in rows] == [(ALICE, 2)]
-    assert [a.title for a in response.context["artists_view"]["missing_id_albums"]] == ["Solo"]
-    missing = BeautifulSoup(response.text, "html.parser").select_one(
-        '[aria-label="Albums without artist IDs"]'
-    )
-    assert missing is not None
-    assert missing.select_one(f'a[href="/album/{SOLO}"]').get_text() == "Solo"
     detail = client.get(f"/artist/{ALICE}")
     assert {a.id for a in detail.context["rows"]} == {RELEASE, SOLO}
     assert {p: p.read_bytes() for p in before} == before
@@ -255,15 +248,15 @@ def test_nfo_paths_belong_to_the_artist_with_the_embedded_id(artist_client):
     assert client.get(f"/artist/{ALICE}").context["artist"].nfo_paths == ()
 
 
-def test_missing_artist_ids_link_to_albums_instead_of_creating_local_artists(artist_client):
+def test_missing_artist_ids_do_not_create_local_artists(artist_client):
     client, cfg, _network = artist_client
     make_album(
         cfg.paths.music_dir, "Missing IDs", "66666666-6666-4666-8666-666666666666", ["Alice"], []
     )
-    response = client.get("/artists?artist_q=Bob")
-    view = response.context["artists_view"]
-    assert [a.name for a in view["rows"]] == ["Bob"]
-    assert [a.title for a in view["missing_id_albums"]] == ["Missing IDs"]
+    alice = client.get("/artists?artist_q=Alice").context["artists_view"]["rows"]
+    assert [(a.key, [album.title for album in a.albums]) for a in alice] == [
+        (ALICE, ["Solo", "Together"])
+    ]
     assert client.get("/artist/local-" + "0" * 24).status_code == 404
 
 
@@ -325,15 +318,11 @@ def test_links_within_harmonist_share_one_look_apart_from_musicbrainz(artist_cli
     """#935: a dotted underline is how a link out to MusicBrainz looks, so a name
     that opens Harmonist's own artist or album page is drawn as `app-link`
     wherever it appears."""
-    client, cfg, _network = artist_client
-    make_album(
-        cfg.paths.music_dir, "Missing IDs", "66666666-6666-4666-8666-666666666666", ["Alice"], []
-    )
+    client, _cfg, _network = artist_client
     hosts = {
         "/library": ".lib-tile a[href^='/artist/']",
         f"/artist/{ALICE}": ".lib-tile a[href^='/artist/']",
         f"/album/{RELEASE}": "h1 a[href^='/artist/']",
-        "/artists": "details[aria-label='Albums without artist IDs'] a[href^='/album/']",
         "/tasks": "h3 a[href^='/album/']",
     }
     for url, selector in hosts.items():

@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 from harmonist import artist_nfo, formats, scanner
 from harmonist.web.scan_runner import ScanRunner
-from test.test_artist_web import ALICE, BOB, SOLO, artist_client
+from test.test_artist_web import ALICE, BOB, artist_client
 from test.test_scan_runner import _album
 
 __all__ = ["artist_client"]
@@ -19,19 +19,15 @@ def write_nfo(root, directory, mbid=None, name="Local artist"):
     return path
 
 
-def test_global_inventory_finds_nfos_away_from_albums_and_checks_inbox_credits(artist_client):
+def test_global_inventory_finds_nfos_away_from_albums(artist_client):
     client, cfg, network = artist_client
     root = cfg.paths.music_dir
     match = write_nfo(root, "metadata/nested/unrelated name", BOB, "Alice")
-    pending = write_nfo(root, "metadata/pending", SOLO)
-    missing = write_nfo(root, "metadata/no-id")
-    unrelated = write_nfo(root, "metadata/uncredited", "77777777-7777-4777-8777-777777777777")
+    write_nfo(root, "metadata/no-id")
+    write_nfo(root, "metadata/uncredited", "77777777-7777-4777-8777-777777777777")
     detail = client.get(f"/artist/{BOB}")
     assert detail.context["artist"].nfo_paths == (match,)
     assert detail.context["nfo"].profile.path == match
-    view = client.get("/artists").context["artists_view"]
-    assert {p.path for p in view["nfo_orphans"]} == {missing, unrelated}
-    assert pending not in {p.path for p in view["nfo_orphans"]}
     network.assert_not_called()
 
 
@@ -47,7 +43,6 @@ def test_duplicate_ids_are_conflicts_even_when_a_source_is_requested(artist_clie
     assert detail.context["nfo"].candidates == (first, second)
     assert detail.context["nfo"].errors
     assert str(first) in detail.text and str(second) in detail.text
-    assert BOB in client.get("/artists").context["artists_view"]["nfo_conflicts"]
     assert [
         a.mbid for a in client.get("/artists?nfo=conflict").context["artists_view"]["rows"]
     ] == [BOB]

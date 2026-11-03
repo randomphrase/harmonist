@@ -2,8 +2,7 @@
 
 Consistent, aligned album credits establish identity. Missing IDs can inherit
 that identity only within one identified release and with agreeing names.
-Unidentified credits are listed as albums needing artist IDs; spelling alone
-cannot create an artist page or bind an NFO.
+Spelling alone cannot create an artist page or bind an NFO.
 """
 
 from __future__ import annotations
@@ -66,8 +65,7 @@ def album_credits(fields: Sequence[ScanFields]) -> tuple[AlbumArtist, ...]:
     }
     ids = next(iter(observed_ids)) if len(observed_ids) == 1 else ()
     aligned = len(ids) == len(names) and all(ids)
-    missing = sum(not f.album_artist_ids for f in fields)
-    if missing and aligned:
+    if aligned and not all(f.album_artist_ids for f in fields):
         # Absence is not disagreement. Scope the available artist IDs to one
         # release carried by EVERY file; never attach a name-only album to an
         # artist identified somewhere else in the library.
@@ -76,8 +74,7 @@ def album_credits(fields: Sequence[ScanFields]) -> tuple[AlbumArtist, ...]:
     sorts = {f.album_artist_sort for f in fields}
     sort = next(iter(sorts)) if len(sorts) == 1 and len(names) == 1 else None
     return tuple(
-        AlbumArtist(name, ids[i] if aligned else None, sort, missing)
-        for i, name in enumerate(names)
+        AlbumArtist(name, ids[i] if aligned else None, sort) for i, name in enumerate(names)
     )
 
 
@@ -380,17 +377,6 @@ def page_vars(
         }
         if inventory is not None
         else {},
-        "missing_id_albums": tuple(
-            sorted(
-                (
-                    a
-                    for a in albums
-                    if not a.artist_credits
-                    or any(not mbid(c.mbid or "") or c.missing_id_count for c in a.artist_credits)
-                ),
-                key=lambda a: (alphabetical(a.title), a.id),
-            )
-        ),
         "url": location(page),
         "previous": location(page - 1) if page > 1 else None,
         "next": location(page + 1) if page < pages else None,

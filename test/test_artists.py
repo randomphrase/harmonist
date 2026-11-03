@@ -106,7 +106,7 @@ def test_credits_need_consistent_aligned_ids_and_never_split_names(tmp_path):
     ],
 )
 def test_special_artist_ids_are_excluded_without_discarding_collaborators(tmp_path, special):
-    from harmonist.artists import build_index, page_vars
+    from harmonist.artists import build_index
     from harmonist.models import Album, AlbumArtist, AlbumState
 
     album = Album(
@@ -123,7 +123,6 @@ def test_special_artist_ids_are_excluded_without_discarding_collaborators(tmp_pa
     )
     result = build_index([album])
     assert [(a.mbid, a.name) for a in result] == [(ALICE, "Various Artists")]
-    assert page_vars([album])["missing_id_albums"] == ()
 
 
 def test_missing_artist_ids_on_two_tracks_keep_the_album_artist_identified():
@@ -140,9 +139,7 @@ def test_missing_artist_ids_on_two_tracks_keep_the_album_artist_identified():
         album_artist_ids=(ALICE,),
     )
     unassigned = tagged._replace(album_artist_names=(), album_artist_ids=())
-    assert album_credits([tagged] * 13 + [unassigned] * 2) == (
-        AlbumArtist("Linkin Park", ALICE, missing_id_count=2),
-    )
+    assert album_credits([tagged] * 13 + [unassigned] * 2) == (AlbumArtist("Linkin Park", ALICE),)
 
 
 @pytest.mark.parametrize(

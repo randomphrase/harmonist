@@ -7,7 +7,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from harmonist import artist_nfo, scanner
-from test.test_artist_web import ALICE, BOB, SOLO, artist_client, make_album
+from test.test_artist_web import ALICE, BOB, artist_client, make_album
 from test.test_nfo_inventory import write_nfo
 
 __all__ = ["artist_client"]
@@ -70,7 +70,6 @@ def test_partial_facets_withhold_absence_and_total_claims(partial_library, view)
     data = response.context["artists_view"]
     assert {a.mbid for a in data["rows"]} == {ALICE, BOB}
     assert data["nfo"] is None and data["artwork"] is None
-    assert data["nfo_orphans"] is None
     assert all(not badges for badges in data["badges"].values())
     choices = {f["key"]: {o["value"]: o["count"] for o in f["choices"]} for f in data["facets"]}
     assert choices == {
@@ -96,14 +95,13 @@ def test_partial_walk_reports_observed_duplicates_without_selecting_one(partial_
     assert result.profile is None and set(result.candidates) == {first, second}
     assert "NFO scan incomplete" in detail.text
     assert client.get(f"/artist/{ALICE}/image").status_code == 404
+    listed = BeautifulSoup(detail.text, "html.parser").select_one(
+        '[aria-label="Conflicting NFO files"]'
+    )
+    assert "Different directory name/artist.nfo" in listed.get_text()
+    assert "metadata/duplicate/artist.nfo" in listed.get_text()
     response = client.get("/artists?nfo=conflict")
     assert response.context["artists_view"]["badges"][ALICE] == ("NFO conflict",)
-    group = BeautifulSoup(response.text, "html.parser").select_one(
-        '[aria-label="Conflicting NFOs"]'
-    )
-    assert group.select_one("summary").get_text() == "Observed NFO conflicts"
-    assert "Different directory name/artist.nfo" in group.get_text()
-    assert "metadata/duplicate/artist.nfo" in group.get_text()
 
 
 def test_unreadable_xml_withholds_absence_but_keeps_other_profiles(artist_client):
@@ -113,11 +111,9 @@ def test_unreadable_xml_withholds_absence_but_keeps_other_profiles(artist_client
     assert client.get(f"/artist/{ALICE}").context["nfo"].profile is not None
     view = client.get("/artists?nfo=missing").context["artists_view"]
     assert view["nfo"] is None and len(view["rows"]) == 2
-    assert view["nfo_orphans"] is None and view["nfo_errors"]
     write_nfo(cfg.paths.music_dir, "metadata/broken", BOB)
     recovered = client.get("/artists?nfo=missing").context["artists_view"]
     assert recovered["nfo"] == "missing" and recovered["rows"] == []
-    assert recovered["nfo_orphans"] == () and not recovered["nfo_errors"]
 
 
 def test_picture_failure_preserves_biography_and_does_not_imply_absence(artist_client, monkeypatch):
@@ -139,7 +135,6 @@ def test_picture_failure_preserves_biography_and_does_not_imply_absence(artist_c
         assert view["artwork"] is None
         assert view["badges"][ALICE] == ()
         assert view["badges"][BOB] == ("Missing NFO", "Missing artwork")
-        assert client.get("/artists?nfo=with").context["artists_view"]["nfo_errors"]
     assert client.get(f"/artist/{ALICE}/image").content == image.read_bytes()
 
 
@@ -154,26 +149,19 @@ def test_partial_scan_does_not_infer_generic_folder_art(partial_library):
     assert inventory.image_for(BOB) is None
 
 
-def test_rescan_recovers_coverage_and_checks_inbox_without_stale_flags(
-    partial_library, monkeypatch
-):
+def test_rescan_recovers_coverage_without_stale_flags(partial_library, monkeypatch):
     client, cfg, _, denied = partial_library
     root = cfg.paths.music_dir
     add_portrait(root)
-    pending = write_nfo(root, "metadata/pending", SOLO)
-    orphan = write_nfo(root, "metadata/no-id")
     runner = client.app.state.scan_runner
     runner.refresh_now()
     monkeypatch.setattr(runner, "is_engaged", lambda: True)
     assert runner.nfo_inventory().for_artist(ALICE).profile is not None
-    assert client.get("/artists").context["artists_view"]["nfo_orphans"] is None
+    assert client.get("/artists?nfo=missing").context["artists_view"]["nfo"] is None
     denied[0] = False
     runner.refresh_now()
     view = client.get("/artists?nfo=missing").context["artists_view"]
     assert [a.mbid for a in view["rows"]] == [BOB]
-    assert {p.path for p in view["nfo_orphans"]} == {orphan}
-    assert pending not in {p.path for p in view["nfo_orphans"]}
-    assert not view["nfo_errors"]
     seq = runner.status()["seq"]
     runner.refresh_now()
     assert runner.status()["seq"] == seq

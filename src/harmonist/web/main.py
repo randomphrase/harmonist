@@ -3243,23 +3243,16 @@ def _artists_view(
     new: bool = False,
     view: str = "list",
 ) -> dict[str, object]:
-    inventory = _nfo_inventory(request)
-    return {
-        **artists.page_vars(
-            [a for a in albums if a.state in _TERMINAL_STATES],
-            page,
-            q,
-            inventory=inventory,
-            nfo=nfo,
-            artwork=artwork,
-            new=new,
-            view=view,
-        ),
-        "nfo_orphans": inventory.orphans(albums),
-        "nfo_conflicts": inventory.conflicts,
-        "nfo_incomplete": not inventory.identities_complete,
-        "nfo_errors": (*inventory.walk_errors, *inventory.errors, *inventory.image_errors),
-    }
+    return artists.page_vars(
+        [a for a in albums if a.state in _TERMINAL_STATES],
+        page,
+        q,
+        inventory=_nfo_inventory(request),
+        nfo=nfo,
+        artwork=artwork,
+        new=new,
+        view=view,
+    )
 
 
 def _periodic_rescan_if_idle(

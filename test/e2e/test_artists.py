@@ -269,12 +269,6 @@ def test_artist_search_paging_details_and_album_return(
     assert max(heights) - min(heights) < 1
     names = panel.get_by_role("list", name="Artists").locator("li a .font-bold").all_text_contents()
     assert names[0] == "Álice"
-    missing_ids = panel.get_by_role("group", name="Albums without artist IDs")
-    missing_ids.locator("summary").click()
-    missing_album = missing_ids.get_by_role("link", name="Another arbitrary folder", exact=True)
-    pw.expect(missing_album).to_have_attribute(
-        "href", "/album/44444444-4444-4444-8444-444444444444"
-    )
     thumbnail = panel.locator(f'img[src^="/artist/{ALICE}/image"]')
     pw.expect(thumbnail).to_be_visible()
     page.wait_for_function(
@@ -341,7 +335,7 @@ def test_artist_count_refreshes_when_the_watcher_discovers_an_artist(
 
 
 @pytest.mark.parametrize("engine", ["chromium", "webkit"])
-def test_nfo_watcher_refreshes_conflicts_orphans_and_metadata(
+def test_nfo_watcher_refreshes_conflicts_and_metadata(
     browser_factory, artists_server, artists_root, engine
 ):
     root = artists_root / "harmonist-demo"
@@ -354,20 +348,8 @@ def test_nfo_watcher_refreshes_conflicts_orphans_and_metadata(
     pw.expect(conflicts.locator("li")).to_have_count(2, timeout=20000)
     pw.expect(conflicts).to_contain_text(f"metadata/{engine}/duplicate/artist.nfo")
     duplicate.unlink()
-    pw.expect(metadata).to_contain_text("A locally stored biography.", timeout=20000)
-
-    page.goto(artists_server + "/artists")
-    orphan = write_nfo(root, f"metadata/{engine}/orphan")
-    orphans = page.get_by_role("group", name="NFOs without matching artists")
-    # The public demo already has orphans: wait for this file's watcher update,
-    # not merely for a group that was visible before the file was created.
-    pw.expect(orphans).to_contain_text(f"metadata/{engine}/orphan/artist.nfo", timeout=20000)
-    orphans.locator("summary").click()
-    orphan.write_text("<artist>")
-    errors = page.get_by_role("region", name="NFO read errors")
-    pw.expect(errors).to_contain_text(f"metadata/{engine}/orphan/artist.nfo", timeout=20000)
-    orphan.unlink()
-    pw.expect(errors).to_have_count(0, timeout=20000)
+    pw.expect(conflicts).to_have_count(0, timeout=20000)
+    pw.expect(metadata).to_contain_text("A locally stored biography.")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.context.close()
 

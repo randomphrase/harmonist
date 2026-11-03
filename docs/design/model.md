@@ -9,15 +9,21 @@ when the album is matched. Artist pages therefore require an MBID.
 Special-purpose identities such as Various Artists do not represent a person
 or group to browse.
 
+The artist list reflects the tags as they are, without judging them. Album tags
+can lag behind MusicBrainz, after an artist merge for example, and the user may
+have chosen to ignore that change. A missing or outdated artist ID is the
+album's concern, settled by its own tag update, not a problem with the artist.
+
 NFO location is not identity: moving a file within the library must not change
 who it describes. Its MBID must agree with the album credits rather than a
 directory name, so a collaboration cannot inherit an arbitrary parent's profile.
 
 Two NFOs with the same MBID are conflicting evidence. Choosing one silently
-would hide that disagreement. Files without a matching artist remain visible
-because unassociated metadata should not disappear. Orphan checks include the
-Inbox: a pending album is still evidence of an artist in the library. An
-unreadable file is an error, not proof of absence or orphanhood.
+would hide that disagreement, so the artist's page shows both. The conflict
+belongs to that one artist, not to the whole list. Likewise, a file whose
+artist no album credits still describes an artist, so it belongs among the
+artists rather than in a list of warnings. An unreadable file is an error, not
+proof of absence.
 
 Artists have their own page because NFOs and artist pictures describe artists,
 while origin and audio format describe albums. A separate collection gives

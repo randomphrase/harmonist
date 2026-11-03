@@ -32,16 +32,6 @@ def test_public_demo_artist_nfos_are_browsable_offline(
     page.goto(f"{base}/artists?view={view}")
     rows = page.get_by_role("list", name="Artists", exact=True)
     pw.expect(rows.get_by_role("link", name="Various Artists", exact=True)).to_have_count(0)
-    orphans = page.get_by_role("group", name="NFOs without matching artists")
-    pw.expect(orphans.locator("summary")).to_have_text("2 NFOs have no matching artist")
-    orphans.locator("summary").click()
-    pw.expect(orphans).to_contain_text("The Unidentified Echoes/artist.nfo")
-    pw.expect(orphans).to_contain_text("The Unplayed Satellites/artist.nfo")
-    pw.expect(orphans.get_by_text("No artist ID", exact=True)).to_have_count(1)
-    conflicts = page.get_by_role("group", name="Conflicting NFOs", exact=True)
-    conflicts.locator("summary").click()
-    pw.expect(conflicts).to_contain_text("ArtistInfo/Mouse Rat/artist.nfo")
-    pw.expect(conflicts).to_contain_text("Alternate artist info/Mouse Rat/artist.nfo")
 
     card = rows.locator(".artist-card").filter(has_text="Barry Jive and the Uptown Five")
     pw.expect(card).to_have_count(1)
@@ -59,7 +49,10 @@ def test_public_demo_artist_nfos_are_browsable_offline(
 
     mouse = demo.MB_RELEASES["demo-rel-mouserat"]["artist-credit"][0]["artist"]["id"]
     page.goto(f"{base}/artist/{mouse}")
-    pw.expect(page.get_by_role("list", name="Conflicting NFO files").locator("li")).to_have_count(2)
+    conflicts = page.get_by_role("list", name="Conflicting NFO files")
+    pw.expect(conflicts.locator("li")).to_have_count(2)
+    pw.expect(conflicts).to_contain_text("ArtistInfo/Mouse Rat/artist.nfo")
+    pw.expect(conflicts).to_contain_text("Alternate artist info/Mouse Rat/artist.nfo")
     pw.expect(page.locator("#artist-biography")).to_have_count(0)
     page.goto(f"{base}/?tab=library&q=The%20Rural%20Juror")
     tile = page.locator("#library-grid .lib-tile")

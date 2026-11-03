@@ -70,30 +70,28 @@ tracks of it, Harmonist treats them as one album. It doesn't move anything.
 Artists come from the Library's embedded **album-artist credits**, including
 separate collaborators. MusicBrainz artist IDs keep different people with the
 same name apart and let one collaborative album appear under each artist. A name
-without a usable ID does not create an artist page. Albums with missing or
-inconsistent artist IDs are listed separately with links to their album pages.
-MusicBrainz's special-purpose artists, including Various Artists, do not have
-artist pages; other collaborators remain listed under their own IDs.
+without a usable ID does not create an artist page. MusicBrainz's
+special-purpose artists, including Various Artists, do not have artist pages;
+other collaborators remain listed under their own IDs.
 
 When only some tracks lack artist IDs, consistent artist credits on the other
 tracks can identify the album's artist if all tracks name the same release.
-The artist remains a single entry, and the affected album also appears in the
-list of albums with missing artist IDs. That list reflects the files and clears
-when their missing IDs are filled in; browsing does not write them.
+The artist remains a single entry. Artists reflect the tags as they are: an
+album whose artist IDs are missing or out of date with MusicBrainz is brought
+up to date by that album's own tag update, and browsing does not write them.
 
 Existing Kodi/Jellyfin `artist.nfo` files can supply a biography, dates, sort
 name and other artist information. Their artist ID must match the embedded
 album-artist ID. They can live anywhere inside the music library, including
 directories without audio. Two NFOs naming the same artist ID are shown as a
-conflict, with both paths. NFOs with no artist ID or no credited artist appear
-separately by path. Albums in the Inbox count when checking for these orphans.
-Unreadable NFOs are reported as errors rather than treated as absent.
+conflict on that artist's page, with both paths. Unreadable NFOs are recorded
+in the log rather than treated as absent.
 
 An incomplete NFO scan keeps readable profiles, biographies and local pictures
 available, with the affected paths and a warning that other matching files may
-be unreadable. Missing-metadata filters and orphan totals are unavailable until
-coverage recovers. Known duplicate paths remain visible as observed conflicts;
-their total and filter are unavailable, and neither file supplies the profile.
+be unreadable. Missing-metadata filters are unavailable until coverage
+recovers. Known duplicate paths remain visible as observed conflicts; the
+conflict filter's total is unavailable, and neither file supplies the profile.
 Positive filter counts are lower bounds while coverage is incomplete. An image
 read error preserves the NFO's text and artist ID, without calling its picture
 missing. Generic folder pictures require a complete walk to verify their context.

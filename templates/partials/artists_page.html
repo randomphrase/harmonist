@@ -3,47 +3,6 @@
          hx-trigger="library-refresh from:body, tasks-changed from:body"
          hx-sync="#artists-rows:abort" hx-target="#artists-rows" hx-swap="innerHTML"></div>
 
-    {% if artists_view.nfo_errors %}
-    <section aria-label="NFO read errors" class="mb-3 text-sm text-amber-800">
-        <h2 class="font-bold">NFO read errors</h2>
-        {% if artists_view.nfo_incomplete %}<p role="alert">NFO scan incomplete. Missing metadata and complete counts are unavailable.</p>{% endif %}
-        {% for error in artists_view.nfo_errors %}<p role="alert" class="break-all">{{ error }}</p>{% endfor %}
-    </section>
-    {% endif %}
-    {% if artists_view.nfo_conflicts %}
-    <details class="mb-3 text-sm" aria-label="Conflicting NFOs">
-        <summary class="cursor-pointer text-amber-800">{% if artists_view.nfo_incomplete %}Observed NFO conflicts{% else %}{{ artists_view.nfo_conflicts | length }} {{ 'artist ID has' if artists_view.nfo_conflicts | length == 1 else 'artist IDs have' }} conflicting NFOs{% endif %}</summary>
-        <ul class="mt-2 space-y-2">
-            {% for mbid, profiles in artists_view.nfo_conflicts.items() %}
-            <li><span class="font-bold break-all">{{ mbid }}</span>
-                <ul>{% for profile in profiles %}<li class="text-xs text-muted break-all">{{ display_path(profile.path) }}</li>{% endfor %}</ul>
-            </li>
-            {% endfor %}
-        </ul>
-    </details>
-    {% endif %}
-    {% if artists_view.nfo_orphans %}
-    <details class="mb-3 text-sm" aria-label="NFOs without matching artists">
-        <summary class="cursor-pointer text-amber-800">{{ artists_view.nfo_orphans | length }} {{ 'NFO has' if artists_view.nfo_orphans | length == 1 else 'NFOs have' }} no matching artist</summary>
-        <ul class="mt-2 space-y-1">
-            {% for profile in artists_view.nfo_orphans %}
-            <li class="break-all">{{ display_path(profile.path) }} <span class="text-xs text-muted">{{ profile.mbid or 'No artist ID' }}</span></li>
-            {% endfor %}
-        </ul>
-    </details>
-    {% endif %}
-
-    {% if artists_view.missing_id_albums %}
-    <details class="mb-3 text-sm" aria-label="Albums without artist IDs">
-        <summary class="cursor-pointer text-amber-800">{{ artists_view.missing_id_albums | length }} {{ 'album has' if artists_view.missing_id_albums | length == 1 else 'albums have' }} missing or inconsistent artist IDs</summary>
-        <ul class="mt-2 space-y-1">
-            {% for album in artists_view.missing_id_albums %}
-            <li><a href="/album/{{ album.id }}" class="app-link">{{ album.title }}</a></li>
-            {% endfor %}
-        </ul>
-    </details>
-    {% endif %}
-
     {% if artists_view.count %}
     <form method="get" action="/artists" hx-get="/artists" hx-trigger="submit, search"
           hx-target="#artists-rows" hx-swap="innerHTML"

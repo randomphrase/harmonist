@@ -24,10 +24,10 @@ def test_demo_inventory_has_a_portrait_conflicts_and_unmatched_profiles(tmp_path
     assert all(p.name == "artist.nfo" for p in conflict.candidates)
     assert len(inventory.paths) == 5
     assert not inventory.errors and not inventory.walk_errors
-    orphans = inventory.orphans(albums)
-    assert {p.name for p in orphans} == {"The Unidentified Echoes", "The Unplayed Satellites"}
-    assert sum(p.mbid is None for p in orphans) == 1
-    assert all(p.path.exists() for p in orphans)
+    credited = {c.mbid for a in albums for c in a.artist_credits if c.mbid}
+    unmatched = [p for p in inventory.profiles if p.mbid not in credited]
+    assert {p.name for p in unmatched} == {"The Unidentified Echoes", "The Unplayed Satellites"}
+    assert sum(p.mbid is None for p in unmatched) == 1
 
 
 def test_demo_compilation_uses_the_official_various_artists_identity(tmp_path):
