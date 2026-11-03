@@ -7635,50 +7635,61 @@ def test_an_album_with_nothing_to_act_on_gets_no_note_at_all(client, cfg, monkey
     assert "album-update__legend" not in body
 
 
-def test_a_shared_credits_cell_names_its_tag_on_both_lines(client):
-    """#940. In the Credits column the label is the only thing that says which
-    tag a value is, so each line names its own: files that call a writer a
-    composer read "Composer" over MusicBrainz's "Writer", with the same name on
-    both. Without the MusicBrainz line's label the row would read as a match."""
+def _credit_lists(client, tl) -> list[dict[str, Any]]:
+    """Each track's rendered credit list, as {label: its <dd>}."""
+    from bs4 import BeautifulSoup
+
+    html = client.app.state.templates.env.get_template("partials/_track_list.html").render(
+        tracklist=tl, mb_names={}, mb_credits={}, album={"id": "a1"}
+    )
+    lists = []
+    for track in BeautifulSoup(html, "html.parser").select("tbody.track-diff__track"):
+        line = track.select_one("tr.track-diff__credits")
+        terms = line.select("dt") if line else []
+        lists.append({dt.get_text(strip=True): dt.find_next_sibling("dd") for dt in terms})
+    return lists
+
+
+def test_a_tracks_credits_are_listed_under_it_one_line_per_tag(client):
+    """#948. Files that call a writer a composer: under the track, the files'
+    composer is a removal and MusicBrainz's writer an addition, each a line of
+    its own. In columns the removal was drawn nowhere, and the two names read as
+    one credit with a different label."""
     from test.test_compare import _credit_album
 
     tl = _credit_album(
         [{"writers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}],
         files=[{"composers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}],
     )
-    html = client.app.state.templates.env.get_template("partials/_track_list.html").render(
-        tracklist=tl, mb_names={}, mb_credits={}, album={"id": "a1"}
-    )
+    first, second = _credit_lists(client, tl)
 
-    first = html.split('<tbody class="track-diff__track">')[1]
-    own, mb = first.split('<tr class="track-diff__mb')
-    role = r'<span class="track-diff__role">{}</span>\s*Robert Del Naja'
-    assert re.search(role.format("Composer"), own)
-    assert re.search(role.format("Writer"), mb)
+    assert list(first) == ["Work", "Composer", "Writer"]
+    composer = first["Composer"].get_text(" ", strip=True)
+    assert composer.startswith("Robert Del Naja") and composer.endswith("removed")
+    writer = first["Writer"].select_one(".tag-fields__mb")
+    assert writer.get_text(strip=True) == "Robert Del Naja", "MusicBrainz's, and only that"
+    assert writer.select_one(".mb-mark"), "marked as MusicBrainz's, not by colour alone"
+    assert list(second) == ["Work", "Composer"]
 
 
 def test_a_credit_is_quiet_beside_the_title_until_it_differs(client):
-    """#942. The credits are muted so the title leads the row, but a credit
-    that differs from MusicBrainz is a finding, and keeps the full colour: the
-    muting must never make a difference quieter."""
+    """#942, #948. The credits are muted so the title leads the row, but a
+    credit that differs from MusicBrainz is a finding, and keeps the full
+    colour: the muting must never make a difference quieter."""
     from test.test_compare import _credit_album
 
     tl = _credit_album(
         [{"writers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}],
         files=[{"composers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}],
     )
+    first, second = _credit_lists(client, tl)
+
+    assert "track-diff__quiet" in second["Composer"].get("class", [])
+    assert "track-diff__quiet" not in first["Composer"].get("class", [])
     html = client.app.state.templates.env.get_template("partials/_track_list.html").render(
         tracklist=tl, mb_names={}, mb_credits={}, album={"id": "a1"}
     )
-
-    differing, matching = (
-        body.split('<tr class="track-diff__mb')[0]
-        for body in html.split('<tbody class="track-diff__track">')[1:3]
-    )
-    credits = r'<td class="[^"]*">\s*<span class="track-diff__role">'
-    assert "track-diff__quiet" in re.search(credits, matching).group(0)
-    assert "track-diff__quiet" not in re.search(credits, differing).group(0)
-    assert re.search(r'<td class="[^"]*track-diff__lead[^"]*"', matching), "the title leads"
+    assert re.search(r'<td class="[^"]*track-diff__lead[^"]*"', html), "the title leads"
 
 
 def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):

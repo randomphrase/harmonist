@@ -17,8 +17,12 @@
    one every track shares (#360).
 
    At most three columns are earned (`MAX_EARNED_COLUMNS`). A tag that earns one
-   past that is stated on a line under each track it changes on (#863), and a
-   credit's sort name and ids go in its name's column, drawn as links.
+   past that is stated on a line under each track it changes on (#863).
+
+   The relationship credits — work, composer, lyricist, writer — earn no
+   column: each track lists its own under it, one line per tag, as MusicBrainz
+   lists a recording's (#948). A credit's sort name and ids ride on its line,
+   drawn as links.
 
    The medium-derived three — disc subtitle, media, track total — are a fourth
    case, and they go to the DISC HEADING (#320). They vary per track only in the
@@ -214,9 +218,8 @@
             <tr>
                 {% for f in t.fields %}
                 {%- set col = tracklist.columns[loop.index0] -%}
-                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}{{ ' track-diff__lead' if col.label == 'Title' }}{{ ' track-diff__quiet' if col.quiet and not f.differs }}"{#
-                    The title leads the row, and the credits beside it are
-                    quiet unless they differ (#942).
+                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}{{ ' track-diff__lead' if col.label == 'Title' }}"{#
+                    The title leads the row (#942).
 
                     The explanation is on the FIGURE as well as on the heading.
                     The heading alone was where this started and it is the wrong
@@ -302,10 +305,6 @@
                         "3:12" against "3:00" character by character emphasises
                         two digits, which says a length is a typo — when what it
                         actually says is that this is a different master. -#}
-                    {#- A column several tags share names the tag of each value
-                        (#940): Credits holds a composer on one row and a writer
-                        on the next. -#}
-                    {%- if f.disk_role -%}<span class="track-diff__role">{{ f.disk_role }}</span>{%- endif -%}
                     {%- with runs = none if f.advisory else f.disk_runs, value = f.disk, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith -%}
                     {%- endif -%}
                     {%- if col.label == 'Title' and t.file_name -%}
@@ -398,7 +397,6 @@
                         MusicBrainz's length twice on one row, once as a fact and
                         once as a pending change it can never be. -#}
                     {%- if f.agreement in ('differs', 'only_mb', 'unreadable') and f.mb and not f.advisory -%}
-                    {%- if f.mb_role -%}<span class="track-diff__role">{{ f.mb_role }}</span>{%- endif -%}
                     {%- with runs = f.mb_runs, value = f.mb, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith -%}
                     {%- endif -%}
                 </td>
@@ -406,39 +404,31 @@
             </tr>
             {% endif %}
 
-            {% if t.overflow %}
-            {# This track's changes to the tags that earned a column and did not
-               fit (#863), labelled, on a line of their own: there is no column
-               for them to sit under. They used to go to a box up in the Tags
-               section, listed by track number away from the tracks they belong
-               to.
+            {% set listed = t.credits + t.overflow %}
+            {% if listed %}
+            {# Under the track, one line per tag (#948): its credits, as
+               MusicBrainz lists a recording's relationships under it, then any
+               change to a tag that earned a column and did not fit (#863).
 
-               Drawn the way the band under the table draws a change — a value
-               MusicBrainz adds through `_mb_value`, anything else as the pair —
-               always inline, because a line of several stacked pairs would no
-               longer read as one line. #}
-            <tr class="track-diff__overflow">
+               The credits are listed whether they match or not, since they are
+               the track's credits rather than only its changes; a line that
+               matches is muted, so the title leads the row (#942). A line that
+               differs is drawn the way the band draws one, by the same partial:
+               the file's value with MusicBrainz's under it, sharing its left
+               edge, and a removal said as one. #}
+            <tr class="track-diff__credits">
                 <td class="track-diff__num"></td>
                 <td colspan="{{ tracklist.columns|length - 1 }}">
-                    <dl>
-                        {% for f in t.overflow %}
-                        <div>
-                            <dt>{{ f.label }}</dt>
-                            <dd>
-                                {% if f.disk is none %}
-                                {% with runs = none, value = f.mb, entity = f.entity, credit = f.credit,
-                                        why = "Not in your files — this is MusicBrainz's value" %}
-                                {% include 'partials/_mb_value.html' %}
-                                {% endwith %}
-                                {% else %}
-                                {% with value = f.disk, mb = f.mb, runs = f.disk_runs, mb_runs = f.mb_runs,
-                                        kind = 'scalar', entity = f.entity, credit = f.credit,
-                                        why = "MusicBrainz's value" %}
-                                {% include 'partials/_value_pair.html' %}
-                                {% endwith %}
-                                {% endif %}
-                            </dd>
-                        </div>
+                    <dl class="tag-fields">
+                        {% for f in listed %}
+                        <dt>{{ f.label }}</dt>
+                        <dd{% if not f.differs %} class="track-diff__quiet"{% endif %}>
+                            {% with value = f.disk, mb = f.mb, differs = f.differs,
+                                    runs = f.disk_runs, mb_runs = f.mb_runs, kind = f.kind,
+                                    entity = f.entity, credit = f.credit %}
+                            {% include 'partials/_compared_value.html' %}
+                            {% endwith %}
+                        </dd>
                         {% endfor %}
                     </dl>
                 </td>
@@ -485,78 +475,18 @@
         {% for f in tracklist.collapsed %}
         <dt>{{ f.label }}</dt>
         <dd>
-            {% if f.differs %}
-            {# One reading on every track, and not the one MusicBrainz holds
-               (#360). This used to fall past the band into the re-tag box, up in
-               the album's Tags section, where a per-track fact was stated among
-               leftovers and labelled "all tracks" — which is what this band's
-               own caption says.
-
-               The change is drawn the way the rest of the page draws one —
-               through `_value_pair`, the album panel's own renderer, since #386.
-               It used to be drawn the way this band ALONE drew one: inline
-               whatever the field, with the disk's reading struck through, so
-               `Artist sort` here and `Album artist sort` forty pixels up showed
-               the same two values in two layouts, and only one of them called
-               the difference a mistake.
-
-               Nothing here claims WHICH track, because there is no such question
-               — a tag whose tracks disagreed on either side would have earned a
-               column under rule 2 and never reached this band. #}
-            {% if f.value and f.mb %}
-            {# Both sides have a reading, which is the case the panel draws too,
-               so it is drawn by the panel's renderer. #}
-            {% with value = f.value, mb = f.mb, runs = f.runs, mb_runs = f.mb_runs,
-                    kind = f.kind, entity = f.entity, credit = f.credit,
-                    why = "MusicBrainz's value" %}
-            {% include 'partials/_value_pair.html' %}
+            {# A differing row here is one reading on every track, and not the
+               one MusicBrainz holds (#360). It used to fall past the band into
+               the re-tag box up in the album's Tags section, labelled "all
+               tracks" — which is what this band's own caption says. Nothing here
+               claims WHICH track, because there is no such question: a tag whose
+               tracks disagreed on either side would have earned a column, or a
+               credit line, under rule 2 and never reached this band. #}
+            {% with value = f.value, mb = f.mb, differs = f.differs,
+                    runs = f.runs, mb_runs = f.mb_runs, kind = f.kind,
+                    entity = f.entity, credit = f.credit %}
+            {% include 'partials/_compared_value.html' %}
             {% endwith %}
-
-            {% elif f.mb is none %}
-            {# MusicBrainz holds nothing, and a re-tag removes what the files
-               carry. Said as a removal rather than as an empty value, because
-               "not set" below means the opposite — nobody has one — and the two
-               must not read alike.
-
-               Drawn by `_value_pair` since #552, which is where the markup and
-               the reasoning now live. This branch had the page's ONLY rendering
-               of a pending removal, and the album panel above — the same fact,
-               about album-level tags — had none at all and drew one as a plain
-               matching line. A second copy is how that happened; one renderer is
-               #386's answer to it, and the same answer this arrived at from the
-               other direction. #}
-            {% with value = f.value, mb = none, runs = none, mb_runs = none,
-                    kind = f.kind, entity = f.entity, credit = f.credit %}
-            {% include 'partials/_value_pair.html' %}
-            {% endwith %}
-
-            {% else %}
-            {# An addition: MusicBrainz has this and no file carries it, so there
-               is no "before" to put an arrow after — and #552 confirmed there is
-               no use in inventing one.
-
-               Through `_mb_value`, the partial that carries the hexagon, rather
-               than colouring the value purple here (#373). Purple alone said
-               "this is MusicBrainz's reading" to everyone who can see it and
-               nothing at all to anyone who can't, which `_mb_value` calls an
-               accessibility failure rather than a style choice. #}
-            {% with runs = none, value = f.mb, entity = f.entity, credit = f.credit,
-                    why = "Not in your files — this is MusicBrainz's value" %}
-            {% include 'partials/_mb_value.html' %}
-            {% endwith %}
-            {% endif %}
-            {% elif f.value %}
-            {# Same renderer as a cell, so an id here is the same named link it
-               would have been in a column and an artist credit reads the same
-               way. This value agrees with MusicBrainz, so it is one MusicBrainz
-               has a name for. #}
-            {% with runs = none, value = f.value, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith %}
-            {% else %}
-            {# No track carries it and MusicBrainz has none either. That is still
-               agreement — it is simply agreement about nothing — and saying so
-               is the point of listing the field at all. #}
-            <span class="track-foot__absent">not set</span>
-            {% endif %}
         </dd>
         {% endfor %}
     </dl>

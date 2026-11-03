@@ -478,8 +478,8 @@ LIBRARY: list[dict[str, Any]] = [
         "mbid": "demo-rel-blues-brothers",
         "cover": "blues.png",
         "fmt": "flac",
-        # Two songs credited to their writers and one to its composer, so the
-        # album page shows them in one Credits column (#940).
+        # Two songs credited to their writers and one to its composer, listed
+        # under each track on the album page (#948).
         "works": [
             {"title": "Rawhide", "composer": ["Dimitri Tiomkin"]},
             {"title": "Stand By Your Man", "writer": ["Tammy Wynette", "Billy Sherrill"]},

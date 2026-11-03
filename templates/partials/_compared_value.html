@@ -1,0 +1,48 @@
+{# One tag's value, compared: as it is where it agrees, and as the change a
+   re-tag makes where it differs.
+
+   Shared by the band under the tracklist and the credit list under each track
+   (#948), which state the same kind of fact one tag per line. Both used to
+   carry their own copy of this choice, and two copies of how a change is drawn
+   is how the band and the album panel came to draw one two ways (#386).
+
+   Where it differs, there are three shapes. Both sides have a reading: the
+   pair, through `_value_pair`, the album panel's own renderer. MusicBrainz has
+   none: a removal, which `_value_pair` also draws (#552). Only MusicBrainz has
+   one: an addition, with no "before" to put an arrow after, through
+   `_mb_value`, which carries the hexagon so the purple is not the only thing
+   saying whose value it is (#373).
+
+   Where it agrees, the value through `_field_value`, so an id is a named link
+   and a credit is the artists it names, in a span of its own: the `<dd>` it
+   sits in is a flex row, and unwrapped, each artist and each "; " between them
+   would be a flex item, losing the space after the semicolon as `_value_pair`'s
+   own spans already avoid. "not set" where neither side has one:
+   agreement about nothing, which is still worth saying where a tag is listed
+   for every track (#112).
+
+   Expects `value`, `mb`, `differs`, `runs`, `mb_runs`, `kind`, `entity` and
+   `credit` from an enclosing {% with %}. #}
+{% if differs %}
+{% if value and mb %}
+{% with value = value, mb = mb, runs = runs, mb_runs = mb_runs,
+        kind = kind, entity = entity, credit = credit,
+        why = "MusicBrainz's value" %}
+{% include 'partials/_value_pair.html' %}
+{% endwith %}
+{% elif mb is none %}
+{% with value = value, mb = none, runs = none, mb_runs = none,
+        kind = kind, entity = entity, credit = credit %}
+{% include 'partials/_value_pair.html' %}
+{% endwith %}
+{% else %}
+{% with runs = none, value = mb, entity = entity, credit = credit,
+        why = "Not in your files — this is MusicBrainz's value" %}
+{% include 'partials/_mb_value.html' %}
+{% endwith %}
+{% endif %}
+{% elif value %}
+<span>{% with runs = none, value = value, entity = entity, credit = credit %}{% include 'partials/_field_value.html' %}{% endwith %}</span>
+{% else %}
+<span class="track-foot__absent">not set</span>
+{% endif %}

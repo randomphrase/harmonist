@@ -17,12 +17,11 @@ versions follow [semantic versioning](https://semver.org).
   button on its row (formerly **Use**). A suggestion is the first row of the
   search results, with the search beside it; nothing is written until a review
   is confirmed, so closing one changes nothing (#933).
-- **Composer, lyricist and writer share one Credits column** in the track list
-  when no track has more than one of them, each value labelled with its tag
-  (#940).
-- **A track's title leads its row in the track list**, with the work and
-  credits beside it in a quieter colour unless they differ from MusicBrainz
-  (#942).
+- **A track's credits are listed under it in the track list**, one line each
+  for its work, composer, lyricist and writer, rather than in columns. A credit
+  a re-tag would remove now says so (#948).
+- **A track's title leads its row in the track list**, with its credits in a
+  quieter colour unless they differ from MusicBrainz (#942).
 
 ### Fixed
 

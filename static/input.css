@@ -943,9 +943,9 @@ button.library-update-option:focus-visible { background: var(--color-surface); c
    It carries `track-diff__len` too, from `TrackColumn.numeric`, which is what
    right-aligns both columns of figures against each other. */
 .track-diff .track-diff__advisory { color: var(--color-muted); }
-/* The title, or the file's name in its place, identifies the row; the work and
-   credits beside it are runs of linked names, drawn quieter so it leads (#942).
-   A credit that differs from MusicBrainz is not given the class. */
+/* The title, or the file's name in its place, identifies the row; the credits
+   listed under it are runs of linked names, drawn quieter so it leads (#942,
+   #948). A credit that differs from MusicBrainz is not given the class. */
 .track-diff .track-diff__lead { font-weight: 500; }
 .track-diff .track-diff__quiet { color: var(--color-muted); }
 /* The heading and the figures both answer "then how do I fix this?" on hover,
@@ -1183,39 +1183,11 @@ button.library-update-option:focus-visible { background: var(--color-surface); c
    taking something away. */
 .tag-fields__removed { font-weight: 600; }
 
-/* A track's changes to the tags with no column (#863): label and value pairs
-   run along one line under the row, wrapping as a line of text does. Labelled
-   as the band under the table labels its rows, a size down, since they sit
-   among the tracks. */
-.track-diff__overflow dl {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 1.25rem;
-  row-gap: .15rem;
-  font-size: .8em;
-}
-.track-diff__overflow dl > div { display: inline-flex; align-items: baseline; gap: .4rem; }
-.track-diff__overflow dt {
-  font-size: .62rem;
-  text-transform: uppercase;
-  letter-spacing: .1em;
-  color: var(--color-muted);
-  font-weight: 700;
-}
-.track-diff__overflow dd { margin: 0; }
-
-/* The tag a value is, in the Credits column (#940): labelled the way the line
-   under a track labels its tags. On the MusicBrainz line it keeps that line's
-   purple, since it is MusicBrainz's tag too. */
-.track-diff__role {
-  margin-inline-end: .4rem;
-  font-size: .62rem;
-  text-transform: uppercase;
-  letter-spacing: .1em;
-  color: var(--color-muted);
-  font-weight: 700;
-}
-.track-diff__mb .track-diff__role { color: inherit; }
+/* A track's credits, and its changes over the column cap, listed under it one
+   tag per line (#863, #948): the band's label and value grid, at the table's
+   size and closer set, since the lines sit among the tracks. */
+.track-diff__credits .tag-fields { row-gap: .15rem; padding-bottom: .3rem; }
+.track-diff__credits .tag-fields dd { font-size: inherit; }
 
 .track-diff__absent,
 .track-diff__unreadable { font-style: italic; }
