@@ -1185,11 +1185,15 @@ button.library-update-option:focus-visible { background: var(--color-surface); c
 
 /* A track's credits, and its changes over the column cap, listed under it one
    tag per line (#863, #948): the band's label and value grid, at the table's
-   size and closer set, since the lines sit among the tracks. Indented from the
-   title and labelled lighter than the band, as MusicBrainz sets a recording's
-   relationships under it, so they belong to the track rather than compete
-   with its title. */
-.track-diff__credits .tag-fields { row-gap: .15rem; padding: 0 0 .3rem 1.5rem; }
+   size. Indented from the title and labelled lighter than the band, as
+   MusicBrainz sets a recording's relationships under it, so they belong to the
+   track rather than compete with its title.
+
+   The gap between credits stays well above the gap inside a changed credit's
+   pair (`.tag-pair`), as in the album panel. Set close to it, MusicBrainz's
+   value read as a credit of its own with no label rather than as the second
+   half of the file's. */
+.track-diff__credits .tag-fields { row-gap: .4rem; padding: 0 0 .3rem 1.5rem; }
 .track-diff__credits .tag-fields dt { font-weight: 500; letter-spacing: .06em; }
 .track-diff__credits .tag-fields dd { font-size: inherit; }
 
