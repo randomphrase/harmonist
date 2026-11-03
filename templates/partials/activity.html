@@ -81,7 +81,7 @@
             {% else %}text-ink{% endif %}">
             {% if e.album_label %}{% if e.album_id %}<a
                 href="/album/{{ e.album_id | urlencode }}"
-                class="font-semibold underline decoration-dotted underline-offset-2 hover:decoration-solid hover:text-accent"
+                class="app-link font-semibold"
                 title="Open {{ e.album_label }}">{{ e.album_label }}</a>{% else %}<span
                 class="font-semibold">{{ e.album_label }}</span>{% endif %}
             <span class="text-muted px-0.5" aria-hidden="true">·</span>

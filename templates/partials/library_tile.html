@@ -88,5 +88,5 @@
     </div>
     <div class="mt-1.5 text-sm font-bold text-ink leading-tight line-clamp-2">{{ album.title }}</div>
 </a>
-    <div class="text-xs text-muted truncate">{% for text, artist_id in album_artist_parts(album) %}{% if artist_id in album_artist_ids %}<a href="/artist/{{ artist_id }}" class="library-artist-link text-muted hover:text-accent focus-visible:text-accent underline decoration-dotted underline-offset-2 hover:decoration-solid">{{ text }}</a>{% else %}{{ text }}{% endif %}{% endfor %}</div>
+    <div class="text-xs text-muted truncate">{% for text, artist_id in album_artist_parts(album) %}{% if artist_id in album_artist_ids %}<a href="/artist/{{ artist_id }}" class="library-artist-link app-link">{{ text }}</a>{% else %}{{ text }}{% endif %}{% endfor %}</div>
 </div>

@@ -31,7 +31,7 @@
     <div class="flex items-center justify-between gap-3 px-4 py-2.5 bg-line/50 border-b border-line">
         <h1 class="text-lg break-words min-w-0">
             <span class="font-bold text-ink">{{ album.title }}</span>
-            <span class="text-muted font-normal">&mdash; {% for text, artist_id in album_artist_parts(album) %}{% if artist_id in album_artist_ids %}<a href="/artist/{{ artist_id }}" class="underline decoration-dotted underline-offset-2 hover:decoration-solid">{{ text }}</a>{% else %}{{ text }}{% endif %}{% endfor %}</span>
+            <span class="text-muted font-normal">&mdash; {% for text, artist_id in album_artist_parts(album) %}{% if artist_id in album_artist_ids %}<a href="/artist/{{ artist_id }}" class="app-link">{{ text }}</a>{% else %}{{ text }}{% endif %}{% endfor %}</span>
         </h1>
     </div>
 

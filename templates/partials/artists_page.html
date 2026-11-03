@@ -38,7 +38,7 @@
         <summary class="cursor-pointer text-amber-800">{{ artists_view.missing_id_albums | length }} {{ 'album has' if artists_view.missing_id_albums | length == 1 else 'albums have' }} missing or inconsistent artist IDs</summary>
         <ul class="mt-2 space-y-1">
             {% for album in artists_view.missing_id_albums %}
-            <li><a href="/album/{{ album.id }}" class="text-accent hover:underline">{{ album.title }}</a></li>
+            <li><a href="/album/{{ album.id }}" class="app-link">{{ album.title }}</a></li>
             {% endfor %}
         </ul>
     </details>

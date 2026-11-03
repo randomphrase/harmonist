@@ -22,6 +22,8 @@ versions follow [semantic versioning](https://semver.org).
   a re-tag would remove now says so (#948).
 - **A track's title leads its row in the track list**, with its credits in a
   quieter colour unless they differ from MusicBrainz (#942).
+- **A link's underline says where it goes**: solid to Harmonist's own artist
+  and album pages, dotted out to MusicBrainz (#935).
 
 ### Fixed
 

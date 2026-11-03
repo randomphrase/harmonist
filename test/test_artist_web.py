@@ -321,6 +321,27 @@ def test_album_artist_display_keeps_the_tagged_credit(
     network.assert_not_called()
 
 
+def test_links_within_harmonist_share_one_look_apart_from_musicbrainz(artist_client):
+    """#935: a dotted underline is how a link out to MusicBrainz looks, so a name
+    that opens Harmonist's own artist or album page is drawn as `app-link`
+    wherever it appears."""
+    client, cfg, _network = artist_client
+    make_album(
+        cfg.paths.music_dir, "Missing IDs", "66666666-6666-4666-8666-666666666666", ["Alice"], []
+    )
+    hosts = {
+        "/library": ".lib-tile a[href^='/artist/']",
+        f"/artist/{ALICE}": ".lib-tile a[href^='/artist/']",
+        f"/album/{RELEASE}": "h1 a[href^='/artist/']",
+        "/artists": "details[aria-label='Albums without artist IDs'] a[href^='/album/']",
+    }
+    for url, selector in hosts.items():
+        soup = BeautifulSoup(client.get(url).text, "html.parser")
+        links = soup.select(selector)
+        assert links, url
+        assert all("app-link" in link["class"] for link in links), url
+
+
 def test_artists_is_a_standalone_page_with_its_own_filters(artist_client):
     client, _cfg, _network = artist_client
     response = client.get("/artists")

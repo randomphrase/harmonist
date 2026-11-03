@@ -71,6 +71,16 @@ sentences and controls can contradict one another when assembled.
   browsing information; being in a workflow does not make every link an action.
   Viewing an entity is navigation: link its name (purple, with the ↗ cue) rather
   than adding a button beside it, as release rows link their titles to MusicBrainz.
+- **A link's underline says where it goes (#935).** Not a web convention, but
+  this one is ours, and it only works if every link keeps it. A name that opens
+  Harmonist's own page (an artist, an album) is `.app-link`: solid underline,
+  orange on hover. A name that leaves for MusicBrainz in a reference table
+  (credits, ids) is `.mbid`: dotted underline. Both inherit their colour, so the
+  line is the only thing telling them apart; don't hand-roll either from
+  `underline decoration-*` utilities, which is how the artist links on headings
+  and tiles came to look like the MusicBrainz credits beneath them. A dotted
+  underline on something that isn't a link (an `<abbr>`, a `cursor-help`
+  tooltip) is still fine: it has no hover and doesn't navigate.
 - A persisted yes/no decision — *Don't warn me about this* — is a native checkbox,
   muted and placed in the heading of the statement it governs, not a prominent
   button. It shows the state as well as changing it.
