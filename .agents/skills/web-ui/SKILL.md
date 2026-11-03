@@ -81,6 +81,37 @@ sentences and controls can contradict one another when assembled.
   styling. Subtle actions must still be recognizable and keyboard reachable;
   don't make users discover an action by hovering over ordinary-looking prose.
 
+### Shared rendering is how the UI stays consistent
+
+**UI consistency comes from shared rendering, not from copies kept in step.**
+When two places show the same kind of fact (a tag's value, a difference from
+MusicBrainz, a removal, a release candidate), they draw it through the same
+partial. A second copy of the markup is a second chance to drift, however
+faithful it was when written, and here it has drifted every time:
+
+- The album panel stacked a differing pair while the band under the tracklist
+  put the same pair inline and struck the file's value through (#386).
+- The band drew a pending removal and the panel drew none at all (#552).
+- The band coloured a MusicBrainz value purple without the hexagon every other
+  one carries (#373).
+
+These partials hold the page's vocabulary:
+
+| Partial | Draws |
+|---|---|
+| `_field_value.html` | One value: plain text, a named MusicBrainz link for an id, the artists of a credit |
+| `_mb_value.html` | MusicBrainz's value, with the hexagon after it |
+| `_value_pair.html` | A difference: the file's value over MusicBrainz's (inline for a short scalar), or a removal as "→ removed" |
+| `_compared_value.html` | A tag's value whether it agrees or differs: the band under the tracklist and each track's credit list (#948) |
+| `_release_candidate.html` | A release row, in every picker |
+
+Before writing markup that shows one of these, find the partial and use it. If
+none fits, extend one, or extract it from the place that already draws the fact
+and move that place onto it in the same change. Where a caller needs something
+different, pass it in (`kind`, `why`) rather than forking the markup. A fix then
+lands everywhere at once: wrapping a matching credit in a span restored the
+space after its "; " in the band and the credit list together (#948).
+
 ### Reuse presentation and show evidence where it helps
 
 - The same choice should look and behave the same wherever it appears. Release
@@ -319,11 +350,13 @@ actions; evidence beside choices; one active review; clear consequences and a
 way back; usable layout and keyboard controls at the affected widths/states.
 
 1. `make css` run and the regenerated bundle staged.
-2. `make check` green (includes `template-lint`).
-3. No `onclick` on an element that also has `hx-*`.
-4. Any `hx-trigger` you wrote names **every** event that must reach HTMX, not just
+2. Any value, difference or release row drawn through its shared partial, not
+   fresh markup (see *Shared rendering is how the UI stays consistent*).
+3. `make check` green (includes `template-lint`).
+4. No `onclick` on an element that also has `hx-*`.
+5. Any `hx-trigger` you wrote names **every** event that must reach HTMX, not just
    the new one — it replaced the element's default rather than adding to it.
-5. Side effects gated on `event.detail.successful`.
-6. Exercised in demo mode; browser-layer behavior covered by `test/e2e/` if the
+6. Side effects gated on `event.detail.successful`.
+7. Exercised in demo mode; browser-layer behavior covered by `test/e2e/` if the
    bug class would be invisible to pytest.
-7. User-visible? → `CHANGELOG.md` entry (see the `changelog` skill).
+8. User-visible? → `CHANGELOG.md` entry (see the `changelog` skill).
