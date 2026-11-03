@@ -3165,10 +3165,11 @@ def _artwork_view(
     tracks: _FileTags | None = None,
     browsed: bool = False,
 ) -> artwork.ArtworkView:
-    """`album_artwork_mod.view`, and whether the picker can step on to another
+    """`album_artwork_mod.view`, whether the picker can step on to another
     release (#659) — `browsed` being whether this page has browsed the group
-    already. Every render of the section comes through here, so none of them
-    leaves that out."""
+    already — and whether the archive has answered that it has nothing (#946).
+    Every render of the section comes through here, so none of them leaves
+    that out."""
     view = album_artwork_mod.view(
         album,
         caa,
@@ -3178,8 +3179,18 @@ def _artwork_view(
         choices=choices,
         tracks=tracks,
     )
+    mbid = _release_of(album)
+    group = caa_listings.group_of(mbid) if mbid else None
     return replace(
-        view, other_releases=_another_release_possible(_release_of(album), browsed=browsed)
+        view,
+        other_releases=_another_release_possible(mbid, browsed=browsed),
+        # Asked, not merely unlisted: a listing never stored is a check still
+        # to make, or one that failed, and neither is the archive's answer.
+        archive_has_none=not view.candidates
+        and mbid is not None
+        and group is not None
+        and caa_cache.stored_listing("release", mbid) is not None
+        and caa_cache.stored_listing("release-group", group) is not None,
     )
 
 
@@ -7272,6 +7283,10 @@ def _register_routes(app: FastAPI) -> None:
             artwork_candidate=candidate,
             artwork_front_only=view.front_only if showing_fronts is None else showing_fronts,
             artwork_browsed=browsed,
+            # Whether this response answers a look at another release, which
+            # an empty picker sends itself (#946): never sent again from the
+            # answer, even when MusicBrainz failed and the group is unbrowsed.
+            artwork_looked=bool(more),
             # Asked for an image that is not here — the cache dropped it, or it
             # was never loaded. Said rather than quietly showing the ordinary
             # plan instead, which would be the unannounced fallback #472 forbids.

@@ -1402,6 +1402,10 @@ class ArtworkView:
     #: Whether a step past the last candidate could find another release's
     #: images: decided by the caller, which knows what the page has browsed.
     other_releases: bool = False
+    #: Whether the archive has been asked for the release's images and its
+    #: group's, and lists none for either (#946) — so an empty picker can say
+    #: so, and an unasked one never claims it.
+    archive_has_none: bool = False
     #: The album's stand-in covers for its release (#663), by digest, with the
     #: listing each came from.
     borrowed: Mapping[str, str] = field(default_factory=dict)

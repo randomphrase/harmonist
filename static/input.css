@@ -1549,7 +1549,17 @@ dialog::backdrop {
   border-radius: 4px;
   background: var(--color-surface);
 }
-.art-pick__picker:has(.art-pick__loading.htmx-request) .art-pick__others { display: none; }
+.art-pick__picker:has(.art-pick__loading.htmx-request) :is(.art-pick__others, .art-pick__none) { display: none; }
+/* Nothing in the archive (#946), drawn as a slide is: a frame where the image
+   would be, its caption beside it. */
+.art-pick__none {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  column-gap: .85rem;
+  align-items: start;
+}
+.art-pick__none > .art-row__art { width: 6.5rem; height: 6.5rem; }
+.art-pick__none .art-pick__others { align-self: flex-start; margin-top: .4rem; }
 
 /* The carousel (#659): one image at a time — the one whose radio is checked —
    and, while Front only is ticked, never one that is not a front. A thumbnail
@@ -1880,7 +1890,14 @@ dialog::backdrop {
   }
   .art-pick__ghost--loading { display: none; }
   .art-layout:has(.art-pick__loading.htmx-request) .art-pick__ghost--loading { display: block; }
-  .art-pick__placeholder { width: 100%; }
+  /* The size of the image that replaces it, its words beside it as a
+     candidate's caption is (#946): the column's width made it a square as
+     wide as the panel, and the section shrank when the answer arrived. */
+  .art-pick__loading.htmx-request,
+  .art-pick__loading-size { flex-direction: row; align-items: center; column-gap: .85rem; }
+  .art-pick__placeholder { width: var(--art-thumb); flex: none; }
+  .art-pick__none { grid-template-columns: var(--art-thumb) minmax(0, 1fr); }
+  .art-pick__none > .art-row__art { width: var(--art-thumb); height: var(--art-thumb); }
   /* The image, and to its right its caption, with ‹ › on its title line
      (above), then Don't suggest and Front only (#918). The slides are laid out together, so every caption is in the one
      space (above). The last row takes up what the image is taller than the

@@ -11437,7 +11437,9 @@ _PRESSINGS = {
 }
 
 
-def _album_in_a_group(cfg, monkeypatch, *, own: bool = True, pressings=("rel-uk",)):
+def _album_in_a_group(
+    cfg, monkeypatch, *, own: bool = True, listed: bool = True, pressings=("rel-uk",)
+):
     """A tagged album whose release, `rel-this`, is one of several in group
     `rg-g` (#659), with the browse and the archive's listings stubbed and every
     request they make recorded in the list returned beside the album.
@@ -11445,7 +11447,9 @@ def _album_in_a_group(cfg, monkeypatch, *, own: bool = True, pressings=("rel-uk"
     The archive lists one image for this release (unless not `own`), and one
     for each of `pressings`: `77` for the UK one, `88` for the Japanese. A
     browse page another screen stored earlier, from before any pressing was
-    added, is there too — so a test can see it is not what decides."""
+    added, is there too — so a test can see it is not what decides. Unless
+    `listed`, neither this release's listing nor its group's has been stored
+    yet: the archive check has still to ask."""
     from harmonist import cover_art, mb_cache, mb_lookup
 
     d = _release_backed_album_with_art(cfg, "Grouped", "rel-this", covers=[_png(1)], folder=None)
@@ -11457,11 +11461,12 @@ def _album_in_a_group(cfg, monkeypatch, *, own: bool = True, pressings=("rel-uk"
     activity_store.store_cover_art(
         "rel-this", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
     )
-    if own:
-        _listed("rel-this", ("5", "https://coverartarchive.org/release/rel-this/5.png", True))
-    else:
-        _listed("rel-this")
-    _listed("rg-g", kind="release-group")
+    if listed:
+        if own:
+            _listed("rel-this", ("5", "https://coverartarchive.org/release/rel-this/5.png", True))
+        else:
+            _listed("rel-this")
+        _listed("rg-g", kind="release-group")
     activity_store.store_release(
         "rg-g", mb_cache._group_key(), {"release-list": [{"id": "rel-this"}], "release-count": 1}
     )
@@ -11644,13 +11649,90 @@ def test_an_album_with_no_images_of_its_own_can_look_at_other_releases(client, c
     aid = _id_for(cfg, d)
     page = client.get(f"/album/{aid}/artwork").text
     assert _slides(page) == []
-    assert "Other releases ›" in page
+    assert "Check other releases ›" in page
 
     stepped = _step(client, aid, page, "step")
 
     assert len(_slides(stepped)) == 1
     assert client.get(f"/artwork/candidate/{aid}/77").status_code == 200
     assert client.get(f"/artwork/candidate/{aid}/88").status_code == 404
+
+
+def _look_ahead(client, html: str) -> str | None:
+    """Follow the empty picker's own look at the group's other releases
+    (#946), as its `load` trigger sends it, or None if it has none."""
+    import html as html_mod
+    import re
+
+    found = re.search(r'hx-get="([^"]*more=ahead[^"]*)"\s+hx-trigger="load"', html)
+    return client.get(html_mod.unescape(found.group(1))).text if found else None
+
+
+def _said(html: str) -> str:
+    """The empty picker's caption, as one line."""
+    import re
+
+    found = re.search(r'<div class="art-pick__none"[\s\S]*?</div>\s*</div>', html)
+    return " ".join(re.sub(r"<[^>]+>", " ", found.group(0)).split()) if found else ""
+
+
+def test_an_empty_picker_says_the_archive_has_nothing_once_it_has_asked(client, cfg, monkeypatch):
+    """A picker the archive has nothing for says so (#946) — but only once the
+    release's listing and its group's have been asked: before then, an empty
+    picker is a question still open, not an answer."""
+    d, _ = _album_in_a_group(cfg, monkeypatch, own=False, listed=False)
+    aid = _id_for(cfg, d)
+
+    before = client.get(f"/album/{aid}/artwork").text
+    assert "Check other releases ›" in before and "?check=1" in before
+    assert _said(before) == ""
+
+    checked = client.get(f"/album/{aid}/artwork?check=1").text
+    assert _slides(checked) == []
+    assert _said(checked).startswith("No images for this release or its release group")
+
+
+def test_an_empty_picker_looks_at_the_other_releases_itself(client, cfg, monkeypatch):
+    """With nothing of its own to show, the picker is already at its last
+    image, which is where the carousel lists the next release (#659): it does
+    so on arriving, rather than offering a press that is the only thing to do
+    (#946)."""
+    from harmonist import cover_art
+
+    d, asked = _album_in_a_group(cfg, monkeypatch, own=False)
+    monkeypatch.setattr(cover_art, "fetch_bytes", lambda url, **kw: (_png(9), "image/png"))
+    aid = _id_for(cfg, d)
+
+    looked = _look_ahead(client, client.get(f"/album/{aid}/artwork").text)
+
+    assert looked is not None and len(_slides(looked)) == 1
+    assert ("browse", "rg-g") in asked
+
+
+def test_an_empty_picker_stays_when_no_other_release_has_images(client, cfg, monkeypatch):
+    """A look at the other releases that finds nothing is an answer, and the
+    panel stays to give it, rather than vanishing from under the reader (#946).
+    It looks once: neither its answer nor a failure asks again."""
+    from harmonist import mb_lookup
+
+    d, _ = _album_in_a_group(cfg, monkeypatch, own=False, pressings=())
+    aid = _id_for(cfg, d)
+    page = client.get(f"/album/{aid}/artwork").text
+
+    looked = _look_ahead(client, page)
+
+    assert looked is not None and _slides(looked) == []
+    assert _said(looked) == "No images for any release of this album"
+    assert _look_ahead(client, looked) is None
+
+    def down(group):
+        raise mb_lookup.MBError("MusicBrainz is down")
+
+    monkeypatch.setattr(mb_lookup, "browse_release_group_editions", down)
+    failed = _look_ahead(client, page)
+    assert failed is not None and "MusicBrainz is down" not in failed
+    assert _look_ahead(client, failed) is None
+    assert "Check other releases ›" in failed
 
 
 def test_a_listed_image_is_measured_once_the_first_time_it_is_shown(client, cfg, monkeypatch):

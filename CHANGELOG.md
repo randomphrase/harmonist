@@ -32,6 +32,11 @@ versions follow [semantic versioning](https://semver.org).
   window allows**, with their details just under them (#929).
 - **Embiggened, the artwork picker's ↑ and ↓ step the rows when clicked**, not
   only from the keyboard (#931).
+- **The artwork picker's loading box is the size of the image it waits for**,
+  so the section no longer grows and shrinks as the archive answers (#946).
+- **An album the archive has no images for looks at its other releases
+  itself**, and the picker says when none of them has any either, rather than
+  disappearing (#946).
 
 ## [1.32.0] - 2026-11-01
 

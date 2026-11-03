@@ -100,7 +100,11 @@ releases**, one at a time. The sleeve a user wants is often another pressing's,
 and most of all when this release has none. Looking costs MusicBrainz one browse
 of the group and the archive one listing per release, so it happens only when the
 user steps there: the next release is listed as they arrive at the last image,
-which keeps a step from waiting on two services. The browse is made live, once
+which keeps a step from waiting on two services. A picker the archive has nothing
+for is at its last image already, so it looks as soon as the archive has said so
+(#946): a button would only offer the one thing left to do. Whatever the look
+finds is shown, including nothing, since a picker that vanished would leave the
+reader wondering what their press had done. The browse is made live, once
 per visit to the page, rather than read from the page another screen stored: that
 page can predate a release, and a picker that trusted it would never offer one
 added since. A release MusicBrainz says has no artwork isn't listed at all.

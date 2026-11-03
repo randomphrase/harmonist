@@ -129,8 +129,9 @@
 {% set picker = artwork.candidates %}
 {#- Somewhere to step to: images, or another release that might have some
     (#659). An album whose own release lists nothing is where looking at the
-    others matters most. -#}
-{% set steppable = picker or artwork.other_releases or caa_check_due %}
+    others matters most — and where, once they have nothing either, the
+    picker stays to say so (#946). -#}
+{% set steppable = picker or artwork.other_releases or caa_check_due or artwork.archive_has_none %}
 {% set selected = artwork_selected|default(0) %}
 {% set front_only = artwork_front_only if artwork_front_only is defined else artwork.front_only %}
 {#- The image the picker shows: the one it showed before this render, or the
@@ -363,6 +364,14 @@
     {% endif %}
 </div>
 {% endmacro %}
+{#- The step to another release in the group, where the picker has nothing of
+    its own to step from (#659). "Check", because it may find nothing (#946). -#}
+{% macro others_button() %}
+<button type="submit" name="more" value="step"
+        class="art-pick__others text-2xs uppercase tracking-widest font-bold px-3 py-1.5 rounded
+               border border-line text-muted hover:text-ink hover:border-mb-purple/40 transition"
+        title="Look for images on the other releases of this album">Check other releases ›</button>
+{% endmacro %}
 {% if steppable %}
 {# Maximized (#918), the panel is a popover: the same element, so the same
    controls — rows, images, Use, Front only — in a larger layout, with the
@@ -527,12 +536,26 @@
         </span>
         <span>Loading artwork…</span>
     </div>
-    {# This release lists nothing, but another in its group might. #}
-    {% if artwork.other_releases %}
-    <button type="submit" name="more" value="step"
-            class="art-pick__others text-2xs uppercase tracking-widest font-bold px-3 py-1.5 rounded
-                   border border-line text-muted hover:text-ink hover:border-mb-purple/40 transition"
-            title="Look for images on the other releases of this album">Other releases ›</button>
+    {# Once the archive has answered that it has nothing (#946), the picker
+       shows that as it would an image: a frame where the image would be,
+       drawn as the rows draw a missing one, and a caption beside it. It stays
+       after the other releases turn out to have nothing either — that is
+       the answer to the look, and a panel that vanished would give none. #}
+    {% if artwork.archive_has_none %}
+    <div class="art-pick__none">
+        <span class="art-row__art art-row__art--none" aria-hidden="true"><svg
+            viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round"
+            ><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path
+            d="M21 16l-5-5-9 9"/><path d="M3 3l18 18" stroke-width="1.8"/></svg></span>
+        <div class="art-row__facts">
+            <span class="art-row__who">No images</span>
+            <span class="art-row__meta-plain">for {{ 'any release of this album' if artwork_browsed|default(false) and not artwork.other_releases else 'this release or its release group' }}</span>
+            {% if artwork.other_releases %}{{ others_button() }}{% endif %}
+        </div>
+    </div>
+    {% elif artwork.other_releases %}
+    {{ others_button() }}
     {% endif %}
     {% endif %}
 </div>
@@ -649,6 +672,21 @@
      hx-trigger="load"
      hx-indicator="#album-artwork .caa-status, #album-artwork .art-pick__loading"
      hx-disabled-elt="#album-artwork .caa-refresh, #album-artwork .art-pick__others"
+     hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"></div>
+{% endif %}
+{# …and, where the archive has answered with nothing at all, on to the group's
+   other releases (#946). The carousel lists the next release as the reader
+   arrives at its last image (#659); with nothing of its own, the picker is
+   there already, and the look is the only thing left to do. Once per visit:
+   never after the group is browsed, nor on the response to a look or a step,
+   so one that fails is not asked again. #}
+{% if not artwork.candidates and artwork.archive_has_none and artwork.other_releases
+      and not caa_check_due and not artwork_browsed|default(false) and not artwork_looked|default(false) %}
+<div class="hidden"
+     hx-get="/album/{{ album.id }}/artwork?more=ahead{% if artwork.use %}&amp;use={{ artwork.use|urlencode }}{% endif %}{% if selected %}&amp;selected={{ selected }}{% endif %}"
+     hx-trigger="load"
+     hx-indicator="#album-artwork .art-pick__loading"
+     hx-disabled-elt="#album-artwork .art-pick__others"
      hx-target="#album-artwork" hx-swap="innerHTML settle:0ms"></div>
 {% endif %}
 </div>
