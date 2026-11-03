@@ -28,7 +28,7 @@
                aria-label="Select {{ album.title }}"{% if place %} checked{% endif %}{% if applying_updates() %} disabled{% endif %}>
         <div class="min-w-0">
             <h3 class="text-sm truncate" title="{{ album.title }}">
-                <a href="/album/{{ album.id }}" class="font-bold text-ink hover:text-accent transition">{{ album.title }}</a>
+                <a href="/album/{{ album.id }}" class="app-link font-bold text-ink transition">{{ album.title }}</a>
             </h3>
             <p class="text-xs text-muted truncate" title="{{ album.artist }}">{{ album.artist }}</p>
         </div>

@@ -237,6 +237,17 @@ def test_an_update_cards_lead_shows_one_line_of_a_per_track_change(web, monkeypa
     assert "<summary>and 5 more tracks</summary>" in rest
 
 
+def test_an_update_cards_title_is_an_in_app_link(web, monkeypatch):
+    """#935: the title opens Harmonist's album page, so it is drawn as one."""
+    cfg, client = web
+    albums = _inbox_library(cfg, monkeypatch, 1, (_row("album", "Album", "Old", "New"),))
+
+    link = re.search(rf'<a href="/album/{re.escape(albums[0].id)}"[^>]*>', _updates_section(client))
+
+    assert link
+    assert "app-link" in re.search(r'class="([^"]*)"', link.group(0)).group(1).split()
+
+
 def test_an_update_card_carries_no_path_badges_or_format(web, monkeypatch):
     cfg, client = web
     albums = _inbox_library(cfg, monkeypatch, 1, (_row("album", "Album", "Old", "New"),))

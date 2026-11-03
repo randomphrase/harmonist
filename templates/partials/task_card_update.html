@@ -34,7 +34,7 @@
     {% endif %}
     <div class="min-w-0">
         <h3 class="text-sm truncate">
-            <a href="/album/{{ album.id }}" class="font-bold text-ink hover:text-accent transition">{{ album.title }}</a>
+            <a href="/album/{{ album.id }}" class="app-link font-bold text-ink transition">{{ album.title }}</a>
             <span class="ml-1.5 text-xs text-muted">{{ album.artist }}</span>
             {% if place %}
             <span class="update-card__place" role="status">{{ 'Applying…' if place == 'applying' else 'Queued' }}</span>

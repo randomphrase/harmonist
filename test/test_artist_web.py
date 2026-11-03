@@ -334,6 +334,7 @@ def test_links_within_harmonist_share_one_look_apart_from_musicbrainz(artist_cli
         f"/artist/{ALICE}": ".lib-tile a[href^='/artist/']",
         f"/album/{RELEASE}": "h1 a[href^='/artist/']",
         "/artists": "details[aria-label='Albums without artist IDs'] a[href^='/album/']",
+        "/tasks": "h3 a[href^='/album/']",
     }
     for url, selector in hosts.items():
         soup = BeautifulSoup(client.get(url).text, "html.parser")

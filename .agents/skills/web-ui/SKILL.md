@@ -80,7 +80,11 @@ sentences and controls can contradict one another when assembled.
   `underline decoration-*` utilities, which is how the artist links on headings
   and tiles came to look like the MusicBrainz credits beneath them. A dotted
   underline on something that isn't a link (an `<abbr>`, a `cursor-help`
-  tooltip) is still fine: it has no hover and doesn't navigate.
+  tooltip) is still fine: it has no hover and doesn't navigate. The rule is for
+  a link that is a name in text, a card's title included. A link that is a
+  whole block (a Library tile, an artist card, a pending-match row) has a cover
+  or a border to say it can be clicked, and underlining the name inside it
+  would be noise.
 - A persisted yes/no decision — *Don't warn me about this* — is a native checkbox,
   muted and placed in the heading of the statement it governs, not a prominent
   button. It shows the state as well as changing it.

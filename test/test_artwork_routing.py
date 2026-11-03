@@ -206,6 +206,18 @@ def _sides(card: str) -> list[tuple[str | None, str]]:
     return out
 
 
+def test_an_artwork_cards_title_is_an_in_app_link(client, library):
+    """#935: the title opens Harmonist's album page, so it is drawn as one."""
+    albums, _digest = library
+    _route(client, A.ADDITION)
+
+    card = _card(_section(client.get("/tasks").text), albums["Bare"])
+    link = re.search(rf'<a href="/album/{re.escape(albums["Bare"].id)}"[^>]*>', card)
+
+    assert link
+    assert "app-link" in re.search(r'class="([^"]*)"', link.group(0)).group(1).split()
+
+
 def test_an_artwork_card_shows_the_change_as_two_images_with_their_facts(client, library):
     albums, digest = library
     _route(client, A.ADDITION)
