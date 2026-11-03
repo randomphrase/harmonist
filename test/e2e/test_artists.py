@@ -221,23 +221,24 @@ def test_library_cards_link_artists_independently_after_paging(
 
 
 @pytest.mark.parametrize("engine,width", [("chromium", 1280), ("webkit", 390)])
-def test_album_heading_links_each_artist_with_muted_dotted_underlines(
+def test_album_heading_links_each_artist_with_muted_solid_underlines(
     browser_factory, artists_server, engine, width
 ):
+    # Solid, not dotted: a dotted underline is a link out to MusicBrainz (#935).
     page = browser_factory(engine).new_page(viewport={"width": width, "height": 900})
     page.goto(artists_server + f"/album/{RELEASE}")
     heading = page.locator("#album-identity h1")
     pw.expect(heading).to_have_text("Unstructured collaboration — Álice feat. Zed")
+    muted = heading.locator(".text-muted").evaluate("e => getComputedStyle(e).color")
     for name, identity in (("Álice", ALICE), ("Zed", BOB)):
         link = heading.get_by_role("link", name=name, exact=True)
         pw.expect(link).to_have_attribute("href", f"/artist/{identity}")
         page.mouse.move(0, 0)
-        pw.expect(link).to_have_css("text-decoration-style", "dotted")
-        assert link.evaluate("e => getComputedStyle(e).color") == heading.locator(
-            ".text-muted"
-        ).evaluate("e => getComputedStyle(e).color")
-        link.hover()
+        pw.expect(link).to_have_css("text-decoration-line", "underline")
         pw.expect(link).to_have_css("text-decoration-style", "solid")
+        pw.expect(link).to_have_css("color", muted)
+        link.hover()
+        pw.expect(link).not_to_have_css("color", muted)
         link.focus()
         link.press("Enter")
         page.wait_for_url(f"**/artist/{identity}")
