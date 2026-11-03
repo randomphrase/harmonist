@@ -313,16 +313,6 @@
                 </td>
                 {% endfor %}
             </tr>
-            {% if t.pregap_note %}
-            <tr class="text-xs text-muted" data-pregap-row>
-                {% for col in tracklist.columns %}
-                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}">
-                    {% if col.label == 'Title' %}<span data-pregap-note>{{ t.pregap_note }}</span>
-                    {% elif col.label == 'Length' %}{{ t.pregap_length or '' }}{% endif %}
-                </td>
-                {% endfor %}
-            </tr>
-            {% endif %}
 
             {% elif t.state == 'unreadable' %}
             {# #112's third state. NOT "missing" and emphatically not "untagged":
@@ -399,6 +389,22 @@
                     {%- if f.agreement in ('differs', 'only_mb', 'unreadable') and f.mb and not f.advisory -%}
                     {%- with runs = f.mb_runs, value = f.mb, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith -%}
                     {%- endif -%}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endif %}
+
+            {% if t.pregap_note %}
+            {# The file carries an accepted pregap as well as this track (#953).
+               After the MusicBrainz line rather than before it: a row's values
+               and the line stating what would replace them are read as one
+               vertical pair, and a note between them split it. Its own row, so
+               the pregap's length sits in the Length column. #}
+            <tr class="text-xs text-muted" data-pregap-row>
+                {% for col in tracklist.columns %}
+                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}">
+                    {% if col.label == 'Title' %}<span data-pregap-note>{{ t.pregap_note }}</span>
+                    {% elif col.label == 'Length' %}{{ t.pregap_length or '' }}{% endif %}
                 </td>
                 {% endfor %}
             </tr>

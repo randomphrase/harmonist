@@ -25,6 +25,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A track's row and its MusicBrainz line stay together in the track list**
+  when the file includes a pregap: "Includes pregap" now follows the line
+  instead of coming between them (#953).
 - **A per-track tag that doesn't fit the track list's columns is listed under
   every track**, not only where a re-tag changes it, so one that varies by track
   and matches MusicBrainz no longer disappears from the page (#951).

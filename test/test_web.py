@@ -7692,6 +7692,44 @@ def test_a_credit_is_quiet_beside_the_title_until_it_differs(client):
     assert re.search(r'<td class="[^"]*track-diff__lead[^"]*"', html), "the title leads"
 
 
+def test_the_pregap_note_leaves_a_row_beside_its_musicbrainz_line(client):
+    """#953. A file that includes an accepted pregap says so on a row of its
+    own, and that row was drawn straight under the track's, splitting the
+    track's values from the MusicBrainz line stating what would replace them.
+    The MusicBrainz line comes next; the note follows it, then the credits."""
+    from bs4 import BeautifulSoup
+
+    from harmonist.compare import tracklist
+    from test.test_compare import _file, _mb_track
+
+    files = [
+        _file(1, "Nightcall", length=240_000, mb_release_track_id="first", works=["Nightcall"]),
+        _file(2, "Odd Look", mb_release_track_id="second", works=["Odd Look"]),
+    ]
+    mb = [
+        _mb_track(0, "Prelude", length=60_000, mb_release_track_id="gap"),
+        _mb_track(1, "Nightcall (new title)", mb_release_track_id="first", works=["Nightcall"]),
+        _mb_track(2, "Odd Look", mb_release_track_id="second", works=["Odd Look"]),
+    ]
+    tl = tracklist(files, mb, included_pregaps={"gap": "first"})
+    html = client.app.state.templates.env.get_template("partials/_track_list.html").render(
+        tracklist=tl, mb_names={}, mb_credits={}, album={"id": "a1"}
+    )
+
+    def kind(tr: Any) -> str:
+        classes = tr.get_attribute_list("class")
+        if "track-diff__mb" in classes:
+            return "mb"
+        if "track-diff__credits" in classes:
+            return "credits"
+        return "pregap" if tr.has_attr("data-pregap-row") else "row"
+
+    first = BeautifulSoup(html, "html.parser").select_one("tbody.track-diff__track")
+    assert first is not None
+    kinds = [kind(tr) for tr in first.find_all("tr", recursive=False)]
+    assert kinds == ["row", "mb", "pregap", "credits"]
+
+
 def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):
     """#328, and web-ui rule 4: rare and hard to undo belongs out of the path.
 
