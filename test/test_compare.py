@@ -1537,9 +1537,10 @@ def test_the_table_stops_at_the_cap_and_the_rest_goes_under_its_own_track():
 
     What overflows is deliberately NOT collapsed: the collapsed set claims the
     field is the same on every track, which of a field that earned a column
-    would be false. Since #863 it is stated on the row of each track it changes
-    on, where it used to go to a box in another section that listed it by track
-    number. A track it does not change on carries nothing for it.
+    would be false. Since #863 it is stated under each track, where it used to
+    go to a box in another section that listed it by track number. Since #951
+    that is every track that has it, matching or not, as a track's credits are
+    listed.
     """
     tl = tracklist(
         [
@@ -1569,16 +1570,61 @@ def test_the_table_stops_at_the_cap_and_the_rest_goes_under_its_own_track():
     earned = [h for h in _headings(tl) if h not in ("#", "Title", "Length")]
     assert earned == ["Artist", "Artist sort", "Artists"]  # priority order
     assert len(earned) == MAX_EARNED_COLUMNS
-    # `disc_subtitle` and `media` earned and overflowed, and each change is on
-    # the row it belongs to, in column order.
+    # `disc_subtitle` and `media` earned and overflowed, and each is on the row
+    # it belongs to, in column order: the first track's media agrees, and is
+    # listed all the same.
     assert not {c.label for c in tl.collapsed} & {"Disc subtitle", "Media"}
     assert [[(f.label, f.disk, f.mb) for f in t.overflow] for t in tl.tracks] == [
-        [("Disc subtitle", "Side A", None)],
+        [("Disc subtitle", "Side A", None), ("Media", "CD", "CD")],
         [("Disc subtitle", "Side B", None), ("Media", "DVD", "CD")],
     ]
+    assert [f.differs for f in tl.tracks[0].overflow] == [True, False]
     # With them, every tag Harmonist writes has a place on the page: the box that
     # caught whatever had none went in #863, so this is what stands in for it.
     assert {o.value for o in Owned} <= PANEL_FIELDS | tl.shown_fields
+
+
+def _over_the_cap(view=tracklist):
+    """Four tags whose tracks disagree, every one agreeing with MusicBrainz:
+    Artist, Artist sort and Disc subtitle take the three columns, and Media,
+    CD on one track and Vinyl on the other, is over the cap."""
+    specs = ((1, "Nightcall", "A", "CD"), (2, "Rampage", "B", "Vinyl"))
+    tags = [
+        {"artist": a, "artist_sort": f"{a},", "disc_subtitle": f"Side {a}", "media": m}
+        for _, _, a, m in specs
+    ]
+    files = [_file(n, t, **f) for (n, t, *_), f in zip(specs, tags)]
+    if view is disk_tracklist:
+        return disk_tracklist(files)
+    return tracklist(files, [_mb_track(n, t, **f) for (n, t, *_), f in zip(specs, tags)])
+
+
+def test_a_tag_over_the_cap_is_listed_on_every_track_that_has_it():
+    """#951. A tag over the column cap was stated only on the tracks it changes
+    on, so one whose tracks disagree and all agree with MusicBrainz was stated
+    nowhere: no column, no line, and not the band, which takes only a tag that
+    reads the same on every track. It is listed under every track that has it,
+    as a track's credits are, and claims no change where there is none."""
+    tl = _over_the_cap()
+
+    assert tl.overflowed == {"media"}
+    assert [[(f.label, f.disk, f.mb) for f in t.overflow] for t in tl.tracks] == [
+        [("Media", "CD", "CD")],
+        [("Media", "Vinyl", "Vinyl")],
+    ]
+    assert not any(t.differs for t in tl.tracks)
+
+
+def test_the_disk_only_view_lists_a_tag_over_the_cap_as_the_files_have_it():
+    """#951, for a release MusicBrainz deleted (#228): compared against nothing,
+    so listed as the files carry it, and never a change."""
+    tl = _over_the_cap(disk_tracklist)
+
+    assert [[(f.label, f.disk, f.mb) for f in t.overflow] for t in tl.tracks] == [
+        [("Media", "CD", None)],
+        [("Media", "Vinyl", None)],
+    ]
+    assert not any(f.differs for t in tl.tracks for f in t.overflow)
 
 
 def test_the_artist_column_accounts_for_artists_rather_than_repeating_it():

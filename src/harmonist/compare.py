@@ -1081,10 +1081,10 @@ class ComparedTrack:
     #: Derived from the reviewed release; no tags or sidecar values are changed.
     pregap_note: str | None = None
     pregap_length: str | None = None
-    #: This track's changes to the tags that earned a column and lost to
-    #: `MAX_EARNED_COLUMNS` (#863), in column order: only the ones that change
-    #: here, each labelled. A line under the row rather than cells in it, since
-    #: there are no columns for them to sit in.
+    #: This track's lines for the tags that earned a column and lost to
+    #: `MAX_EARNED_COLUMNS` (#863), in column order: each one the track has,
+    #: matching or not, as its credits are listed (#951). A line under the row
+    #: rather than cells in it, since there are no columns for them to sit in.
     overflow: tuple[FieldComparison, ...] = ()
     #: This track's credits, listed under it (#948): a line for each tag in
     #: `_LISTED` the track has on either side, matching or not, and a line for a
@@ -2682,6 +2682,7 @@ def tracklist(
                     file_name=name,
                     disc=disc,
                     video=True,
+                    overflow=_overflow(tags, None, choice.overflowed),
                     credits=_credit_lines(tags, None, choice),
                 )
             )
@@ -2724,6 +2725,7 @@ def tracklist(
                 # separately ripped disc 9 was drawn under disc 1's heading.
                 disc=tags.disc_num or 1,
                 video=tags.video,
+                overflow=() if tags.unreadable else _overflow(tags, None, choice.overflowed),
                 credits=() if tags.unreadable else _credit_lines(tags, None, choice),
             )
         )
@@ -2785,8 +2787,8 @@ def disk_tracklist(
     # earned only by the tracks disagreeing with each other or with the album's
     # own values. That is the right reading of this view: it shows what the files
     # say, and what they say that is inconsistent is the only finding available.
-    # What overflows here earned by the tracks disagreeing alone, and with no
-    # MusicBrainz side it changes on no track, so no row has a line to draw.
+    # What overflows here earned by the tracks disagreeing alone, which is that
+    # finding, so each row lists its value under it as the files have it (#951).
     choice = _choose_columns(
         [(tags, None) for _, tags in tracks if not tags.unreadable], multi_disc
     )
@@ -2808,6 +2810,7 @@ def disk_tracklist(
             # the images in the user's own files are untouched, and this view
             # exists precisely to show what those files say.
             art=art.get(name),
+            overflow=() if tags.unreadable else _overflow(tags, None, choice.overflowed),
             credits=() if tags.unreadable else _credit_lines(tags, None, choice),
         )
         for name, tags in tracks
@@ -2816,6 +2819,7 @@ def disk_tracklist(
         tracks=tuple(rows),
         columns=_columns(kept, multi_disc, choice.absorbed),
         collapsed=tuple(choice.collapsed),
+        overflowed=frozenset(c.owned.value for c in choice.overflowed),
         credited=choice.credited,
     )
     return _with_formats(view, tracks)
@@ -3090,28 +3094,41 @@ def _columns(
 MB_LENGTH_COLUMN = TrackColumn("MusicBrainz", numeric=True, advisory=True)
 
 
-def _overflow(
-    tags: TrackTags, mb: MBTrack, overflowed: Sequence[_Candidate]
-) -> tuple[FieldComparison, ...]:
-    """One track's changes to the tags over the column cap (#863).
+def _line(c: _Candidate, tags: TrackTags, mb: MBTrack | None) -> FieldComparison:
+    """One tag of one track, compared, for a line under the track (#863, #948).
 
-    Only the ones that change on this track: the line under the row says what a
-    re-tag does to it, and a tag it leaves alone has nothing to say there.
+    `comparable` is False where MusicBrainz has no counterpart for the row — a
+    video (#226), an extra file, the disk-only view (#228) — so the line states
+    the file's value and claims no change, as `_track_fields` does for the row.
     """
-    compared = (
-        replace(
-            compare_value(
-                c.label,
-                kind=c.kind,
-                disk=_disk_value(tags, c.owned.value),
-                mb=_as_display(getattr(mb.tags, c.owned.value)),
-            ),
-            entity=c.entity,
-            credit=c.credit,
-        )
-        for c in overflowed
+    key = c.owned.value
+    return replace(
+        compare_value(
+            c.label,
+            kind=c.kind,
+            disk=_disk_value(tags, key),
+            mb=_as_display(getattr(mb.tags, key)) if mb else None,
+        ),
+        entity=c.entity,
+        credit=c.credit,
+        comparable=mb is not None,
     )
-    return tuple(f for f in compared if f.differs)
+
+
+def _overflow(
+    tags: TrackTags, mb: MBTrack | None, overflowed: Sequence[_Candidate]
+) -> tuple[FieldComparison, ...]:
+    """One track's lines for the tags over the column cap (#863).
+
+    Every one the track has on either side, matching or not, as its credits are
+    listed (#951). This used to be only the ones that change, and a tag earns
+    its column by saying something about WHICH track, most often by the tracks
+    disagreeing; one whose tracks disagree and each agree with MusicBrainz was
+    then stated nowhere, since the band takes only a tag that reads the same on
+    every track. None for a tag neither side has, a line saying nothing.
+    """
+    lines = (_line(c, tags, mb) for c in overflowed)
+    return tuple(f for f in lines if f.disk is not None or f.mb is not None)
 
 
 def _credit_lines(
@@ -3128,29 +3145,18 @@ def _credit_lines(
     change, the credit's line already draws the new names, linked to the new
     ids with the new sort names on them.
 
-    `mb=None` for a row MusicBrainz has no counterpart for — a video (#226), an
-    extra file, the disk-only view (#228) — which lists the file's credits as
-    they are and claims no change, as `_track_fields` does for the row itself.
+    `mb=None` for a row MusicBrainz has no counterpart for: see `_line`.
     """
-
-    def theirs(key: str) -> str | None:
-        return _as_display(getattr(mb.tags, key)) if mb else None
-
     riders = {c.owned for c in choice.riders}
     lines: list[FieldComparison] = []
     for c in sorted((*choice.listed, *choice.riders), key=lambda c: _CANDIDATES.index(c)):
-        key = c.owned.value
-        line = replace(
-            compare_value(c.label, kind=c.kind, disk=_disk_value(tags, key), mb=theirs(key)),
-            entity=c.entity,
-            credit=c.credit,
-            comparable=mb is not None,
-        )
+        line = _line(c, tags, mb)
         if line.disk is None and line.mb is None:
             continue
         if c.owned in riders:
             credit = _SUBSUMED_BY[c.owned].value
-            if not line.differs or _disk_value(tags, credit) != theirs(credit):
+            theirs = _as_display(getattr(mb.tags, credit)) if mb else None
+            if not line.differs or _disk_value(tags, credit) != theirs:
                 continue
         lines.append(line)
     return tuple(lines)

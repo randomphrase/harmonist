@@ -25,6 +25,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A per-track tag that doesn't fit the track list's columns is listed under
+  every track**, not only where a re-tag changes it, so one that varies by track
+  and matches MusicBrainz no longer disappears from the page (#951).
 - **The artwork picker offers a new archive front as soon as an artwork update
   is reported** (#927).
 - **Embiggened, the artwork picker's two images are square and as large as the
