@@ -254,22 +254,9 @@ def page_vars(
         nfo = None
     if artwork == "missing" and not complete_artwork:
         artwork = None
-    badges: dict[str, tuple[str, ...]] = {}
-    for artist in all_artists:
-        if len(artist.nfo_paths) > 1:
-            badges[artist.key] = ("NFO conflict",)
-        elif complete_inventory:
-            profile = inventory.for_artist(artist.mbid).profile if inventory else None
-            badges[artist.key] = (
-                *(("Missing NFO",) if not artist.nfo_paths else ()),
-                *(
-                    ("Missing artwork",)
-                    if artist.artwork_path is None and not (profile and profile.image_error)
-                    else ()
-                ),
-            )
-        else:
-            badges[artist.key] = ()
+    badges = {
+        artist.key: ("NFO conflict",) if len(artist.nfo_paths) > 1 else () for artist in all_artists
+    }
     query = (q or "").strip()[:100]
     searched = [a for a in all_artists if alphabetical(query) in alphabetical(a.name)]
 

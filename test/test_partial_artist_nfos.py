@@ -134,7 +134,7 @@ def test_picture_failure_preserves_biography_and_does_not_imply_absence(artist_c
         view = client.get("/artists?artwork=missing").context["artists_view"]
         assert view["artwork"] is None
         assert view["badges"][ALICE] == ()
-        assert view["badges"][BOB] == ("Missing NFO", "Missing artwork")
+        assert view["badges"][BOB] == ()
     assert client.get(f"/artist/{ALICE}/image").content == image.read_bytes()
 
 
