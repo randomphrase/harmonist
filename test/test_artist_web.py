@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
-from harmonist import formats, mb_lookup, sidecar
+from harmonist import formats, live_counts, mb_lookup, scanner, sidecar
 from harmonist.config import Config, PathsConfig
 from harmonist.formats.m4a import ATOM_ALBUM_ARTISTS, ATOM_MB_ALBUM_ARTIST_ID
 from harmonist.formats.types import TagSet
@@ -352,6 +352,23 @@ def test_artists_is_a_standalone_page_with_its_own_filters(artist_client):
     assert soup.select_one('[aria-label="Library filters"]') is None
     link = BeautifulSoup(client.get("/").text, "html.parser").select_one('a[href="/artists"]')
     assert link is not None and "Artists" in link.get_text()
+
+
+@pytest.mark.parametrize("path", ["/artists", "/?tab=activity", "/?tab=inbox"])
+def test_nav_counts_arrive_with_the_page_as_the_poll_would_write_them(artist_client, path):
+    # Moving to or from /artists is a whole page load, so a badge left for the
+    # first /status poll to fill showed empty, then jumped the tabs over (#962).
+    client, cfg, _network = artist_client
+    live_counts.reset_from(scanner.scan(cfg.paths.music_dir))  # as a scan publishes them
+    counts = client.get("/status").json()["counts"]
+    assert (counts["inbox"], counts["library"], counts["artists"]) == (1, 2, 2)
+    soup = BeautifulSoup(client.get(path).text, "html.parser")
+    badges = ("inbox", "library", "artists")
+    assert {key: soup.select_one(f"#{key}-count").get_text() for key in badges} == {
+        "inbox": "1",
+        "library": "2",
+        "artists": "2",
+    }
 
 
 def test_artist_filters_combine_and_new_means_any_recent_album(artist_client):

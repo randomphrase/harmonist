@@ -4630,7 +4630,7 @@ def _register_routes(app: FastAPI) -> None:
             # carries them. Unrecognised tab → None, and the script falls back to
             # the remembered one, so a mangled link still lands somewhere sane.
             initial_tab=tab if tab in _INDEX_TABS else None,
-            artist_count=artists.library_count(albums),
+            nav_counts=_nav_counts(request, albums),
             # The Library grid renders inline, so `?page=` / `?limit=` / `?filter=` /
             # `?q=` are honoured by the HTML itself rather than by a follow-up fetch
             # that would have to be told which page it's on.
@@ -4658,9 +4658,10 @@ def _register_routes(app: FastAPI) -> None:
         view: str | None = None,
         remember_view: bool = False,
     ) -> Response:
+        albums = _albums(request)
         vars_ = _artists_view(
             request,
-            _albums(request),
+            albums,
             artist_page,
             artist_q,
             nfo=nfo,
@@ -4686,7 +4687,7 @@ def _register_routes(app: FastAPI) -> None:
                 _ctx(
                     request,
                     artists_view=vars_,
-                    artist_count=vars_["count"],
+                    nav_counts=_nav_counts(request, albums),
                     standalone_artists=True,
                 ),
                 headers={**headers, "Vary": "HX-Target, HX-History-Restore-Request, Cookie"},
@@ -5274,16 +5275,14 @@ def _register_routes(app: FastAPI) -> None:
     def scan_status(request: Request) -> Response:
         return JSONResponse(request.app.state.scan_runner.status())
 
-    @app.get("/status")
-    def app_status(request: Request) -> Response:
-        """Consolidated status — one poll instead of three. The status bar
-        polls only this; the individual endpoints above remain for tests/curl."""
-        state = request.app.state
+    def _nav_counts(request: Request, albums: list[Album]) -> dict[str, int]:
+        """The counts the status poll reports, and the navigation's badges draw
+        with the page: a badge left for the first poll to fill shows empty on
+        every page load (#962)."""
         counts = live_counts.to_status()
         # The Inbox also holds the updates routed to it (#273). Derived on each
         # poll from the snapshot's flags, which move without a state transition
         # for live_counts to see.
-        albums = _albums(request)
         counts["artists"] = artists.library_count(albums)
         counts["inbox"] += len(_review_updates(request, albums))
         # And the artwork updates routed to it (#852), each its own card: an
@@ -5296,6 +5295,13 @@ def _register_routes(app: FastAPI) -> None:
             if album.id in joined:
                 counts["inbox"] -= 1
                 counts[album.state.value] -= 1
+        return counts
+
+    @app.get("/status")
+    def app_status(request: Request) -> Response:
+        """Consolidated status — one poll instead of three. The status bar
+        polls only this; the individual endpoints above remain for tests/curl."""
+        state = request.app.state
         return JSONResponse(
             {
                 "sync": state.sync_runner.status(),
@@ -5303,7 +5309,7 @@ def _register_routes(app: FastAPI) -> None:
                 "scan": state.scan_runner.status(),
                 # Single source of truth for the inbox/library counts — kept live
                 # by transitions (live_counts.move) and reset from each scan.
-                "counts": counts,
+                "counts": _nav_counts(request, _albums(request)),
                 # Potential downloads awaiting a decision (in-memory, from the last
                 # link-only sync). They need attention, so they count toward inbox.
                 "pending": pending_downloads.count(),
