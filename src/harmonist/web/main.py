@@ -3221,6 +3221,39 @@ def _artist_for(request: Request, key: str) -> artists.Artist:
     return found
 
 
+def _artist_cached_disambiguation(artist: artists.Artist) -> tuple[str, datetime, str] | None:
+    """Use only unambiguous observations of this artist in stored releases."""
+    observations: dict[str, tuple[datetime, str]] = {}
+    seen: set[str] = set()
+    for album in artist.albums:
+        release_id = album.sidecar.mb_release_id if album.sidecar else None
+        if not release_id or release_id in seen:
+            continue
+        seen.add(release_id)
+        snapshot = mb_cache.stored_release_snapshot(release_id)
+        if snapshot is None:
+            continue
+        credits = snapshot.payload.get("artist-credit")
+        if not isinstance(credits, list):
+            continue
+        for credit in credits:
+            if not isinstance(credit, dict):
+                continue
+            entry = credit.get("artist")
+            if not isinstance(entry, dict) or entry.get("id") != artist.mbid:
+                continue
+            value = entry.get("disambiguation")
+            if not isinstance(value, str) or not value.strip():
+                continue
+            value = value.strip()
+            if value not in observations or snapshot.fetched_at > observations[value][0]:
+                observations[value] = (snapshot.fetched_at, album.id)
+    if len(observations) != 1:
+        return None
+    value, (read_at, album_id) = next(iter(observations.items()))
+    return value, read_at, album_id
+
+
 def _nfo_inventory(request: Request) -> artist_nfo.Inventory:
     runner: ScanRunner = request.app.state.scan_runner
     if runner.is_engaged():
@@ -4724,6 +4757,14 @@ def _register_routes(app: FastAPI) -> None:
         result = inventory.for_artist(artist.mbid)
         image = inventory.image_for(artist.mbid)
         artist = replace(artist, nfo_paths=result.candidates, artwork_path=image)
+        nfo_disambiguation = (
+            next((value for label, value in result.profile.facts if label == "Disambiguation"), "")
+            if result.profile
+            else ""
+        )
+        cached_disambiguation = (
+            _artist_cached_disambiguation(artist) if not nfo_disambiguation else None
+        )
         grid = _library_page_vars(list(artist.albums), page, _library_limit(request, None))
         layout = _artists_layout(request, artist_view)
         # The same tiles retain the return context for this artist and album page.
@@ -4761,6 +4802,8 @@ def _register_routes(app: FastAPI) -> None:
                 **grid,
                 artist=artist,
                 nfo=result,
+                nfo_disambiguation=nfo_disambiguation,
+                cached_disambiguation=cached_disambiguation,
                 artist_image=image is not None,
                 artist_image_url=inventory.image_url(artist.mbid),
                 artist_back_url=artists.index_url(

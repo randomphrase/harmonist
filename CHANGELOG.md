@@ -8,7 +8,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
-- **Browse artists on their own page**, with List and Cards views, search, artist-specific filters and links from album credits (#813).
+- **Browse artists on their own page**, with List and Cards views, search, artist-specific filters, links from album credits and disambiguation where available (#813, #938).
 - **Read local artist NFOs and pictures throughout the library**, with automatic updates. Conflicting NFOs are shown on the artist's page, and read errors are recorded in the log (#813, #939).
 
 ### Changed

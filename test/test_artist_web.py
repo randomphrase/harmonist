@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
-from harmonist import formats, live_counts, mb_lookup, scanner, sidecar
+from harmonist import activity_store, formats, live_counts, mb_cache, mb_lookup, scanner, sidecar
 from harmonist.config import Config, PathsConfig
 from harmonist.formats.m4a import ATOM_ALBUM_ARTISTS, ATOM_MB_ALBUM_ARTIST_ID
 from harmonist.formats.types import TagSet
@@ -105,6 +105,100 @@ def test_list_and_artist_page_are_offline_and_share_the_album_tiles(artist_clien
     assert {a.id for a in bob.context["rows"]} == {RELEASE}
     assert client.get("/artist/unknown").status_code == 404
     assert client.get(f"/artist/{BOB}/image").status_code == 404
+    network.assert_not_called()
+
+
+def test_artist_page_shows_nfo_facts_and_title(artist_client):
+    client, cfg, network = artist_client
+    nfo = cfg.paths.music_dir / "ArtistInfo" / "Different directory name" / "artist.nfo"
+    nfo.write_text(
+        nfo.read_text().replace(
+            "</artist>",
+            "<disambiguation>singer</disambiguation><genre>Rock</genre>"
+            "<sortname>Alice NFO</sortname></artist>",
+        )
+    )
+    soup = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
+    assert soup.title is not None and "Alice" in soup.title.get_text()
+    panel = soup.select_one("#artist-identity")
+    assert panel is not None
+    assert "singer" in panel.get_text()
+    assert "Rock" in panel.get_text()
+    assert "Alice NFO" in panel.get_text()
+    assert "artist.nfo" in panel.get_text()
+    assert panel.select_one(f'a[href="https://musicbrainz.org/artist/{ALICE}"]') is not None
+    network.assert_not_called()
+
+
+def test_artist_disambiguation_uses_matching_cached_credit_without_network(
+    artist_client, monkeypatch
+):
+    client, _cfg, network = artist_client
+    snapshot = activity_store.CachedRelease(
+        {
+            "artist-credit": [
+                {"artist": {"id": BOB, "disambiguation": "wrong artist"}},
+                " & ",
+                {"artist": {"id": ALICE, "disambiguation": "British singer"}},
+            ]
+        },
+        datetime(2020, 1, 1, tzinfo=UTC),
+    )
+    monkeypatch.setattr(
+        mb_cache, "stored_release_snapshot", lambda mbid: snapshot if mbid == RELEASE else None
+    )
+    soup = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
+    panel = soup.select_one("#artist-identity")
+    assert panel is not None
+    assert "British singer" in panel.get_text()
+    assert "wrong artist" not in panel.get_text()
+    assert panel.select_one(f'a[href^="/album/{RELEASE}"]') is not None
+    network.assert_not_called()
+
+
+def test_artist_disambiguation_prefers_nfo_to_cached_release(artist_client, monkeypatch):
+    client, cfg, network = artist_client
+    nfo = cfg.paths.music_dir / "ArtistInfo" / "Different directory name" / "artist.nfo"
+    nfo.write_text(
+        nfo.read_text().replace(
+            "</artist>", "<disambiguation>local singer</disambiguation></artist>"
+        )
+    )
+    cached = Mock(side_effect=AssertionError("The NFO already provides disambiguation"))
+    monkeypatch.setattr(mb_cache, "stored_release_snapshot", cached)
+    soup = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
+    panel = soup.select_one("#artist-identity")
+    assert panel is not None and "local singer" in panel.get_text()
+    assert len(soup.find_all(string="local singer")) == 1
+    cached.assert_not_called()
+    network.assert_not_called()
+
+
+def test_artist_disambiguation_requires_consistent_matching_cached_credits(
+    artist_client, monkeypatch
+):
+    client, _cfg, network = artist_client
+    read_at = datetime(2020, 1, 1, tzinfo=UTC)
+    snapshots = {
+        RELEASE: activity_store.CachedRelease(
+            {"artist-credit": [{"artist": {"id": ALICE, "disambiguation": "singer"}}]}, read_at
+        ),
+        SOLO: activity_store.CachedRelease(
+            {"artist-credit": [{"artist": {"id": ALICE, "disambiguation": "producer"}}]}, read_at
+        ),
+    }
+    monkeypatch.setattr(mb_cache, "stored_release_snapshot", snapshots.get)
+    soup = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
+    panel = soup.select_one("#artist-identity")
+    assert panel is not None
+    assert "singer" not in panel.get_text() and "producer" not in panel.get_text()
+    snapshots[SOLO] = activity_store.CachedRelease(
+        {"artist-credit": [{"artist": {"id": BOB, "disambiguation": "producer"}}]}, read_at
+    )
+    panel = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser").select_one(
+        "#artist-identity"
+    )
+    assert panel is not None and "singer" in panel.get_text()
     network.assert_not_called()
 
 
