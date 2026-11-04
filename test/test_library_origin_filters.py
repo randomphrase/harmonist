@@ -80,7 +80,7 @@ def test_origin_filter_detects_sources_without_external_requests(tmp_path, monke
     for slug, names in [
         ("cd", ["cd"]),
         ("bandcamp", ["download"]),
-        ("unknown", ["unknown", "conflict"]),
+        ("unknown", ["conflict", "unknown"]),  # untagged ties go by folder (#963)
     ]:
         view = _library_page_vars(albums, 1, 20, filter_=f"origin-{slug}")
         assert [a.path.name for a in view["rows"]] == names

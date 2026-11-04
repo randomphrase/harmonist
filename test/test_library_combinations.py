@@ -58,6 +58,22 @@ def test_combinations_and_contextual_counts(tmp_path):
     assert view["total_matched"] == 3
 
 
+@pytest.mark.parametrize("scan_order", [(0, 1, 2, 3), (3, 1, 2, 0)])
+def test_library_order_ties_follow_folder_path_not_scan_order(tmp_path, scan_order):
+    """Albums tagged at the same moment, or never, are ordered by folder path
+    whatever order the scan found them in, which is the filesystem's (#963)."""
+    when = datetime(2026, 1, 1, tzinfo=UTC)
+    base = Album("x", tmp_path, "Record", "Artist", 1, AlbumState.COMPLETE)
+    albums = [
+        replace(base, id="newest", path=tmp_path / "Z", sidecar=Sidecar(tagged_at=when)),
+        replace(base, id="b", path=tmp_path / "B", sidecar=Sidecar(tagged_at=when - timedelta(1))),
+        replace(base, id="a", path=tmp_path / "A", sidecar=Sidecar(tagged_at=when - timedelta(1))),
+        replace(base, id="untagged", path=tmp_path / "0", sidecar=None),
+    ]
+    view = _library_page_vars([albums[i] for i in scan_order], 1, 20)
+    assert [a.id for a in view["rows"]] == ["newest", "a", "b", "untagged"]
+
+
 def test_selection_normalization_and_exclusive_facets():
     assert _library_filter("no-artwork,origin-cd,no-artwork,origin-qobuz,invalid") == (
         "origin-qobuz,no-artwork"

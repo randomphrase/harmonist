@@ -44,6 +44,8 @@ versions follow [semantic versioning](https://semver.org).
 - **An album the archive has no images for looks at its other releases
   itself**, and the picker says when none of them has any either, rather than
   disappearing (#946).
+- **Albums tagged at the same time keep their place in the Library**, ordered
+  by folder, rather than in whatever order the filesystem lists them (#963).
 
 ## [1.32.0] - 2026-11-01
 

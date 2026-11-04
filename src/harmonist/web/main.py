@@ -1889,8 +1889,12 @@ def _library_page_vars(
     same thing, with no client-side state to fall out of step.
     """
     done = [a for a in albums if a.state in _TERMINAL_STATES]
-    # Newest tagged first; albums missing tagged_at sink to the bottom.
+    # Newest tagged first; albums missing tagged_at sink to the bottom. Ties go by
+    # folder path, sorted first so the stable sort below keeps it: left to the scan,
+    # they would follow the filesystem's directory order, which differs between
+    # filesystems and would move an album between pages (#963).
     _floor = datetime.min.replace(tzinfo=UTC)
+    done.sort(key=lambda a: a.path)
     done.sort(
         key=lambda a: a.sidecar.tagged_at if a.sidecar and a.sidecar.tagged_at else _floor,
         reverse=True,
