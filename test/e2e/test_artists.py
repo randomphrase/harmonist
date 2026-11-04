@@ -27,6 +27,26 @@ def artists_server(artists_root):
 
 
 @pytest.mark.parametrize("engine,width", [("chromium", 1280), ("webkit", 390)])
+def test_optional_artist_metadata_has_no_warning_badges(
+    browser_factory, artists_server, engine, width
+):
+    page = browser_factory(engine).new_page(viewport={"width": width, "height": 900})
+    try:
+        for view in ("list", "cards"):
+            page.goto(artists_server + f"/artists?view={view}&artist_q=Zed")
+            card = page.locator(".artist-card")
+            pw.expect(card).to_have_count(1)
+            pw.expect(card.locator(".album-warning__badge")).to_have_count(0)
+            page.get_by_role("button", name="NFO filters", exact=True).click()
+            pw.expect(page.get_by_role("link", name=re.compile(r"Without NFO"))).to_be_visible()
+            page.get_by_role("button", name="NFO filters", exact=True).click()
+            page.get_by_role("button", name="Artwork filters", exact=True).click()
+            pw.expect(page.get_by_role("link", name=re.compile(r"Missing artwork"))).to_be_visible()
+    finally:
+        page.context.close()
+
+
+@pytest.mark.parametrize("engine,width", [("chromium", 1280), ("webkit", 390)])
 def test_artist_card_geometry_keeps_long_names_and_badges_within_the_tile(
     browser_factory, artists_server, engine, width
 ):

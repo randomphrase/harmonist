@@ -147,14 +147,25 @@ def test_artist_view_survives_filters_and_artist_album_navigation(artist_client)
     network.assert_not_called()
 
 
-def test_artist_badges_distinguish_conflicts_missing_and_unavailable_inventory(
-    artist_client, monkeypatch
-):
+@pytest.mark.parametrize("view", ["list", "cards"])
+def test_optional_artist_metadata_does_not_show_warning_badges(artist_client, view):
+    client, _cfg, network = artist_client
+    response = client.get(f"/artists?view={view}")
+    soup = BeautifulSoup(response.text, "html.parser")
+    for artist_id in (ALICE, BOB):
+        card = soup.select_one(f'a.artist-card[href^="/artist/{artist_id}"]')
+        assert card is not None
+        assert not card.select(".album-warning__badge")
+    assert soup.select_one('[aria-label="Artist filters"]') is not None
+    network.assert_not_called()
+
+
+def test_artist_badges_distinguish_conflicts_and_unavailable_inventory(artist_client, monkeypatch):
     from harmonist import artist_nfo
 
     client, cfg, network = artist_client
     normal = client.get("/artists").context["artists_view"]
-    assert normal["badges"][BOB] == ("Missing NFO", "Missing artwork")
+    assert normal["badges"][BOB] == ()
     nfo = cfg.paths.music_dir / "Duplicate" / "artist.nfo"
     nfo.parent.mkdir()
     nfo.write_text(f"<artist><musicbrainzartistid>{ALICE}</musicbrainzartistid></artist>")
