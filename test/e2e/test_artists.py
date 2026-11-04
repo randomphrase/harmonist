@@ -47,25 +47,6 @@ def test_optional_artist_metadata_has_no_warning_badges(
 
 
 @pytest.mark.parametrize("engine,width", [("chromium", 1280), ("webkit", 390)])
-def test_artist_identity_panel_and_title(browser_factory, artists_server, engine, width):
-    page = browser_factory(engine).new_page(viewport={"width": width, "height": 900})
-    try:
-        page.goto(artists_server + f"/artist/{ALICE}")
-        panel = page.locator("#artist-identity")
-        pw.expect(page).to_have_title("Álice — Harmonist")
-        pw.expect(panel.get_by_role("heading", name="Álice")).to_be_visible()
-        pw.expect(panel.get_by_role("link", name=re.compile("Álice"))).to_have_attribute(
-            "href", f"https://musicbrainz.org/artist/{ALICE}"
-        )
-        pw.expect(panel).to_contain_text("artist.nfo")
-        pw.expect(panel.get_by_role("list", name="Artist genres")).to_contain_text("Rock")
-        pw.expect(panel.locator("img")).to_be_visible()
-        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    finally:
-        page.context.close()
-
-
-@pytest.mark.parametrize("engine,width", [("chromium", 1280), ("webkit", 390)])
 def test_artist_card_geometry_keeps_long_names_and_badges_within_the_tile(
     browser_factory, artists_server, engine, width
 ):
@@ -518,3 +499,22 @@ def test_declared_thumb_and_profile_fallbacks_refresh_without_an_nfo_edit(
     pw.expect(picture).to_have_count(0, timeout=20000)
     assert (nfo.read_bytes(), nfo.stat().st_mtime_ns) == before
     page.context.close()
+
+
+@pytest.mark.parametrize("engine,width", [("chromium", 1280), ("webkit", 390)])
+def test_artist_identity_panel_and_title(browser_factory, artists_server, engine, width):
+    page = browser_factory(engine).new_page(viewport={"width": width, "height": 900})
+    try:
+        page.goto(artists_server + f"/artist/{ALICE}")
+        panel = page.locator("#artist-identity")
+        pw.expect(page).to_have_title("Álice — Harmonist")
+        pw.expect(panel.get_by_role("heading", name="Álice")).to_be_visible()
+        pw.expect(panel.get_by_role("link", name=re.compile("Álice"))).to_have_attribute(
+            "href", f"https://musicbrainz.org/artist/{ALICE}"
+        )
+        pw.expect(panel).to_contain_text("artist.nfo")
+        pw.expect(panel.get_by_role("list", name="Artist genres")).to_contain_text("Rock")
+        pw.expect(panel.locator("img")).to_be_visible()
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    finally:
+        page.context.close()

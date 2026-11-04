@@ -17,7 +17,7 @@
             <div class="min-w-0 flex-1 space-y-3">
                 <dl class="album-identity__fields">
                 {% if artist.mbid %}
-                <dt>MusicBrainz</dt>
+                <dt>MB Artist</dt>
                 <dd><a href="https://musicbrainz.org/artist/{{ artist.mbid }}" target="_blank" rel="noopener noreferrer" class="text-mb-purple hover:underline">{{ artist.name }} ↗</a></dd>
                 {% endif %}
                 {% if nfo_disambiguation %}
