@@ -3,6 +3,7 @@
 import os
 import re
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from test.test_artist_web import ALICE, BOB, RELEASE, make_album
 from test.test_nfo_inventory import write_nfo
 
 from harmonist import demo
+from harmonist.web.main import _local_stamp
 
 pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e disabled")
 pw = pytest.importorskip("playwright.sync_api")
@@ -24,6 +26,14 @@ def artists_root(tmp_path_factory):
 @pytest.fixture(scope="module")
 def artists_server(artists_root):
     yield from _run_demo_server(artists_root, app_module="test.e2e.artists_app:app")
+
+
+@pytest.fixture(scope="module")
+def artist_identity_server(tmp_path_factory):
+    yield from _run_demo_server(
+        tmp_path_factory.mktemp("artist-identity"),
+        app_module="test.e2e.artist_identity_app:app",
+    )
 
 
 @pytest.mark.parametrize("engine,width", [("chromium", 1280), ("webkit", 390)])
@@ -178,7 +188,10 @@ def test_artist_nfo_sections_and_disclosures_survive_background_refresh(
     pw.expect(page.get_by_role("list", name="Artist genres").locator("li")).to_have_text(
         ["Rock", "Alternative"]
     )
-    pw.expect(page.get_by_role("region", name="Additional information")).to_contain_text("Indie")
+    pw.expect(page.locator("#artist-identity")).to_contain_text("Indie")
+    pw.expect(page.get_by_role("region", name="Additional information")).to_contain_text(
+        "2001–present"
+    )
     pw.expect(page.get_by_role("region", name="Albums 2").locator(".lib-tile")).to_have_count(2)
     detail = page.locator("#artist-detail")
     detail.evaluate("e => e.dataset.beforeRefresh = 'yes'")
@@ -499,3 +512,50 @@ def test_declared_thumb_and_profile_fallbacks_refresh_without_an_nfo_edit(
     pw.expect(picture).to_have_count(0, timeout=20000)
     assert (nfo.read_bytes(), nfo.stat().st_mtime_ns) == before
     page.context.close()
+
+
+@pytest.mark.parametrize("engine,width", [("chromium", 1280), ("webkit", 390)])
+def test_artist_identity_panel_and_title(browser_factory, artist_identity_server, engine, width):
+    page = browser_factory(engine).new_page(viewport={"width": width, "height": 900})
+    try:
+        page.goto(artist_identity_server + f"/artist/{ALICE}")
+        panel = page.locator("#artist-identity")
+        pw.expect(page).to_have_title("Local Álice — Harmonist")
+        pw.expect(panel.get_by_role("heading", name="Local Álice (local project)")).to_be_visible()
+        pw.expect(
+            panel.get_by_role("link", name="Canonical Álice (British singer) ↗")
+        ).to_have_attribute("href", f"https://musicbrainz.org/artist/{ALICE}")
+        pw.expect(panel.locator("dt", has_text="Path").locator("+ dd")).to_have_text(
+            "ArtistInfo/unrelated directory name/artist.nfo"
+        )
+        dates = panel.locator(".album-identity__dates")
+        pw.expect(dates.locator("dt")).to_have_text("Modified")
+        pw.expect(dates.locator("dd")).to_have_attribute(
+            "title", _local_stamp(datetime(2020, 1, 2, 3, 4, 5, tzinfo=UTC))
+        )
+        pw.expect(panel).to_contain_text("Indie")
+        pw.expect(panel).to_contain_text("Calm")
+        pw.expect(panel.get_by_role("list", name="Artist genres")).to_contain_text("Rock")
+        pw.expect(panel.locator("img")).to_be_visible()
+        biography = page.locator("#artist-biography")
+        biography.locator("summary").focus()
+        biography.locator("summary").press("Enter")
+        pw.expect(biography.locator("p")).to_be_visible()
+        detail = page.locator("#artist-detail")
+        detail.evaluate("e => e.dataset.beforeRefresh = 'yes'")
+        with page.expect_response(lambda r: f"/artist/{ALICE}" in r.url and r.ok):
+            page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
+        pw.expect(detail).not_to_have_attribute("data-before-refresh", "yes")
+        pw.expect(biography).to_have_js_property("open", True)
+        headings = page.locator("#artist-detail > section h2, #artist-detail > details h2")
+        pw.expect(headings).to_have_text(
+            ["Biography", "Additional information", "Discography from NFO 2", "Albums 2"]
+        )
+        if width >= 768:
+            assert (
+                dates.bounding_box()["x"]
+                > panel.locator(".album-identity__fields").bounding_box()["x"]
+            )
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    finally:
+        page.context.close()

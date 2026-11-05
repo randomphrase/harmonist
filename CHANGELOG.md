@@ -13,6 +13,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **Artist pages use the album layout**, showing NFO facts and cached MusicBrainz identity separately (#938).
+
 - **A release is reviewed in a dialog over the page**, opened by the **Review**
   button on its row (formerly **Use**). A suggestion is the first row of the
   search results, with the search beside it; nothing is written until a review

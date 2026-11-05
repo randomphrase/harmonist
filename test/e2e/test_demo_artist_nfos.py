@@ -45,7 +45,7 @@ def test_public_demo_artist_nfos_are_browsable_offline(
     biography = page.locator("#artist-biography")
     biography.locator("summary").click()
     pw.expect(biography.locator("p")).to_contain_text("An after-hours soul band")
-    pw.expect(page.locator("#artist-detail > header img")).to_be_visible()
+    pw.expect(page.locator("#artist-identity img")).to_be_visible()
 
     mouse = demo.MB_RELEASES["demo-rel-mouserat"]["artist-credit"][0]["artist"]["id"]
     page.goto(f"{base}/artist/{mouse}")

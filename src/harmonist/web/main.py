@@ -19,7 +19,7 @@ import zoneinfo
 from collections import Counter
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal, Protocol, get_args
@@ -3221,6 +3221,51 @@ def _artist_for(request: Request, key: str) -> artists.Artist:
     return found
 
 
+@dataclass(frozen=True)
+class _ArtistObservation:
+    name: str
+    disambiguation: str
+    read_at: datetime
+    album_id: str
+
+
+def _artist_cached_identity(artist: artists.Artist) -> _ArtistObservation | None:
+    """Keep a name and disambiguation together, from exact stored credits only."""
+    observations: dict[tuple[str, str], _ArtistObservation] = {}
+    seen: set[str] = set()
+    for album in artist.albums:
+        release_id = album.sidecar.mb_release_id if album.sidecar else None
+        if not release_id or release_id in seen:
+            continue
+        seen.add(release_id)
+        snapshot = mb_cache.stored_release_snapshot(release_id)
+        if snapshot is None:
+            continue
+        credits = snapshot.payload.get("artist-credit")
+        if not isinstance(credits, list):
+            continue
+        for credit in credits:
+            if not isinstance(credit, dict):
+                continue
+            entry = credit.get("artist")
+            if not isinstance(entry, dict) or entry.get("id") != artist.mbid:
+                continue
+            name = entry.get("name")
+            disambiguation = entry.get("disambiguation")
+            if disambiguation is None:
+                disambiguation = ""
+            if not isinstance(name, str) or not name.strip():
+                continue
+            if not isinstance(disambiguation, str):
+                continue
+            pair = name.strip(), disambiguation.strip()
+            if pair not in observations or snapshot.fetched_at > observations[pair].read_at:
+                observations[pair] = _ArtistObservation(*pair, snapshot.fetched_at, album.id)
+    if len(observations) != 1:
+        return None
+    return next(iter(observations.values()))
+
+
 def _nfo_inventory(request: Request) -> artist_nfo.Inventory:
     runner: ScanRunner = request.app.state.scan_runner
     if runner.is_engaged():
@@ -4724,6 +4769,25 @@ def _register_routes(app: FastAPI) -> None:
         result = inventory.for_artist(artist.mbid)
         image = inventory.image_for(artist.mbid)
         artist = replace(artist, nfo_paths=result.candidates, artwork_path=image)
+        nfo_disambiguation = (
+            next((value for label, value in result.profile.facts if label == "Disambiguation"), "")
+            if result.profile
+            else ""
+        )
+        grouped_facts = (
+            tuple((k, v) for k, v in result.profile.facts if k in {"Style", "Mood"})
+            if result.profile
+            else ()
+        )
+        additional_facts = (
+            tuple(
+                (k, v)
+                for k, v in result.profile.additional_facts
+                if k not in {"Disambiguation", "Style", "Mood"}
+            )
+            if result.profile
+            else ()
+        )
         grid = _library_page_vars(list(artist.albums), page, _library_limit(request, None))
         layout = _artists_layout(request, artist_view)
         # The same tiles retain the return context for this artist and album page.
@@ -4760,7 +4824,14 @@ def _register_routes(app: FastAPI) -> None:
                 request,
                 **grid,
                 artist=artist,
+                artist_display_name=(result.profile.name or artist.name)
+                if result.profile
+                else artist.name,
                 nfo=result,
+                nfo_disambiguation=nfo_disambiguation,
+                cached_artist=_artist_cached_identity(artist),
+                artist_grouped_facts=grouped_facts,
+                artist_additional_facts=additional_facts,
                 artist_image=image is not None,
                 artist_image_url=inventory.image_url(artist.mbid),
                 artist_back_url=artists.index_url(
