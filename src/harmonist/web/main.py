@@ -4939,6 +4939,16 @@ def _register_routes(app: FastAPI) -> None:
         result = inventory.for_artist(artist.key)
         image = inventory.image_for(artist.key)
         artist = replace(artist, nfo_paths=result.candidates, artwork_path=image)
+        grouped_facts = (
+            tuple((k, v) for k, v in result.profile.facts if k in {"Style", "Mood"})
+            if result.profile
+            else ()
+        )
+        additional_facts = (
+            tuple((k, v) for k, v in result.profile.additional_facts if k not in {"Style", "Mood"})
+            if result.profile
+            else ()
+        )
         grid = _library_page_vars(list(artist.albums), page, _library_limit(request, None))
         layout = _artists_layout(request, artist_view)
         # The same tiles retain the return context for this artist and album page.
@@ -5010,6 +5020,8 @@ def _register_routes(app: FastAPI) -> None:
                 history=history,
                 history_writes=history_writes,
                 history_unavailable=history_unavailable,
+                artist_grouped_facts=grouped_facts,
+                artist_additional_facts=additional_facts,
                 artist_image=image is not None,
                 artist_image_url=inventory.image_url(artist.key),
                 artist_back_url=artists.index_url(

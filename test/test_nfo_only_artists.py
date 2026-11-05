@@ -110,7 +110,7 @@ def test_an_nfo_only_artist_has_a_page_without_an_albums_section(nfo_only):
     assert f"https://musicbrainz.org/artist/{CAROL}" in carol.text
     page = BeautifulSoup(carol.text, "html.parser")
     assert page.select_one('section[aria-labelledby="artist-albums-heading"]') is None
-    assert page.select_one("#artist-detail header .album-warning__badge") is None
+    assert page.select_one("#artist-identity .album-warning__badge") is None
     alice = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
     assert alice.select_one('section[aria-labelledby="artist-albums-heading"]') is not None
     network.assert_not_called()
@@ -126,7 +126,7 @@ def test_an_unidentified_nfo_has_a_page_keyed_by_its_path(nfo_only):
     page = BeautifulSoup(response.text, "html.parser")
     assert page.select_one("#artist-detail h1").get_text(strip=True) == "Eve"
     assert [
-        b.get_text(strip=True) for b in page.select("#artist-detail header .album-warning__badge")
+        b.get_text(strip=True) for b in page.select("#artist-identity .album-warning__badge")
     ] == ["Not identified"]
     assert "musicbrainz.org/artist/" not in response.text
     empty = client.get(f"/artist/{id_registry.get_or_mint(paths['dave'])}")

@@ -290,7 +290,9 @@ def test_the_artist_page_names_the_artist_and_links_musicbrainz_by_its_own_name(
 
     assert header(ALICE) == ("Alice (the singer)", "Alice (the vocalist) ↗")
     assert header(OTHER_ALICE) == ("Alice (the drummer)", "Alice (the drummer) ↗")
-    assert header(BOB) == ("Bob", "MusicBrainz ↗")
+    # No stored release names Bob, so the row shows his ID, as an album's MB
+    # release row shows a release that hasn't been read.
+    assert header(BOB) == ("Bob", f"{BOB} ↗")
     network.assert_not_called()
 
 

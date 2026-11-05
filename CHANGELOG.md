@@ -26,6 +26,8 @@ versions follow [semantic versioning](https://semver.org).
   it lands, and the status bar follows the archive file by file (#1003).
 - **An artist with an NFO is called what the NFO calls them**, and the artist
   page's MusicBrainz link shows MusicBrainz's name for them (#1001).
+- **The artist page is laid out like an album's**, with the NFO's facts beside
+  the artist's picture (#938).
 
 ### Fixed
 
