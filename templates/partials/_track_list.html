@@ -127,15 +127,13 @@
                         {%- endfor -%}
                         {%- if h.differs -%}
                         {%- for s in h.slots -%}
-                        <span class="disc-head__cell disc-head__mb{{ ' disc-head__meta' if s.meta }}">{{- s.mb or '' -}}
-                            {#- One hexagon for the line, on the last slot that
-                                differs — the same one-mark-per-line rule the
-                                track rows follow. It is what carries the meaning
-                                for a reader who can't distinguish the purple. -#}
-                            {%- if loop.index0 == h.mark_index -%}
-                            <span class="mb-mark" role="img" aria-label="MusicBrainz" title="MusicBrainz's description of this disc"><svg
-                                viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden="true"
-                                ><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></span>
+                        <span class="disc-head__cell disc-head__mb{{ ' disc-head__meta' if s.meta }}">
+                            {#- A hexagon after each slot that changed, through
+                                `_mb_value`, as the track rows mark each value
+                                (#967). It is what carries the meaning for a
+                                reader who can't distinguish the purple. -#}
+                            {%- if s.mb -%}
+                            {%- with runs = none, value = s.mb, entity = none, credit = none, why = "MusicBrainz's description of this disc" %}{% include 'partials/_mb_value.html' %}{% endwith -%}
                             {%- endif -%}
                         </span>
                         {%- endfor -%}
@@ -364,30 +362,29 @@
             {% elif t.shows_mb %}
             {# The MusicBrainz line. Only the cells that differ carry anything;
                the rest stay blank so the eye lands on the difference instead of
-               re-reading values it already agreed with. One hexagon for the
-               whole row rather than one per cell — the mark is what carries the
-               meaning for anyone who can't distinguish the purple, and repeating
-               it four times across a table of them is noise. #}
+               re-reading values it already agreed with.
+
+               Each value is drawn through `_mb_value`, hexagon and all, as every
+               other MusicBrainz value on this page is (#967). The line used to
+               carry ONE mark, in the number cell, on the grounds that four across
+               a row was noise. But a recording id at the table's right edge then
+               had its mark a table's width away, and moving the mark beside a
+               lone change put it in two places from one row to the next. A mark
+               in an identifier column hides with the column. #}
             {#- The whole line hides with the identifier columns when they are
                 the only thing on it (#319). Leaving it visible would draw the
-                empty purple row `shows_mb` exists to prevent: a hexagon marking
-                a difference whose cells are not on screen. -#}
+                empty purple row `shows_mb` exists to prevent. -#}
             <tr class="track-diff__mb{{ ' track-diff__id' if t.mb_only_identifiers }}">
                 {% for f in t.fields %}
                 {%- set col = tracklist.columns[loop.index0] -%}
                 <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}{{ ' track-diff__lead' if col.label == 'Title' }}">
-                    {%- if loop.first -%}
-                    <span class="mb-mark" role="img" aria-label="MusicBrainz" title="MusicBrainz's values for this track"><svg
-                        viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden="true"
-                        ><path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/></svg></span>
-                    {%- endif -%}
                     {#- `not f.advisory`: an unclearable difference is stated in
                         its own cell above (#550), and this line states what a
                         re-tag would write. Drawing it in both places would put
                         MusicBrainz's length twice on one row, once as a fact and
                         once as a pending change it can never be. -#}
                     {%- if f.agreement in ('differs', 'only_mb', 'unreadable') and f.mb and not f.advisory -%}
-                    {%- with runs = f.mb_runs, value = f.mb, entity = f.entity, credit = f.credit %}{% include 'partials/_field_value.html' %}{% endwith -%}
+                    {%- with runs = f.mb_runs, value = f.mb, entity = f.entity, credit = f.credit, why = "MusicBrainz's value" %}{% include 'partials/_mb_value.html' %}{% endwith -%}
                     {%- endif -%}
                 </td>
                 {% endfor %}

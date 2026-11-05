@@ -1233,17 +1233,6 @@ class DiscHeading:
             ),
         )
 
-    @property
-    def mark_index(self) -> int:
-        """Which slot carries the hexagon: the LAST one that differs.
-
-        One mark per line rather than one per cell, the same rule the track rows
-        follow — the hexagon is what makes the line readable to someone who can't
-        distinguish the purple, and three of them across one heading is noise.
-        Last rather than first so it terminates the line it marks.
-        """
-        return max((i for i, s in enumerate(self.slots) if s.mb is not None), default=0)
-
 
 @dataclass(frozen=True)
 class DiscGroup:

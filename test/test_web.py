@@ -7547,9 +7547,15 @@ def test_a_disc_subtitle_change_is_drawn_on_the_disc_heading(client, cfg, monkey
     # says, in the slot that changed.
     assert '<span class="disc-head">' in body
     assert '<span class="disc-head__cell">Disc 2</span>' in body
-    assert '<span class="disc-head__cell disc-head__mb">Disc 2 — Live Angle' in body
+    assert re.search(
+        r'<span class="disc-head__cell disc-head__mb">\s*<span class="tag-fields__mb">Disc 2 — Live Angle',
+        body,
+    )
     # Disc 1 has nothing to report, so it draws one line and no hexagon.
-    assert body.count("MusicBrainz's description of this disc") == 1
+    from bs4 import BeautifulSoup
+
+    heads = BeautifulSoup(body, "html.parser").select("th.track-diff__disc-head")
+    assert [len(h.select(".mb-mark")) for h in heads] == [0, 1]
 
     # The slots that agree are EMPTY on the MusicBrainz line — held open so the
     # changed one stays under its counterpart, but saying nothing. Empty rather
@@ -7728,6 +7734,88 @@ def test_the_pregap_note_leaves_a_row_beside_its_musicbrainz_line(client):
     assert first is not None
     kinds = [kind(tr) for tr in first.find_all("tr", recursive=False)]
     assert kinds == ["row", "mb", "pregap", "credits"]
+
+
+def _marked(cells: Any) -> list[tuple[str, int]]:
+    """Each cell of a MusicBrainz line with anything in it: its text, and how
+    many hexagons it carries. A hexagon must come AFTER the value, as
+    `_mb_value` draws one everywhere else, so both values of a pair keep one
+    left edge."""
+    out = []
+    for cell in cells:
+        text, marks = cell.get_text().strip(), cell.select(".mb-mark")
+        for m in marks:
+            assert not [s for s in m.find_all_next(string=True) if cell in s.parents and s.strip()]
+        if text or marks:
+            out.append((text, len(marks)))
+    return out
+
+
+def test_every_value_on_a_tracks_musicbrainz_line_carries_its_own_hexagon(client):
+    """#967. The line drew one hexagon, in the number cell, whatever it held: a
+    track whose only change was its recording id had the mark at the left edge
+    and the value at the right, a table's width apart. Moving it beside a LONE
+    change put it in two places from one row to the next.
+
+    So each value takes its own, the way the album panel, the band and the
+    credit lines under each track already draw theirs, and the number cell
+    carries none. An identifier's mark is inside its cell, so it hides with the
+    column (#319) without a rule of its own.
+    """
+    from bs4 import BeautifulSoup
+
+    from harmonist.compare import tracklist
+    from test.test_compare import _file, _mb_track
+
+    files = [
+        _file(1, "Nightcall"),
+        _file(2, "Odd Look"),
+        _file(3, "Roadgame", isrcs=["GBAAA0000001"]),
+    ]
+    mb = [
+        _mb_track(1, "Nightcall (radio edit)"),
+        _mb_track(2, "Odd Look (radio edit)", artist="Kavinsky feat. The Weeknd"),
+        _mb_track(3, "Roadgame (live)", isrcs=["GBAAA0000002"]),
+    ]
+    tl = tracklist(files, mb)
+    html = client.app.state.templates.env.get_template("partials/_track_list.html").render(
+        tracklist=tl, mb_names={}, mb_credits={}, album={"id": "a1"}
+    )
+    lines = BeautifulSoup(html, "html.parser").select("tr.track-diff__mb")
+    assert len(lines) == 3
+
+    def cells(line: Any) -> list[Any]:
+        return line.find_all("td", recursive=False)
+
+    assert _marked(cells(lines[0])) == [("Nightcall (radio edit)", 1)]
+    assert _marked(cells(lines[1])) == [
+        ("Odd Look (radio edit)", 1),
+        ("Kavinsky feat. The Weeknd", 1),
+    ]
+    assert _marked(cells(lines[2])) == [("Roadgame (live)", 1), ("GBAAA0000002", 1)]
+    isrc = lines[2].select_one("td.track-diff__id")
+    assert isrc is not None and isrc.select(".mb-mark"), "the ISRC's mark is its own cell's"
+
+
+def test_every_changed_slot_of_a_disc_heading_carries_its_own_hexagon(client):
+    """#967, on the disc heading's MusicBrainz line, which marked only its LAST
+    changed slot by the one-mark-per-line rule the track rows have given up."""
+    from bs4 import BeautifulSoup
+
+    from harmonist.compare import Medium
+    from test.test_compare import _two_discs
+
+    tl = _two_discs(
+        files={2: {"media": "Digital Media"}},
+        media=[Medium(1, None, "CD"), Medium(2, "Live Angle", "CD")],
+        mb={2: {"disc_subtitle": "Live Angle"}},
+    )
+    html = client.app.state.templates.env.get_template("partials/_track_list.html").render(
+        tracklist=tl, mb_names={}, mb_credits={}, album={"id": "a1"}
+    )
+    heading = BeautifulSoup(html, "html.parser").select("th.track-diff__disc-head")[1]
+
+    assert _marked(heading.select(".disc-head__mb")) == [("Disc 2 — Live Angle", 1), ("CD", 1)]
 
 
 def test_forget_sits_at_the_far_end_of_the_actions_row(client, cfg):

@@ -2051,7 +2051,6 @@ def test_a_disc_subtitle_change_lands_on_the_disc_heading_not_in_a_column():
     # Only the slot that changed is restated. The medium and the track count
     # agree, so their MusicBrainz cells stay blank rather than saying it twice.
     assert (media.mb, tracks.mb) == (None, None)
-    assert two.heading.mark_index == 0
 
 
 def test_the_heading_states_the_medium_and_the_track_count_too():
@@ -2077,18 +2076,15 @@ def test_the_heading_states_the_medium_and_the_track_count_too():
     assert name.mb is None  # the disc's name did not change; it is not restated
     # One track on each disc, and both sides agree — the count is stated once.
     assert (tracks.disk, tracks.mb) == ("1 track", None)
-    assert tl.discs[1].heading.mark_index == 1
 
-    # With two slots changed the hexagon marks the LAST of them, so it
-    # terminates the line rather than sitting in the middle of it — one mark per
-    # line, the rule the track rows follow.
+    # Two slots changed, and both are restated: each sits under its own
+    # counterpart, the unchanged count still blank between nothing.
     both = _two_discs(
         files={2: {"media": "Digital Media"}},
         media=[Medium(1, None, "CD"), Medium(2, "Live Angle", "CD")],
         mb={2: {"disc_subtitle": "Live Angle"}},
     )
     assert [s.mb for s in both.discs[1].heading.slots] == ["Disc 2 — Live Angle", "CD", None]
-    assert both.discs[1].heading.mark_index == 1
 
 
 def test_identifiers_are_revealed_when_hiding_them_would_show_nothing():
