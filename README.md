@@ -61,8 +61,8 @@ To use your own collection, see [getting started](docs/getting-started.md).
 - **[Security](docs/security.md)**: read this before exposing Harmonist beyond
   your own machine.
 
-Changing the code? See [contributing](CONTRIBUTING.md) and the
-[design](docs/design/README.md).
+Want to help, with or without code? See [contributing](CONTRIBUTING.md). Changing
+the code? See the [design](docs/design/README.md) too.
 
 ## How Harmonist compares
 
@@ -80,6 +80,32 @@ the source of metadata and you in control of changes.
 - **[bandcampsync](https://github.com/meeb/bandcampsync)** downloads your Bandcamp
   purchases. Harmonist builds on it, adding MusicBrainz matching, tagging,
   artwork, and a review inbox.
+
+## Where Harmonist is going
+
+The aim is rich metadata kept in the library itself: in your files' tags, and in
+file-based standards like Kodi's `artist.nfo`. Metadata that lives with the music
+leaves you free to choose any music server or player. Tagging should be
+satisfying, and ideally fun.
+
+What Harmonist won't become is a general-purpose tagger. Its metadata and
+artwork come from shared databases, MusicBrainz and the Cover Art Archive first.
+When those are wrong or missing something, the fix belongs there, where it helps
+every library and not just yours. Harmonist points you to those fixes rather
+than patching around them locally. Hand edits are what
+[Picard](https://picard.musicbrainz.org) is for, and Harmonist keeps whatever it
+doesn't manage.
+
+Some ideas for where it could go next:
+
+- Kodi-style `artist.nfo` files, identified and kept up to date
+- Genres from MusicBrainz, without churning the genres already in your files
+- Lyrics, including synchronized lyrics, from a source other than MusicBrainz
+  (which doesn't carry them), reviewed before they're written
+- Picard-compatible file renaming
+- Purchase sync from more stores
+- More metadata sources, such as Discogs, AllMusic and Wikipedia
+- More file-based metadata standards
 
 ## Human-Designed, Built With AI Assistance
 

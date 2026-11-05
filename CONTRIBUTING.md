@@ -3,6 +3,24 @@
 Thanks for your interest in Harmonist. This is the short version of how work flows
 through the project.
 
+## Ways to help
+
+Code is only one of them:
+
+- **Use it on your own library and report what you find.** A large or long-lived
+  collection turns up problems a small one never does.
+- **Review the docs** with fresh eyes, especially
+  [getting started](docs/getting-started.md). A newcomer spots gaps the authors
+  can't.
+- **Polish the UI.** Harmonist should be a joy to use. Anything that gets in the
+  way of that, however small, is worth an issue.
+- **Spread the word** to people who'd find Harmonist useful.
+- **Improve MusicBrainz.** A correction made there reaches your files through
+  Harmonist, and everyone else's too.
+- **Write code.** Before starting on an issue, say so on it, so that two people
+  don't end up working on the same thing. For work with no issue yet, open one
+  first (see below).
+
 ## Development workspace
 
 For a fresh clone, see [the devcontainer setup](docs/development.md).
