@@ -1,6 +1,5 @@
 """Work budgets must preserve image identity, invalidation and conditional HTTP."""
 
-import shutil
 from unittest.mock import Mock
 
 import pytest
@@ -43,7 +42,7 @@ def test_image_requests_do_not_rebuild_artist_groups(artist_client, monkeypatch)
     assert build.call_count == 0
 
 
-def test_image_membership_follows_credit_changes_removal_and_other_instances(
+def test_image_membership_follows_the_nfo_and_its_scanner_instance(
     artist_client, monkeypatch, tmp_path
 ):
     client, cfg, _ = artist_client
@@ -61,13 +60,11 @@ def test_image_membership_follows_credit_changes_removal_and_other_instances(
     audio["aART"] = ["Alice"]
     audio.save()
     runner.refresh_album([path.parent])
-    assert client.get(f"/artist/{BOB}/image").json()["detail"] == "artist not found in the library"
-    make_album(root, "Bob returns", "66666666-6666-4666-8666-666666666666", ["Bob"], [BOB])
-    runner.refresh_now()
+    # No album credits Bob now, but his NFO still describes him (#936).
     assert client.get(f"/artist/{BOB}/image").status_code == 200
-    shutil.rmtree(root / "Bob returns")
+    nfo.unlink()
     runner.refresh_now()
-    assert client.get(f"/artist/{BOB}/image").status_code == 404
+    assert client.get(f"/artist/{BOB}/image").json()["detail"] == "artist not found in the library"
     other = ScanRunner(tmp_path / "another-library")
     other.refresh_now()
     monkeypatch.setattr(client.app.state, "scan_runner", other)

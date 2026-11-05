@@ -10,6 +10,7 @@
           class="mb-3 flex items-baseline gap-2">
         {% if artists_view.nfo %}<input type="hidden" name="nfo" value="{{ artists_view.nfo }}">{% endif %}
         {% if artists_view.artwork %}<input type="hidden" name="artwork" value="{{ artists_view.artwork }}">{% endif %}
+        {% if artists_view.albums %}<input type="hidden" name="albums" value="{{ artists_view.albums }}">{% endif %}
         {% if artists_view.new %}<input type="hidden" name="new" value="true">{% endif %}
         <input type="hidden" name="view" value="{{ artists_view.view }}">
         <label for="artists-search" class="sr-only">Search artists</label>

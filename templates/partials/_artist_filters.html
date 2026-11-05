@@ -18,7 +18,7 @@
              this.style.maxHeight = Math.max(80, innerHeight - box.bottom - 12) + 'px';
          }">
         <a href="{{ facet.clear_url }}" hx-get="{{ facet.clear_url }}" hx-target="#artists-rows" hx-swap="innerHTML"
-           hx-push-url="{{ facet.clear_url }}" class="library-update-option library-origin-option">Any {{ facet.title }} status</a>
+           hx-push-url="{{ facet.clear_url }}" class="library-update-option library-origin-option">{{ facet.clear_label }}</a>
         <hr class="library-update-divider">
         {% for option in facet.choices %}
         {% if option.active %}<span class="library-update-option library-origin-option" aria-current="true">
@@ -39,6 +39,7 @@
         <input type="hidden" name="view" value="{{ artists_view.view }}">
         {% if artists_view.nfo %}<input type="hidden" name="nfo" value="{{ artists_view.nfo }}">{% endif %}
         {% if artists_view.artwork %}<input type="hidden" name="artwork" value="{{ artists_view.artwork }}">{% endif %}
+        {% if artists_view.albums %}<input type="hidden" name="albums" value="{{ artists_view.albums }}">{% endif %}
         {% if not artists_view.new %}<input type="hidden" name="new" value="true">{% endif %}
         <button type="submit" aria-pressed="{{ 'true' if artists_view.new else 'false' }}" title="At least one album added in the last 7 days"
                 class="{{ chip_on if artists_view.new else chip_off }}"{% if not artists_view.new_count and not artists_view.new %} disabled{% endif %}>

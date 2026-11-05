@@ -2,7 +2,9 @@
 
 Consistent, aligned album credits establish identity. Missing IDs can inherit
 that identity only within one identified release and with agreeing names.
-Spelling alone cannot create an artist page or bind an NFO.
+Spelling alone cannot create an artist page or bind an NFO. An artist.nfo no
+album credits is an artist all the same (#936): under its artist ID, or under
+its path while it has none.
 """
 
 from __future__ import annotations
@@ -23,7 +25,10 @@ if TYPE_CHECKING:
     from .artist_nfo import Inventory
 
 _MBID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", re.IGNORECASE)
+# `id_registry`'s path hashes, the handle of an NFO that names no artist yet.
+_PATH_KEY = re.compile(r"[0-9a-f]{32}")
 VIEWS = ("list", "cards")
+NOT_IDENTIFIED = "Not identified"
 
 # Official special-purpose artists, identified by MBID rather than display name.
 # https://musicbrainz.org/doc/Style/Unknown_and_untitled/Special_purpose_artist
@@ -45,6 +50,11 @@ def mbid(value: str) -> str | None:
     """Accept an actual identifier, not a name or an inferred MusicBrainz URL."""
     value = value.strip()
     return value.lower() if _MBID.fullmatch(value) else None
+
+
+def page_key(value: str) -> str | None:
+    """An artist page's key from a URL: an artist ID, or an NFO's path hash."""
+    return mbid(value) or (value if _PATH_KEY.fullmatch(value) else None)
 
 
 def album_credits(fields: Sequence[ScanFields]) -> tuple[AlbumArtist, ...]:
@@ -126,8 +136,14 @@ class Artist:
     artwork_path: Path | None = None
 
 
-def build_index(albums: Sequence[Album]) -> list[Artist]:
-    """Share identified collaborations without coalescing homonymous artists."""
+def build_index(albums: Sequence[Album], inventory: Inventory | None = None) -> list[Artist]:
+    """Share identified collaborations without coalescing homonymous artists.
+
+    With an inventory, its NFOs that no album credits are artists too, with no
+    albums. A credited artist keeps the tagged name; one known only from NFOs
+    takes the first name they give, or the folder's when none gives one. That
+    name is only shown: the key is the ID, or the path of a file without one.
+    """
     credits: dict[str, AlbumArtist] = {}
     groups: dict[str, dict[str, Album]] = {}
     for album in sorted(albums, key=lambda a: a.id):
@@ -147,23 +163,44 @@ def build_index(albums: Sequence[Album]) -> list[Artist]:
         )
         for key, c in credits.items()
     ]
+    if inventory is not None:
+        for key, profiles in inventory.by_key.items():
+            if key in credits or key in SPECIAL_ARTIST_IDS:
+                continue
+            name = next((p.name for p in profiles if p.name), profiles[0].path.parent.name)
+            sort_name = next((p.sort_name for p in profiles if p.sort_name), None)
+            result.append(Artist(key, name, profiles[0].mbid, sort_name, ()))
     return sorted(result, key=lambda a: (alphabetical(a.name), a.key))
 
 
-def library_count(albums: Sequence[Album]) -> int:
+def badges(artist: Artist) -> tuple[str, ...]:
+    """What the card and the page say about an artist's NFOs. A path-keyed
+    artist has exactly one file, so the two never meet."""
+    if artist.mbid is None:
+        return (NOT_IDENTIFIED,)
+    return ("NFO conflict",) if len(artist.nfo_paths) > 1 else ()
+
+
+def library_count(albums: Sequence[Album], inventory: Inventory | None = None) -> int:
     """Global count for the consolidated status poll, without sorting or I/O."""
-    return len(library_ids(albums))
+    return len(library_ids(albums, inventory))
 
 
-def library_ids(albums: Sequence[Album]) -> frozenset[str]:
+def library_ids(albums: Sequence[Album], inventory: Inventory | None = None) -> frozenset[str]:
     """Eligible identities, without constructing or sorting artist groups."""
-    return frozenset(
+    credited = frozenset(
         identity
         for album in albums
         if album.state in {AlbumState.COMPLETE, AlbumState.INCOMPLETE}
         for credit in album.artist_credits
         if (identity := mbid(credit.mbid or "")) and identity not in SPECIAL_ARTIST_IDS
     )
+    return (credited | nfo_keys(inventory)) if inventory is not None else credited
+
+
+def nfo_keys(inventory: Inventory) -> frozenset[str]:
+    """The artist pages an inventory's NFOs give, credited or not."""
+    return frozenset(key for key in inventory.by_key if key not in SPECIAL_ARTIST_IDS)
 
 
 def index_url(
@@ -172,6 +209,7 @@ def index_url(
     *,
     nfo: str | None = None,
     artwork: str | None = None,
+    albums: str | None = None,
     new: bool = False,
     view: str | None = None,
 ) -> str:
@@ -180,6 +218,8 @@ def index_url(
         params["nfo"] = nfo
     if artwork:
         params["artwork"] = artwork
+    if albums:
+        params["albums"] = albums
     if new:
         params["new"] = "true"
     if view is not None and view in VIEWS:
@@ -195,6 +235,7 @@ def detail_url(
     artist_q: str = "",
     artist_nfo: str | None = None,
     artist_artwork: str | None = None,
+    artist_albums: str | None = None,
     artist_new: bool = False,
     artist_view: str | None = None,
 ) -> str:
@@ -203,6 +244,8 @@ def detail_url(
         params["artist_nfo"] = artist_nfo
     if artist_artwork:
         params["artist_artwork"] = artist_artwork
+    if artist_albums:
+        params["artist_albums"] = artist_albums
     if artist_new:
         params["artist_new"] = "true"
     if artist_view is not None and artist_view in VIEWS:
@@ -218,23 +261,25 @@ def page_vars(
     inventory: Inventory | None = None,
     nfo: str | None = None,
     artwork: str | None = None,
+    album_filter: str | None = None,
     new: bool = False,
     now: datetime | None = None,
     view: str = "list",
 ) -> dict[str, object]:
-    all_artists = build_index(albums)
+    all_artists = build_index(albums, inventory)
     view = view if view in VIEWS else "list"
     if inventory is not None:
         all_artists = [
             replace(
                 a,
-                nfo_paths=inventory.for_artist(a.mbid).candidates,
-                artwork_path=inventory.image_for(a.mbid),
+                nfo_paths=inventory.for_artist(a.key).candidates,
+                artwork_path=inventory.image_for(a.key),
             )
             for a in all_artists
         ]
-    nfo = nfo if nfo in {"with", "missing", "conflict"} else None
+    nfo = nfo if nfo in {"with", "missing", "conflict", "unidentified"} else None
     artwork = artwork if artwork in {"with", "missing"} else None
+    album_filter = album_filter if album_filter in {"with", "none"} else None
     now = now or datetime.now(UTC)
     recent = {
         a.key
@@ -254,77 +299,107 @@ def page_vars(
         nfo = None
     if artwork == "missing" and not complete_artwork:
         artwork = None
-    badges = {
-        artist.key: ("NFO conflict",) if len(artist.nfo_paths) > 1 else () for artist in all_artists
-    }
+    selected = {"nfo": nfo, "artwork": artwork, "albums": album_filter}
     query = (q or "").strip()[:100]
     searched = [a for a in all_artists if alphabetical(query) in alphabetical(a.name)]
 
-    def matches(a: Artist, nf: str | None, art: str | None, fresh: bool) -> bool:
+    def matches(a: Artist, chosen: dict[str, str | None], fresh: bool) -> bool:
+        nf, art, owned = chosen["nfo"], chosen["artwork"], chosen["albums"]
         return (
             (
                 not nf
                 or (nf == "with" and bool(a.nfo_paths))
                 or (nf == "missing" and not a.nfo_paths)
                 or (nf == "conflict" and len(a.nfo_paths) > 1)
+                or (nf == "unidentified" and a.mbid is None)
             )
             and (not art or (a.artwork_path is not None) == (art == "with"))
+            and (not owned or bool(a.albums) == (owned == "with"))
             and (not fresh or a.key in recent)
         )
 
-    rows = [a for a in searched if matches(a, nfo, artwork, new)]
+    rows = [a for a in searched if matches(a, selected, new)]
     pages = max(1, (len(rows) + 29) // 30)
     page = min(max(1, page), pages)
 
     def location(
-        number: int = 1, *, nf: str | None = nfo, art: str | None = artwork, fresh: bool = new
+        number: int = 1, *, fresh: bool = new, change: tuple[str, str | None] | None = None
     ) -> str:
-        return index_url(number, query, nfo=nf, artwork=art, new=fresh, view=view)
-
-    facets = []
-    for key, title, selected, choices in (
-        (
-            "nfo",
-            "NFO",
-            nfo,
-            (("with", "With NFO"), ("missing", "Without NFO"), ("conflict", "Conflicting NFOs")),
-        ),
-        ("artwork", "Artwork", artwork, (("with", "With artwork"), ("missing", "Missing artwork"))),
-    ):
-        facets.append(
-            {
-                "key": key,
-                "title": title,
-                "selected": selected,
-                "clear_url": location(nf=None) if key == "nfo" else location(art=None),
-                "choices": [
-                    {
-                        "value": value,
-                        "label": label,
-                        "active": selected == value,
-                        "count": None
-                        if (
-                            key == "nfo"
-                            and value in {"missing", "conflict"}
-                            and not complete_inventory
-                        )
-                        or (key == "artwork" and value == "missing" and not complete_artwork)
-                        else sum(
-                            matches(
-                                a,
-                                value if key == "nfo" else nfo,
-                                artwork if key == "nfo" else value,
-                                new,
-                            )
-                            for a in searched
-                        ),
-                        "partial": not (complete_inventory if key == "nfo" else complete_artwork),
-                        "url": location(nf=value) if key == "nfo" else location(art=value),
-                    }
-                    for value, label in choices
-                ],
-            }
+        """This page's URL, with one filter set to another value if asked."""
+        chosen = dict(selected)
+        if change is not None:
+            chosen[change[0]] = change[1]
+        return index_url(
+            number,
+            query,
+            nfo=chosen["nfo"],
+            artwork=chosen["artwork"],
+            albums=chosen["albums"],
+            new=fresh,
+            view=view,
         )
+
+    def unavailable(key: str, value: str) -> bool:
+        return (key == "nfo" and value in {"missing", "conflict"} and not complete_inventory) or (
+            key == "artwork" and value == "missing" and not complete_artwork
+        )
+
+    def partial(key: str, value: str) -> bool:
+        # A count from an incomplete inventory is a lower bound. Albums come
+        # from tags, so only the artists known from their NFOs alone are unsure.
+        if key == "artwork":
+            return not complete_artwork
+        if key == "albums":
+            return value == "none" and not complete_inventory
+        return not complete_inventory
+
+    facets = [
+        {
+            "key": key,
+            "title": title,
+            "clear_label": clear_label,
+            "selected": selected[key],
+            "clear_url": location(change=(key, None)),
+            "choices": [
+                {
+                    "value": value,
+                    "label": label,
+                    "active": selected[key] == value,
+                    "count": None
+                    if unavailable(key, value)
+                    else sum(matches(a, {**selected, key: value}, new) for a in searched),
+                    "partial": partial(key, value),
+                    "url": location(change=(key, value)),
+                }
+                for value, label in choices
+            ],
+        }
+        for key, title, clear_label, choices in (
+            (
+                "nfo",
+                "NFO",
+                "Any NFO status",
+                (
+                    ("with", "With NFO"),
+                    ("missing", "Without NFO"),
+                    ("conflict", "Conflicting NFOs"),
+                    ("unidentified", NOT_IDENTIFIED),
+                ),
+            ),
+            (
+                "artwork",
+                "Artwork",
+                "Any Artwork status",
+                (("with", "With artwork"), ("missing", "Missing artwork")),
+            ),
+            (
+                "albums",
+                "Albums",
+                "With or without albums",
+                (("with", "With albums"), ("none", "No albums")),
+            ),
+        )
+    ]
     return {
         "rows": rows[(page - 1) * 30 : page * 30],
         "q": query,
@@ -334,18 +409,27 @@ def page_vars(
         "count": len(all_artists),
         "view": view,
         "view_urls": {
-            choice: index_url(page, query, nfo=nfo, artwork=artwork, new=new, view=choice)
+            choice: index_url(
+                page,
+                query,
+                nfo=nfo,
+                artwork=artwork,
+                albums=album_filter,
+                new=new,
+                view=choice,
+            )
             for choice in VIEWS
         },
-        "badges": badges,
+        "badges": {artist.key: badges(artist) for artist in all_artists},
         "nfo": nfo,
         "artwork": artwork,
+        "albums": album_filter,
         "new": new,
         "facets": facets,
-        "new_count": sum(matches(a, nfo, artwork, True) for a in searched),
+        "new_count": sum(matches(a, selected, True) for a in searched),
         "new_url": location(fresh=not new),
         "clear_url": index_url(1, query, view=view),
-        "filtered": bool(nfo or artwork or new),
+        "filtered": bool(nfo or artwork or album_filter or new),
         "new_ids": recent,
         "detail_urls": {
             a.key: detail_url(
@@ -354,14 +438,13 @@ def page_vars(
                 artist_q=query,
                 artist_nfo=nfo,
                 artist_artwork=artwork,
+                artist_albums=album_filter,
                 artist_new=new,
                 artist_view=view,
             )
             for a in rows[(page - 1) * 30 : page * 30]
         },
-        "image_urls": {
-            a.key: inventory.image_url(a.mbid) for a in rows[(page - 1) * 30 : page * 30]
-        }
+        "image_urls": {a.key: inventory.image_url(a.key) for a in rows[(page - 1) * 30 : page * 30]}
         if inventory is not None
         else {},
         "url": location(page),

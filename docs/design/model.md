@@ -5,9 +5,9 @@
 Artists derive from the albums' credits. MusicBrainz artist IDs distinguish
 people who share a name and keep collaborations associated with each artist.
 Names alone cannot establish identity, and an album-scoped key would change
-when the album is matched. Artist pages therefore require an MBID.
-Special-purpose identities such as Various Artists do not represent a person
-or group to browse.
+when the album is matched. A credit therefore needs an MBID to give an artist
+a page. Special-purpose identities such as Various Artists do not represent a
+person or group to browse.
 
 The artist list reflects the tags as they are, without judging them. Album tags
 can lag behind MusicBrainz, after an artist merge for example, and the user may
@@ -17,6 +17,14 @@ album's concern, settled by its own tag update, not a problem with the artist.
 NFO location is not identity: moving a file within the library must not change
 who it describes. Its MBID must agree with the album credits rather than a
 directory name, so a collaboration cannot inherit an arbitrary parent's profile.
+
+A file without an MBID describes no one yet, so where it is serves as its
+handle until it's identified: a hash of its path, as for an album without a
+sidecar. Moving it changes the handle, not anyone's identity, since it has none
+to lose. It is listed on its own rather than beside the artist its folder
+suggests, because a folder is a hint, never an identity. An empty file is such
+a file rather than a broken one: placing one is how a user picks out the
+artists whose NFOs they want, without one for every artist in the library.
 
 Two NFOs with the same MBID are conflicting evidence. Choosing one silently
 would hide that disagreement, so the artist's page shows both. The conflict

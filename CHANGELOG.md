@@ -9,7 +9,7 @@ versions follow [semantic versioning](https://semver.org).
 ### Added
 
 - **Browse artists on their own page**, with List and Cards views, search, artist-specific filters and links from album credits (#813).
-- **Read local artist NFOs and pictures throughout the library**, with automatic updates. Conflicting NFOs are shown on the artist's page, and read errors are recorded in the log (#813, #939).
+- **Read local artist NFOs and pictures throughout the library**, with automatic updates. An NFO whose artist no album credits is listed too, found by the **No albums** filter, and one without an artist ID, or an empty one, is marked **Not identified**. Conflicting NFOs are shown on the artist's page, and read errors are recorded in the log (#813, #936, #939).
 
 ### Changed
 

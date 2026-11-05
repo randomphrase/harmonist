@@ -3212,10 +3212,10 @@ def _albums(request: Request) -> list[Album]:
     return albums
 
 
-def _artist_for(request: Request, key: str) -> artists.Artist:
-    key = artists.mbid(key) or ""
+def _artist_for(request: Request, key: str, inventory: artist_nfo.Inventory) -> artists.Artist:
+    key = artists.page_key(key) or ""
     eligible = [a for a in _albums(request) if a.state in _TERMINAL_STATES]
-    found = next((a for a in artists.build_index(eligible) if a.key == key), None)
+    found = next((a for a in artists.build_index(eligible, inventory) if a.key == key), None)
     if found is None:
         raise HTTPException(status_code=404, detail="artist not found in the library")
     return found
@@ -3244,6 +3244,7 @@ def _artists_view(
     *,
     nfo: str | None = None,
     artwork: str | None = None,
+    album_filter: str | None = None,
     new: bool = False,
     view: str = "list",
 ) -> dict[str, object]:
@@ -3254,6 +3255,7 @@ def _artists_view(
         inventory=_nfo_inventory(request),
         nfo=nfo,
         artwork=artwork,
+        album_filter=album_filter,
         new=new,
         view=view,
     )
@@ -4410,6 +4412,7 @@ def _album_location(request: Request, album_id: str, *, edit_assignments: bool =
             "artist_q",
             "artist_nfo",
             "artist_artwork",
+            "artist_albums",
             "artist_new",
             "artist_view",
         }
@@ -4658,6 +4661,7 @@ def _register_routes(app: FastAPI) -> None:
         artist_q: str | None = None,
         nfo: str | None = None,
         artwork: str | None = None,
+        album_filter: Annotated[str | None, Query(alias="albums")] = None,
         new: bool = False,
         view: str | None = None,
         remember_view: bool = False,
@@ -4670,6 +4674,7 @@ def _register_routes(app: FastAPI) -> None:
             artist_q,
             nfo=nfo,
             artwork=artwork,
+            album_filter=album_filter,
             new=new,
             view=_artists_layout(request, view),
         )
@@ -4716,13 +4721,14 @@ def _register_routes(app: FastAPI) -> None:
         artist_q: str = "",
         artist_nfo: str | None = None,
         artist_artwork: str | None = None,
+        artist_albums: str | None = None,
         artist_new: bool = False,
         artist_view: str | None = None,
     ) -> Response:
-        artist = _artist_for(request, artist_key)
         inventory = _nfo_inventory(request)
-        result = inventory.for_artist(artist.mbid)
-        image = inventory.image_for(artist.mbid)
+        artist = _artist_for(request, artist_key, inventory)
+        result = inventory.for_artist(artist.key)
+        image = inventory.image_for(artist.key)
         artist = replace(artist, nfo_paths=result.candidates, artwork_path=image)
         grid = _library_page_vars(list(artist.albums), page, _library_limit(request, None))
         layout = _artists_layout(request, artist_view)
@@ -4738,6 +4744,8 @@ def _register_routes(app: FastAPI) -> None:
             query["artist_nfo"] = artist_nfo
         if artist_artwork:
             query["artist_artwork"] = artist_artwork
+        if artist_albums:
+            query["artist_albums"] = artist_albums
         if artist_new:
             query["artist_new"] = "true"
 
@@ -4749,6 +4757,7 @@ def _register_routes(app: FastAPI) -> None:
                 artist_q=artist_q[:100],
                 artist_nfo=artist_nfo,
                 artist_artwork=artist_artwork,
+                artist_albums=artist_albums,
                 artist_new=artist_new,
                 artist_view=layout,
             )
@@ -4760,14 +4769,16 @@ def _register_routes(app: FastAPI) -> None:
                 request,
                 **grid,
                 artist=artist,
+                artist_badges=artists.badges(artist),
                 nfo=result,
                 artist_image=image is not None,
-                artist_image_url=inventory.image_url(artist.mbid),
+                artist_image_url=inventory.image_url(artist.key),
                 artist_back_url=artists.index_url(
                     max(1, artist_page),
                     artist_q[:100],
                     nfo=artist_nfo,
                     artwork=artist_artwork,
+                    albums=artist_albums,
                     new=artist_new,
                     view=layout,
                 ),
@@ -4787,13 +4798,14 @@ def _register_routes(app: FastAPI) -> None:
     def artist_image(request: Request, artist_key: str) -> Response:
         runner: ScanRunner = request.app.state.scan_runner
         if runner.is_engaged():
-            identity = artists.mbid(artist_key)
-            inventory = runner.artist_inventory(identity)
-            if inventory is None:
+            identity = artists.page_key(artist_key)
+            found = runner.artist_inventory(identity)
+            if found is None:
                 raise HTTPException(status_code=404, detail="artist not found in the library")
+            inventory = found
         else:
-            identity = _artist_for(request, artist_key).mbid
             inventory = _nfo_inventory(request)
+            identity = _artist_for(request, artist_key, inventory).key
         try:
             image = inventory.image_for(identity)
             if image is None:
@@ -5287,7 +5299,7 @@ def _register_routes(app: FastAPI) -> None:
         # The Inbox also holds the updates routed to it (#273). Derived on each
         # poll from the snapshot's flags, which move without a state transition
         # for live_counts to see.
-        counts["artists"] = artists.library_count(albums)
+        counts["artists"] = artists.library_count(albums, _nfo_inventory(request))
         counts["inbox"] += len(_review_updates(request, albums))
         # And the artwork updates routed to it (#852), each its own card: an
         # album with both a tag and an artwork update has two things to look at.
@@ -5503,6 +5515,7 @@ def _register_routes(app: FastAPI) -> None:
         artist_q: str = "",
         artist_nfo: str | None = None,
         artist_artwork: str | None = None,
+        artist_albums: str | None = None,
         artist_new: bool = False,
         artist_view: str | None = None,
         edit_assignments: bool = False,
@@ -5665,6 +5678,7 @@ def _register_routes(app: FastAPI) -> None:
                     artist_q=artist_q[:100],
                     artist_nfo=artist_nfo,
                     artist_artwork=artist_artwork,
+                    artist_albums=artist_albums,
                     artist_new=artist_new,
                     artist_view=_artists_layout(request, artist_view),
                 )

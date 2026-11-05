@@ -81,11 +81,15 @@ album whose artist IDs are missing or out of date with MusicBrainz is brought
 up to date by that album's own tag update, and browsing does not write them.
 
 Existing Kodi/Jellyfin `artist.nfo` files can supply a biography, dates, sort
-name and other artist information. Their artist ID must match the embedded
-album-artist ID. They can live anywhere inside the music library, including
-directories without audio. Two NFOs naming the same artist ID are shown as a
-conflict on that artist's page, with both paths. Unreadable NFOs are recorded
-in the log rather than treated as absent.
+name and other artist information. An NFO belongs to the artist whose ID it
+carries, and one whose artist no album credits is still listed, with no albums.
+An NFO without an artist ID, including an empty file, describes no artist yet:
+it is listed on its own, under its `<name>` or else its folder's name, and
+marked **Not identified**, even when its folder holds that artist's albums.
+NFOs can live anywhere inside the music library, including directories without
+audio. Two NFOs naming the same artist ID are shown as a conflict on that
+artist's page, with both paths. Unreadable NFOs are recorded in the log rather
+than treated as absent.
 
 An incomplete NFO scan keeps readable profiles, biographies and local pictures
 available, with the affected paths and a warning that other matching files may

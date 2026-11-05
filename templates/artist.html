@@ -11,6 +11,9 @@
         {% endif %}
         <div class="min-w-0 space-y-2">
             <h1 class="text-2xl font-bold text-ink break-words">{{ artist.name }}</h1>
+            {% if artist_badges %}
+            <p class="flex flex-wrap gap-1">{% for label in artist_badges %}<span class="album-warning__badge">{{ label }}</span>{% endfor %}</p>
+            {% endif %}
             {% if artist.sort_name %}<p class="text-sm text-muted">{{ artist.sort_name }}</p>{% endif %}
             {% if artist.mbid %}
             <a href="https://musicbrainz.org/artist/{{ artist.mbid }}" target="_blank" rel="noopener noreferrer"
@@ -70,6 +73,7 @@
     </details>
     {% endif %}
 
+    {% if artist.albums %}
     <section aria-labelledby="artist-albums-heading" class="space-y-3">
         <h2 id="artist-albums-heading" class="text-sm font-bold text-ink">Albums <span class="font-normal text-muted">{{ total_done }}</span></h2>
         <div id="library-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -83,6 +87,7 @@
         </nav>
         {% endif %}
     </section>
+    {% endif %}
 
     {% if nfo.profile and nfo.profile.additional_facts %}
     <section aria-labelledby="artist-additional-heading" class="border border-line rounded-lg p-4 space-y-3">

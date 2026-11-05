@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from bs4 import BeautifulSoup
 
-from harmonist import artist_nfo, scanner
+from harmonist import artist_nfo, id_registry, scanner
 from test.test_artist_web import ALICE, BOB, artist_client, make_album
 from test.test_nfo_inventory import write_nfo
 
@@ -65,22 +65,30 @@ def test_partial_walk_preserves_profile_explicit_image_and_revalidation(partial_
 def test_partial_facets_withhold_absence_and_total_claims(partial_library, view):
     client, cfg, _, _ = partial_library
     add_portrait(cfg.paths.music_dir)
-    write_nfo(cfg.paths.music_dir, "metadata/orphan")
+    orphan = write_nfo(cfg.paths.music_dir, "metadata/orphan")
     response = client.get(f"/artists?view={view}&nfo=missing&artwork=missing")
     data = response.context["artists_view"]
-    assert {a.mbid for a in data["rows"]} == {ALICE, BOB}
+    # The NFO without an ID was read, so it is listed (#936); what the blocked
+    # folder might hold is still not claimed either way.
+    assert {a.mbid for a in data["rows"]} == {ALICE, BOB, None}
     assert data["nfo"] is None and data["artwork"] is None
-    assert all(not badges for badges in data["badges"].values())
+    assert {key: badges for key, badges in data["badges"].items() if badges} == {
+        id_registry.get_or_mint(orphan): ("Not identified",)
+    }
     choices = {f["key"]: {o["value"]: o["count"] for o in f["choices"]} for f in data["facets"]}
     assert choices == {
-        "nfo": {"with": 1, "missing": None, "conflict": None},
+        "nfo": {"with": 2, "missing": None, "conflict": None, "unidentified": 1},
         "artwork": {"with": 1, "missing": None},
+        "albums": {"with": 2, "none": 1},
     }
     soup = BeautifulSoup(response.text, "html.parser")
     unavailable = soup.select('#artists-nfo-menu [aria-disabled="true"]')
     assert len(unavailable) == 2
     assert all("Unavailable" in option.get_text() for option in unavailable)
-    assert "≥ 1" in soup.select_one("#artists-nfo-menu").get_text()
+    assert "≥ 2" in soup.select_one("#artists-nfo-menu").get_text()
+    # Albums are read from tags, so only the NFO-only count is a lower bound.
+    albums_menu = soup.select_one("#artists-albums-menu").get_text(" ", strip=True)
+    assert "No albums ≥ 1" in albums_menu and "With albums 2" in albums_menu
     assert [
         a.mbid for a in client.get("/artists?nfo=with&artwork=with").context["artists_view"]["rows"]
     ] == [ALICE]

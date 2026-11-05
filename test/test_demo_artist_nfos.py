@@ -1,6 +1,7 @@
 """The public demo exercises the real artist inventory and exclusion rules."""
 
 from harmonist import artist_nfo, artists, demo, scanner
+from harmonist.models import AlbumState
 
 VARIOUS = "89ad4ac3-39f7-470e-963a-56509c546377"
 
@@ -22,12 +23,17 @@ def test_demo_inventory_has_a_portrait_conflicts_and_unmatched_profiles(tmp_path
     assert conflict.profile is None
     assert len(conflict.candidates) == 2
     assert all(p.name == "artist.nfo" for p in conflict.candidates)
-    assert len(inventory.paths) == 5
+    assert len(inventory.paths) == 6
     assert not inventory.errors and not inventory.walk_errors
     credited = {c.mbid for a in albums for c in a.artist_credits if c.mbid}
     unmatched = [p for p in inventory.profiles if p.mbid not in credited]
-    assert {p.name for p in unmatched} == {"The Unidentified Echoes", "The Unplayed Satellites"}
-    assert sum(p.mbid is None for p in unmatched) == 1
+    assert {p.name for p in unmatched} == {"The Unidentified Echoes", "The Unplayed Satellites", ""}
+    assert sum(p.mbid is None for p in unmatched) == 2
+    # The empty file sits in a credited artist's own folder, and still names no one.
+    listed = artists.build_index(
+        [a for a in albums if a.state in {AlbumState.COMPLETE, AlbumState.INCOMPLETE}], inventory
+    )
+    assert [a.mbid for a in listed if a.name == "Wyld Stallion"].count(None) == 1
 
 
 def test_demo_compilation_uses_the_official_various_artists_identity(tmp_path):
@@ -58,7 +64,7 @@ def test_demo_resets_and_old_dataset_upgrade_restore_identical_nfo_fixtures(tmp_
 
     def metadata():
         paths = list(root.rglob("artist.nfo"))
-        assert len(paths) == 5
+        assert len(paths) == 6
         pictures = [p.parent / "artist.png" for p in paths if (p.parent / "artist.png").exists()]
         return {str(p.relative_to(root)): p.read_bytes() for p in paths + pictures}
 

@@ -2,10 +2,13 @@
 
 The scanner discovers files throughout the library. Names and placement never
 establish identity; only the artist ID inside the file can associate metadata.
+A file without one describes no artist yet, so where it is serves as its handle
+until it's identified (#936).
 """
 
 from __future__ import annotations
 
+import codecs
 import hashlib
 import logging
 import os
@@ -18,11 +21,20 @@ from threading import Lock
 from typing import Literal
 from xml.etree import ElementTree as ET
 
+from . import id_registry
 from .artists import mbid
 from .models import Album
 
 log = logging.getLogger(__name__)
 _MAX_BYTES = 1024 * 1024
+# UTF-32 LE's mark begins with UTF-16 LE's, so the longer marks are tried first.
+_BOMS = (
+    codecs.BOM_UTF32_LE,
+    codecs.BOM_UTF32_BE,
+    codecs.BOM_UTF8,
+    codecs.BOM_UTF16_LE,
+    codecs.BOM_UTF16_BE,
+)
 _IMAGES = {".jpg", ".jpeg", ".png", ".webp"}
 _ADDITIONAL = {"Disambiguation", "Years active", "Style", "Mood", "Instruments"}
 
@@ -58,6 +70,14 @@ class Profile:
     # Include missing preferred files and symlink entries. Canonical strings
     # keep the invalidation index compact even with many missing pictures.
     image_candidates: frozenset[str] = frozenset()
+
+    @property
+    def key(self) -> str:
+        """The artist page this file belongs to: its artist ID, or a hash of its
+        path for a file that names no artist yet, as for an album without a
+        sidecar. Moving such a file changes the handle, not an artist's identity:
+        it has none to change."""
+        return self.mbid or id_registry.get_or_mint(self.path)
 
     @property
     def main_facts(self) -> tuple[tuple[str, str], ...]:
@@ -157,6 +177,10 @@ def _read(path: Path, modified_ns: int, size: int, _ctime_ns: int, _inode: int) 
         data = stream.read(_MAX_BYTES + 1)
     if len(data) > _MAX_BYTES:
         raise NfoError(f"{path}: artist.nfo exceeds 1 MiB")
+    if _blank(data):
+        # An empty file is how a user asks for an artist to be filled in
+        # (#813, step 1), so it's waiting for identification, not broken.
+        return Profile(path, None, "", "", "", (), "", modified_ns)
     # Also cover UTF-16/32 XML: ASCII declarations are interleaved with NULs.
     declarations = data.replace(b"\0", b"").upper()
     if b"<!DOCTYPE" in declarations or b"<!ENTITY" in declarations:
@@ -225,6 +249,19 @@ def _read(path: Path, modified_ns: int, size: int, _ctime_ns: int, _inode: int) 
             )
         ),
     )
+
+
+def _blank(data: bytes) -> bool:
+    """Nothing but a byte-order mark and whitespace, in any encoding XML allows.
+
+    Exact marks only: stripping any byte that could begin one would also call
+    a file of stray 0xFF bytes empty, and that file is broken, not blank."""
+    for mark in _BOMS:
+        if data.startswith(mark):
+            data = data[len(mark) :]
+            break
+    # UTF-16 and UTF-32 whitespace is ASCII whitespace padded with NULs.
+    return not data.replace(b"\0", b"").strip()
 
 
 def local_image(
@@ -382,14 +419,15 @@ class Inventory:
         version = hashlib.sha256(
             repr((profile.image_path, profile.image_stamp)).encode()
         ).hexdigest()[:16]
-        return f"/artist/{profile.mbid}/image?v={version}"
+        return f"/artist/{profile.key}/image?v={version}"
 
     @cached_property
-    def by_mbid(self) -> dict[str, tuple[Profile, ...]]:
+    def by_key(self) -> dict[str, tuple[Profile, ...]]:
+        """Readable files by artist page. Only an artist ID can be shared, so a
+        group of several is a conflict; a file without an ID is on its own."""
         groups: dict[str, list[Profile]] = {}
         for profile in self.profiles:
-            if profile.mbid:
-                groups.setdefault(profile.mbid, []).append(profile)
+            groups.setdefault(profile.key, []).append(profile)
         return {key: tuple(values) for key, values in groups.items()}
 
     def for_artist(self, identity: str | None) -> Result:
@@ -402,7 +440,7 @@ class Inventory:
             if not self.identities_complete
             else ()
         )
-        profiles = self.by_mbid.get(identity or "", ())
+        profiles = self.by_key.get(identity or "", ())
         paths = tuple(p.path for p in profiles)
         if len(profiles) > 1:
             return Result(

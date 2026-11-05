@@ -31,7 +31,8 @@ what to do. For the ideas behind the answers, see
   [composer disappeared](#a-composer-disappeared-after-an-update) ·
   [artwork in Plex/Navidrome](#plex-or-navidrome-shows-no-cover-or-the-wrong-one) ·
   [track lengths](#track-lengths-dont-match-musicbrainz) ·
-  [Mixed formats](#an-album-is-listed-under-mixed-formats-only)
+  [Mixed formats](#an-album-is-listed-under-mixed-formats-only) ·
+  [artist listed twice](#an-artist-is-listed-twice-once-as-not-identified)
 - **Undoing things:** [undo a change](#undo-a-change) ·
   [undo refused](#undo-is-refused-or-missing) ·
   [remove Harmonist](#remove-harmonist-completely)
@@ -416,6 +417,15 @@ and can be corrected there.
 The album mixes codecs, such as one MP3 among FLAC files. On the album's page,
 the track list has a **Format** column showing which tracks differ. Replace
 those files yourself, or Re-download the album from Bandcamp.
+
+### An artist is listed twice, once as Not identified
+
+An `artist.nfo` without a MusicBrainz artist ID, or an empty one, describes no
+artist yet, so it's listed on its own beside the artist its folder's albums
+credit. Add the artist's ID to the file, inside `<artist>`, as
+`<musicBrainzArtistID>…</musicBrainzArtistID>`. The ID is the last part of the
+artist's MusicBrainz address. The file then belongs to that artist, and the
+second entry goes.
 
 ## Undoing things
 

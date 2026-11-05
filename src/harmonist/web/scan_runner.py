@@ -203,9 +203,16 @@ class ScanRunner:
         return artist_nfo.scan(self._music_dir, diagnostics=self._nfo_diagnostics)
 
     def artist_inventory(self, identity: str | None) -> artist_nfo.Inventory | None:
-        """Membership and enrichment from the same publication, with no I/O."""
+        """Membership and enrichment from the same publication, with no I/O.
+
+        Credited artists come from the albums; the inventory's own NFOs are
+        artists too, whether or not an album credits them (#936)."""
         with self._snapshot_lock:
-            return self._nfos if identity in self._artist_ids else None
+            listed = identity is not None and (
+                identity in self._artist_ids
+                or (identity in self._nfos.by_key and identity not in artists.SPECIAL_ARTIST_IDS)
+            )
+            return self._nfos if listed else None
 
     def scanned_fields(self, album_dir: Path) -> list[formats.ScanFields] | None:
         """The tag fields the last scan read for one directory, in file order.

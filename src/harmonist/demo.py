@@ -654,6 +654,9 @@ ARTIST_NFOS: tuple[dict[str, str], ...] = (
         "name": "The Unplayed Satellites",
         "mbid": _demo_mbid("art", "demo-unplayed-satellites"),
     },
+    # An empty file in the artist's own folder, above their album: how a user
+    # asks for an artist to be filled in (#813, step 1).
+    {"directory": "Wyld Stallion", "empty": "true"},
 )
 
 # ---------------------------------------------------------------------------
@@ -704,6 +707,9 @@ def _seed_artist_nfos(music_dir: Path) -> None:
     for spec in ARTIST_NFOS:
         folder = music_dir / spec["directory"]
         folder.mkdir(parents=True, exist_ok=True)
+        if spec.get("empty"):
+            (folder / "artist.nfo").write_bytes(b"")
+            continue
         document = ET.Element("artist")
         for tag in ("name", "biography", "genre"):
             if value := spec.get(tag):
