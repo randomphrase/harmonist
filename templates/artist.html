@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
-{% block title %}{{ artist.name }} — Harmonist{% endblock %}
+{% from 'macros.html' import release_name %}
+{% block title %}{{ artist_display_name }} — Harmonist{% endblock %}
 {% block content %}
 <div id="artist-detail" class="space-y-5"
      hx-get="{{ artist_refresh_url }}" hx-trigger="tasks-changed from:body"
@@ -8,33 +9,24 @@
 
     <section id="artist-identity" class="overflow-hidden bg-surface border border-line rounded-lg" aria-label="Artist metadata">
         <div class="flex items-center justify-between gap-3 px-4 py-2.5 bg-line/50 border-b border-line">
-            <h1 class="text-lg font-bold text-ink break-words min-w-0">{{ artist.name }}</h1>
+            <h1 class="text-lg font-bold text-ink break-words min-w-0">{{ release_name(artist_display_name, nfo_disambiguation) }}</h1>
         </div>
         <div class="p-4 flex flex-col md:flex-row gap-4">
             {% if artist_image %}
-            <img src="{{ artist_image_url }}" alt="{{ artist.name }}" class="w-full md:w-44 md:flex-shrink-0 self-start aspect-square object-cover rounded border border-line bg-white" style="max-width: 11rem;">
+            <img src="{{ artist_image_url }}" alt="{{ artist_display_name }}" class="w-full md:w-44 md:flex-shrink-0 self-start aspect-square object-cover rounded border border-line bg-white" style="max-width: 11rem;">
             {% endif %}
             <div class="min-w-0 flex-1 space-y-3">
+                <div class="album-identity__metadata">
+                <div class="min-w-0 flex-1">
                 <dl class="album-identity__fields">
                 {% if artist.mbid %}
                 <dt>MB Artist</dt>
-                <dd><a href="https://musicbrainz.org/artist/{{ artist.mbid }}" target="_blank" rel="noopener noreferrer" class="text-mb-purple hover:underline">{{ artist.name }} ↗</a></dd>
-                {% endif %}
-                {% if nfo_disambiguation %}
-                <dt>Disambiguation</dt><dd class="break-words">{{ nfo_disambiguation }}</dd>
-                {% elif cached_disambiguation %}
-                <dt>Disambiguation</dt><dd class="break-words">{{ cached_disambiguation[0] }} <span class="text-xs text-muted">· MusicBrainz read {{ ago(cached_disambiguation[1]) }} · <a class="app-link" href="/album/{{ cached_disambiguation[2] }}">Album</a></span></dd>
+                <dd class="break-words"><a href="https://musicbrainz.org/artist/{{ artist.mbid }}" target="_blank" rel="noopener noreferrer" class="text-mb-purple hover:underline">{% if cached_artist %}{{ release_name(cached_artist.name, cached_artist.disambiguation) }}{% else %}{{ artist.mbid }}{% endif %} ↗</a>{% if cached_artist %} <span class="text-xs text-muted">· MusicBrainz read {{ ago(cached_artist.read_at) }} · <a class="app-link" href="/album/{{ cached_artist.album_id }}">Album</a></span>{% endif %}</dd>
                 {% endif %}
                 {% if nfo.profile %}
-                <dt>NFO</dt><dd class="break-all">{{ display_path(nfo.profile.path) }} <span class="text-xs text-muted" title="{{ nfo_modified.isoformat() }}">· Modified {{ ago(nfo_modified) }}</span></dd>
-                {% if nfo.profile.name and nfo.profile.name != artist.name %}
-                <dt>NFO name</dt><dd class="break-words">{{ nfo.profile.name }}</dd>
-                {% endif %}
-                {% if artist.sort_name %}
-                <dt>Sort name</dt><dd class="break-words">{{ artist.sort_name }}</dd>
-                {% endif %}
-                {% if nfo.profile.sort_name and nfo.profile.sort_name != artist.sort_name %}
-                <dt>NFO sort name</dt><dd class="break-words">{{ nfo.profile.sort_name }}</dd>
+                <dt>Path</dt><dd class="break-words" title="{{ nfo.profile.path }}">{{ rel_path(nfo.profile.path, cfg.paths.music_dir) }}</dd>
+                {% if nfo.profile.sort_name %}
+                <dt>Sort name</dt><dd class="break-words">{{ nfo.profile.sort_name }}</dd>
                 {% endif %}
                 {% for label, value in nfo.profile.main_facts %}
                 <dt>{{ label }}</dt><dd class="break-words">{{ value }}</dd>
@@ -42,6 +34,9 @@
                 {% if nfo.profile.genres %}
                 <dt>Genres</dt><dd><ul aria-label="Artist genres" class="flex flex-wrap gap-2">{% for genre in nfo.profile.genres %}<li class="px-2 py-1 rounded-full border border-line bg-surface text-xs font-semibold text-ink">{{ genre }}</li>{% endfor %}</ul></dd>
                 {% endif %}
+                {% for label, value in artist_grouped_facts %}
+                <dt>{{ label }}</dt><dd class="break-words">{{ value }}</dd>
+                {% endfor %}
                 {% elif artist.sort_name %}
                 <dt>Sort name</dt><dd class="break-words">{{ artist.sort_name }}</dd>
                 {% endif %}
@@ -51,40 +46,32 @@
                 {% endfor %}
                 {% if nfo.candidates | length > 1 %}
                 <ul aria-label="Conflicting NFO files" class="space-y-1">
-                    {% for path in artist.nfo_paths %}<li class="text-xs text-muted break-all">{{ display_path(path) }}</li>{% endfor %}
+                    {% for path in artist.nfo_paths %}<li class="text-xs text-muted break-words" title="{{ path }}">{{ rel_path(path, cfg.paths.music_dir) }}</li>{% endfor %}
                 </ul>
                 {% endif %}
+                </div>
+                {% if nfo_modified %}
+                <dl class="album-identity__dates">
+                    <dt>Modified</dt><dd title="{{ local_stamp(nfo_modified) }}">{{ ago(nfo_modified) }}</dd>
+                </dl>
+                {% endif %}
+                </div>
             </div>
         </div>
     </section>
 
     {% if nfo.profile and nfo.profile.biography %}
     <details id="artist-biography" class="hmt-group border border-line rounded-lg p-4">
-        <summary class="cursor-pointer text-sm font-bold text-ink"><h2 class="inline">Biography</h2></summary>
+        <summary class="cursor-pointer text-sm font-bold text-ink uppercase tracking-widest"><h2 class="inline">Biography</h2></summary>
         <p class="mt-3 text-sm text-ink whitespace-pre-line break-words">{{ nfo.profile.biography }}</p>
     </details>
     {% endif %}
 
-    <section aria-labelledby="artist-albums-heading" class="space-y-3">
-        <h2 id="artist-albums-heading" class="text-sm font-bold text-ink">Albums <span class="font-normal text-muted">{{ total_done }}</span></h2>
-        <div id="library-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {% for album in rows %}{% include 'partials/library_tile.html' %}{% endfor %}
-        </div>
-        {% if total_pages > 1 %}
-        <nav class="flex items-center justify-between gap-4" aria-label="Artist album pages">
-            {% if artist_previous %}<a href="{{ artist_previous }}" class="text-sm font-bold text-accent hover:underline">← Previous</a>{% else %}<span></span>{% endif %}
-            <span class="text-xs text-muted tabular-nums">{{ first_row }}–{{ last_row }} of {{ total_shown }} · page {{ page }} of {{ total_pages }}</span>
-            {% if artist_next %}<a href="{{ artist_next }}" class="text-sm font-bold text-accent hover:underline">Next →</a>{% else %}<span></span>{% endif %}
-        </nav>
-        {% endif %}
-    </section>
-
-    {% set other_facts = nfo.profile.additional_facts | rejectattr('0', 'equalto', 'Disambiguation') | list if nfo.profile else [] %}
-    {% if other_facts %}
+    {% if artist_additional_facts %}
     <section aria-labelledby="artist-additional-heading" class="border border-line rounded-lg p-4 space-y-3">
-        <h2 id="artist-additional-heading" class="text-sm font-bold text-ink">Additional information</h2>
+        <h2 id="artist-additional-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Additional information</h2>
         <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            {% for label, value in other_facts %}
+            {% for label, value in artist_additional_facts %}
             <div><dt class="text-xs text-muted">{{ label }}</dt><dd class="text-ink break-words">{{ value }}</dd></div>
             {% endfor %}
         </dl>
@@ -93,7 +80,7 @@
 
     {% if nfo.profile and nfo.profile.discography %}
     <details id="artist-discography" class="hmt-group border border-line rounded-lg p-4">
-        <summary class="cursor-pointer text-sm font-bold text-ink"><h2 class="inline">Discography from NFO <span class="font-normal text-muted">{{ nfo.profile.discography | length }}</span></h2></summary>
+        <summary class="cursor-pointer text-sm font-bold text-ink uppercase tracking-widest"><h2 class="inline">Discography from NFO <span class="font-normal text-muted normal-case tracking-normal">{{ nfo.profile.discography | length }}</span></h2></summary>
         <ul aria-label="NFO discography" class="mt-3 divide-y divide-line text-sm">
             {% for release in nfo.profile.discography %}
             <li class="flex items-baseline justify-between gap-4 py-2">
@@ -106,5 +93,19 @@
         </ul>
     </details>
     {% endif %}
+
+    <section aria-labelledby="artist-albums-heading" class="border border-line rounded-lg p-4 space-y-3">
+        <h2 id="artist-albums-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Albums <span class="font-normal text-muted normal-case tracking-normal">{{ total_done }}</span></h2>
+        <div id="library-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {% for album in rows %}{% include 'partials/library_tile.html' %}{% endfor %}
+        </div>
+        {% if total_pages > 1 %}
+        <nav class="flex items-center justify-between gap-4" aria-label="Artist album pages">
+            {% if artist_previous %}<a href="{{ artist_previous }}" class="text-sm font-bold text-accent hover:underline">← Previous</a>{% else %}<span></span>{% endif %}
+            <span class="text-xs text-muted tabular-nums">{{ first_row }}–{{ last_row }} of {{ total_shown }} · page {{ page }} of {{ total_pages }}</span>
+            {% if artist_next %}<a href="{{ artist_next }}" class="text-sm font-bold text-accent hover:underline">Next →</a>{% else %}<span></span>{% endif %}
+        </nav>
+        {% endif %}
+    </section>
 </div>
 {% endblock %}

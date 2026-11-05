@@ -17,7 +17,7 @@ from harmonist.config import Config, PathsConfig
 from harmonist.formats.m4a import ATOM_ALBUM_ARTISTS, ATOM_MB_ALBUM_ARTIST_ID
 from harmonist.formats.types import TagSet
 from harmonist.models import Sidecar
-from harmonist.web.main import create_app
+from harmonist.web.main import _local_stamp, create_app
 
 ALICE = "11111111-1111-4111-8111-111111111111"
 BOB = "22222222-2222-4222-8222-222222222222"
@@ -130,16 +130,30 @@ def test_artist_page_shows_nfo_facts_and_title(artist_client):
     network.assert_not_called()
 
 
-def test_artist_disambiguation_uses_matching_cached_credit_without_network(
+def test_artist_identity_separates_nfo_from_matching_cached_credit_without_network(
     artist_client, monkeypatch
 ):
-    client, _cfg, network = artist_client
+    client, cfg, network = artist_client
+    nfo = cfg.paths.music_dir / "ArtistInfo" / "Different directory name" / "artist.nfo"
+    nfo.write_text(
+        nfo.read_text()
+        .replace("<name>Alice</name>", "<name>Local Alice</name>")
+        .replace("</artist>", "<disambiguation>local singer</disambiguation></artist>")
+    )
+    before = nfo.read_bytes(), nfo.stat().st_mtime_ns
     snapshot = activity_store.CachedRelease(
         {
             "artist-credit": [
                 {"artist": {"id": BOB, "disambiguation": "wrong artist"}},
                 " & ",
-                {"artist": {"id": ALICE, "disambiguation": "British singer"}},
+                {
+                    "name": "Credited alias",
+                    "artist": {
+                        "id": ALICE,
+                        "name": "Canonical Alice",
+                        "disambiguation": "British singer",
+                    },
+                },
             ]
         },
         datetime(2020, 1, 1, tzinfo=UTC),
@@ -147,58 +161,180 @@ def test_artist_disambiguation_uses_matching_cached_credit_without_network(
     monkeypatch.setattr(
         mb_cache, "stored_release_snapshot", lambda mbid: snapshot if mbid == RELEASE else None
     )
-    soup = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
+    response = client.get(f"/artist/{ALICE}")
+    soup = BeautifulSoup(response.text, "html.parser")
     panel = soup.select_one("#artist-identity")
     assert panel is not None
-    assert "British singer" in panel.get_text()
+    assert panel.h1.get_text(" ", strip=True) == "Local Alice (local singer)"
+    header_disambiguation = panel.h1.span
+    assert header_disambiguation is not None
+    assert "text-muted" in header_disambiguation["class"]
+    assert soup.title.get_text() == "Local Alice — Harmonist"
+    link = panel.select_one(f'a[href="https://musicbrainz.org/artist/{ALICE}"]')
+    assert link.get_text(" ", strip=True) == "Canonical Alice (British singer) ↗"
+    mb_disambiguation = link.span
+    assert mb_disambiguation is not None
+    assert "text-muted" in mb_disambiguation["class"]
     assert "wrong artist" not in panel.get_text()
     assert panel.select_one(f'a[href^="/album/{RELEASE}"]') is not None
+    assert "MusicBrainz read" in link.parent.get_text()
+    assert response.context["artist"].name == "Alice"
+    assert (nfo.read_bytes(), nfo.stat().st_mtime_ns) == before
     network.assert_not_called()
 
 
-def test_artist_disambiguation_prefers_nfo_to_cached_release(artist_client, monkeypatch):
-    client, cfg, network = artist_client
-    nfo = cfg.paths.music_dir / "ArtistInfo" / "Different directory name" / "artist.nfo"
-    nfo.write_text(
-        nfo.read_text().replace(
-            "</artist>", "<disambiguation>local singer</disambiguation></artist>"
-        )
-    )
-    cached = Mock(side_effect=AssertionError("The NFO already provides disambiguation"))
-    monkeypatch.setattr(mb_cache, "stored_release_snapshot", cached)
-    soup = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
-    panel = soup.select_one("#artist-identity")
-    assert panel is not None and "local singer" in panel.get_text()
-    assert len(soup.find_all(string="local singer")) == 1
-    cached.assert_not_called()
-    network.assert_not_called()
-
-
-def test_artist_disambiguation_requires_consistent_matching_cached_credits(
-    artist_client, monkeypatch
+@pytest.mark.parametrize(
+    "first,second,expected",
+    [
+        ({"name": "Canonical", "disambiguation": "singer"}, None, "Canonical (singer) ↗"),
+        ({"name": "Canonical"}, None, "Canonical ↗"),
+        ({"name": "Canonical", "disambiguation": None}, None, "Canonical ↗"),
+        ({"name": "Canonical", "disambiguation": ""}, {"name": "Canonical"}, "Canonical ↗"),
+        ({"name": "Canonical"}, {"name": "Other"}, f"{ALICE} ↗"),
+        ({"name": "Canonical"}, {"name": "Canonical", "disambiguation": "singer"}, f"{ALICE} ↗"),
+        (
+            {"name": "Canonical", "disambiguation": "singer"},
+            {"name": "Canonical", "disambiguation": "producer"},
+            f"{ALICE} ↗",
+        ),
+        ({"name": "Canonical", "disambiguation": ["singer"]}, None, f"{ALICE} ↗"),
+        ({"name": "Canonical", "disambiguation": []}, None, f"{ALICE} ↗"),
+        ({"name": "Canonical", "disambiguation": False}, None, f"{ALICE} ↗"),
+        ({"name": " "}, None, f"{ALICE} ↗"),
+        ({"disambiguation": "singer"}, None, f"{ALICE} ↗"),
+        ({"id": BOB, "name": "Other"}, None, f"{ALICE} ↗"),
+        (None, None, f"{ALICE} ↗"),
+        ({"name": "<script>Canonical</script>"}, None, "<script>Canonical</script> ↗"),
+    ],
+)
+def test_artist_cached_identity_requires_a_consistent_exact_observation(
+    artist_client, monkeypatch, first, second, expected
 ):
     client, _cfg, network = artist_client
-    read_at = datetime(2020, 1, 1, tzinfo=UTC)
     snapshots = {
-        RELEASE: activity_store.CachedRelease(
-            {"artist-credit": [{"artist": {"id": ALICE, "disambiguation": "singer"}}]}, read_at
-        ),
-        SOLO: activity_store.CachedRelease(
-            {"artist-credit": [{"artist": {"id": ALICE, "disambiguation": "producer"}}]}, read_at
-        ),
+        release: activity_store.CachedRelease(
+            {"artist-credit": [{"artist": {"id": ALICE, **entry}}]},
+            datetime(2020, 1, 1, tzinfo=UTC),
+        )
+        for release, entry in ((RELEASE, first), (SOLO, second))
+        if entry is not None
     }
     monkeypatch.setattr(mb_cache, "stored_release_snapshot", snapshots.get)
     soup = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
+    link = soup.select_one(f'a[href="https://musicbrainz.org/artist/{ALICE}"]')
+    assert link.get_text(" ", strip=True) == expected
+    assert link.find("script") is None
+    network.assert_not_called()
+
+
+def test_artist_cached_identity_uses_latest_agreeing_source_and_reads_each_release_once(
+    artist_client, monkeypatch
+):
+    client, cfg, network = artist_client
+    make_album(cfg.paths.music_dir, "Copy", RELEASE, ["Alice", "Bob"], [ALICE, BOB])
+    read_at = datetime(2020, 1, 1, tzinfo=UTC)
+    payload = {"artist-credit": [{"artist": {"id": ALICE, "name": "Canonical"}}]}
+    snapshots = {
+        RELEASE: activity_store.CachedRelease(payload, read_at),
+        SOLO: activity_store.CachedRelease(payload, read_at + timedelta(days=1)),
+    }
+    cached = Mock(side_effect=snapshots.get)
+    monkeypatch.setattr(mb_cache, "stored_release_snapshot", cached)
+    soup = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
     panel = soup.select_one("#artist-identity")
     assert panel is not None
-    assert "singer" not in panel.get_text() and "producer" not in panel.get_text()
-    snapshots[SOLO] = activity_store.CachedRelease(
-        {"artist-credit": [{"artist": {"id": BOB, "disambiguation": "producer"}}]}, read_at
+    assert panel.select_one(f'a[href="/album/{SOLO}"]') is not None
+    assert sorted(call.args[0] for call in cached.call_args_list) == sorted([RELEASE, SOLO])
+    network.assert_not_called()
+
+
+def test_artist_nfo_facts_dates_and_sections_stay_grouped(artist_client):
+    client, cfg, network = artist_client
+    tagged = make_album(
+        cfg.paths.music_dir,
+        "Earlier credit",
+        "00000000-0000-4000-8000-000000000001",
+        ["Alice"],
+        [ALICE],
     )
-    panel = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser").select_one(
-        "#artist-identity"
+    tags = MP4(tagged / "01.m4a")
+    tags["soaa"] = ["Tagged sort"]
+    tags.save()
+    nfo = cfg.paths.music_dir / "ArtistInfo" / "Different directory name" / "artist.nfo"
+    nfo.write_text(
+        nfo.read_text().replace(
+            "</artist>",
+            "<sortname>Local sort</sortname><genre>Rock</genre><style>Indie</style>"
+            "<mood>Calm</mood><instruments>Voice</instruments><album><title>Other album</title>"
+            "</album></artist>",
+        )
     )
-    assert panel is not None and "singer" in panel.get_text()
+    stamp = datetime(2020, 1, 2, 3, 4, 5, tzinfo=UTC)
+    os.utime(nfo, (stamp.timestamp(), stamp.timestamp()))
+    response = client.get(f"/artist/{ALICE}")
+    soup = BeautifulSoup(response.text, "html.parser")
+    panel = soup.select_one("#artist-identity")
+    fields = {dt.get_text(): dt.find_next_sibling("dd") for dt in panel.select("dt")}
+    assert fields["Path"].get_text(strip=True) == "ArtistInfo/Different directory name/artist.nfo"
+    assert fields["Sort name"].get_text(strip=True) == "Local sort"
+    assert [dt.get_text() for dt in panel.select("dt")].count("Sort name") == 1
+    assert fields["Style"].get_text(strip=True) == "Indie"
+    assert fields["Mood"].get_text(strip=True) == "Calm"
+    dates = panel.select_one(".album-identity__dates")
+    assert dates.dt.get_text() == "Modified"
+    modified = dates.dd
+    assert modified is not None
+    assert modified["title"] == _local_stamp(stamp)
+    assert modified.get_text() != modified["title"]
+    assert response.context["nfo_modified"] == stamp
+    names = [
+        s.find(["h1", "h2"]).get_text(" ", strip=True)
+        for s in soup.select("#artist-detail > section, #artist-detail > details")
+    ]
+    assert names == [
+        "Alice",
+        "Biography",
+        "Additional information",
+        "Discography from NFO 1",
+        "Albums 3",
+    ]
+    additional = soup.select_one('[aria-labelledby="artist-additional-heading"]')
+    assert additional.get_text(" ", strip=True) == "Additional information Instruments Voice"
+    for section in soup.select("#artist-detail > section, #artist-detail > details"):
+        assert "border" in section["class"]
+    picture = nfo.with_name("artist.png")
+    picture.write_bytes(b"local image")
+    again = client.get(f"/artist/{ALICE}")
+    assert again.context["nfo_modified"] == stamp
+    network.assert_not_called()
+
+
+@pytest.mark.parametrize("profile_state", ["nameless", "absent", "conflict"])
+def test_artist_identity_without_a_unique_nfo_name_keeps_tag_identity(artist_client, profile_state):
+    client, cfg, network = artist_client
+    nfo = cfg.paths.music_dir / "ArtistInfo" / "Different directory name" / "artist.nfo"
+    if profile_state == "nameless":
+        nfo.write_text(nfo.read_text().replace("<name>Alice</name>", ""))
+    elif profile_state == "absent":
+        nfo.unlink()
+    else:
+        other = cfg.paths.music_dir / "Duplicate with áccents" / "artist.nfo"
+        other.parent.mkdir()
+        other.write_bytes(nfo.read_bytes())
+    soup = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
+    panel = soup.select_one("#artist-identity")
+    assert panel.h1.get_text(" ", strip=True) == "Alice"
+    link = panel.select_one(f'a[href="https://musicbrainz.org/artist/{ALICE}"]')
+    assert link.get_text(" ", strip=True) == f"{ALICE} ↗"
+    if profile_state == "conflict":
+        paths = panel.select_one('[aria-label="Conflicting NFO files"]')
+        assert {li.get_text(strip=True) for li in paths.select("li")} == {
+            "ArtistInfo/Different directory name/artist.nfo",
+            "Duplicate with áccents/artist.nfo",
+        }
+        assert panel.select_one('[role="alert"]') is not None
+    if profile_state != "nameless":
+        assert panel.select_one(".album-identity__dates") is None
     network.assert_not_called()
 
 
