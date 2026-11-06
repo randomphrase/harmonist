@@ -31,6 +31,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **Updating an album's artwork no longer reports its files as re-tagged
+  outside Harmonist** (#979).
 - **An open album page redraws when a background pass writes into the album**,
   or says the album has changed, with **Reload**, while a choice is open on it
   (#975).

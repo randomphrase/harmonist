@@ -473,9 +473,12 @@ def _record_video_media(
     return checked
 
 
-#: Harmonist's own writes to an album's audio files. A change made by one of
-#: these is not an external re-tag, however it looks from the mtimes.
-_OWN_WRITES = ("tag.album", "tag.revert", "artwork.restore")
+#: The line Harmonist records for each file it writes, just AFTER the write:
+#: `tag.track` for a tagging or an artwork change (the record History renders
+#: and Undo reads), `tag.revert.track` and `artwork.restore` for the two Undos.
+#: An action's own summary line (`tag.album`, `artwork.update`) is recorded
+#: before its first write, so it cannot account for the files as they were left.
+_OWN_WRITES = frozenset({"tag.track", "tag.revert.track", "artwork.restore"})
 
 
 def _adopt_external_retags(albums: list[Album], exempt: set[Path]) -> int:
@@ -504,12 +507,14 @@ def _adopt_external_retags(albums: list[Album], exempt: set[Path]) -> int:
         written = album.files_written_at
         if sc is None or sc.tagged_at is None or written is None:
             continue
-        if _harmonist_wrote_since(album.id, sc.tagged_at):
-            # Its own doing. `revert_tags` and `restore_artwork` write files
-            # without moving `tagged_at`, so by mtime alone an undo is
-            # indistinguishable from a Picard re-tag — and reporting the user's
-            # own undo back to them as an external change would be the confident
-            # lie this codebase spends its time not telling.
+        if _harmonist_wrote_last(album.id, written):
+            # Its own doing. Writing artwork, and undoing a tagging or an
+            # artwork change, write the files without moving `tagged_at`, so by
+            # mtime alone each is indistinguishable from a Picard re-tag — and
+            # reporting the user's own change back to them as somebody else's
+            # would be the confident lie this codebase spends its time not
+            # telling (#979). The album stays a candidate, at one history read
+            # per pass, until a tagging or an adopted re-tag moves `tagged_at`.
             continue
         with activity_store.action():
             try:
@@ -527,17 +532,31 @@ def _adopt_external_retags(albums: list[Album], exempt: set[Path]) -> int:
     return adopted
 
 
-def _harmonist_wrote_since(album_id: str, when: datetime) -> bool:
-    """True when Harmonist itself wrote this album's files after `when`.
+def _harmonist_wrote_last(album_id: str, written_at: datetime) -> bool:
+    """True when Harmonist made the newest write to this album's files.
 
     Read from the audit log, which is the only record of who did what — the
-    filesystem cannot tell an undo from a Picard re-tag. Errs towards SILENCE:
-    an unreadable store means "assume it was us", because a missed notice is a
-    smaller wrong than telling the user their own undo was somebody else's.
+    filesystem cannot tell an undo from a Picard re-tag. Each of Harmonist's
+    file writes is recorded just after it lands, so its own leaves a line at or
+    after `written_at`, the files' newest mtime, less `RETAG_MARGIN` for a clock
+    or a mount a shade off. Any write since `tagged_at` is not enough: that
+    would let one artwork update hide every later re-tag of the album for good.
+
+    Errs towards SILENCE: an unreadable store means "assume it was us", because
+    a missed notice is a smaller wrong than telling the user their own undo was
+    somebody else's.
     """
+    from harmonist import reconcile
+
     try:
         history = activity_store.album_history(album_id, limit=200)
     except Exception:
         log.warning("could not read the history for %s — not reporting a re-tag", album_id)
         return True
-    return any(e.ts > when and e.message.startswith(_OWN_WRITES) for e in history)
+    since = written_at - reconcile.RETAG_MARGIN
+    return any(
+        e.source is activity_store.Source.AUDIT
+        and e.message.partition(" ")[0] in _OWN_WRITES
+        and e.ts >= since
+        for e in history
+    )

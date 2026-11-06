@@ -177,7 +177,11 @@ win: the user re-tagged in Picard, as Harmonist asks them to, and reconcile
 re-points the sidecar while keeping its store link and purchase, which are about
 the same album. A re-tag in Picard that keeps the release but changes other tags
 is noticed by the files being newer than the sidecar's last tagging, and the
-sidecar's timestamp catches up.
+sidecar's timestamp catches up. Writing artwork and undoing a change also leave
+the files newer without being a tagging, so the history decides: the files'
+newest write is Harmonist's own when it recorded a write to them at that time.
+Any write of its own since the tagging would not do, because one artwork update
+would then hide every later re-tag of that album.
 
 ### Transitions
 
