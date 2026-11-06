@@ -13,7 +13,7 @@ BOB = "22222222-2222-4222-8222-222222222222"
 def test_profile_keeps_genres_and_nfo_discography_separate(tmp_path):
     path = tmp_path / "artist.nfo"
     path.write_text(
-        f"<artist><musicBrainzArtistID>{ALICE}</musicBrainzArtistID>"
+        f"<artist><musicbrainzartistid>{ALICE}</musicbrainzartistid>"
         "<type>Group</type><formed>2001</formed><style>Alternative</style>"
         "<yearsactive>2001–present</yearsactive>"
         "<genre>Rock</genre><genre>Alternative</genre><genre>Rock</genre>"
@@ -44,13 +44,12 @@ def test_artist_picture_without_a_thumb_reference(tmp_path, filename):
     assert artist_nfo.local_image(artist_nfo.read(path)) == image
 
 
-@pytest.mark.parametrize("id_tag", ["musicBrainzArtistID", "musicbrainzartistid"])
-def test_parser_aliases_encoding_and_safe_local_art(tmp_path, id_tag):
+def test_parser_encoding_and_safe_local_art(tmp_path):
     path = tmp_path / "artist.nfo"
     path.write_bytes(
         (
             f'<?xml version="1.0" encoding="iso-8859-1"?>'
-            f"<artist><name>André</name><{id_tag}>{ALICE}</{id_tag}>"
+            f"<artist><name>André</name><musicbrainzartistid>{ALICE}</musicbrainzartistid>"
             "<biography>&lt;script&gt;no&lt;/script&gt;</biography><genre>Jazz</genre>"
             "<genre>Soul</genre><thumb>folder.jpg</thumb></artist>"
         ).encode("latin1")
@@ -70,6 +69,21 @@ def test_parser_aliases_encoding_and_safe_local_art(tmp_path, id_tag):
     image.unlink()
     assert artist_nfo.read(path).name == "New name"
     assert artist_nfo.local_image(artist_nfo.read(path)) is None
+
+
+def test_only_the_lowercase_id_element_names_the_artist(tmp_path):
+    """Kodi's spelling is just another element Harmonist doesn't map (#971)."""
+    kodi = tmp_path / "kodi.nfo"
+    kodi.write_text(
+        f"<artist><name>Kodi</name><musicBrainzArtistID>{ALICE}</musicBrainzArtistID></artist>"
+    )
+    assert artist_nfo.read(kodi).mbid is None
+    both = tmp_path / "both.nfo"
+    both.write_text(
+        f"<artist><musicBrainzArtistID>{ALICE}</musicBrainzArtistID>"
+        f"<musicbrainzartistid>{BOB}</musicbrainzartistid></artist>"
+    )
+    assert artist_nfo.read(both).mbid == BOB
 
 
 @pytest.mark.parametrize(
@@ -98,7 +112,7 @@ def test_library_inventory_supports_collaboration_and_rejects_ambiguity(tmp_path
         d = info / name
         d.mkdir(parents=True)
         (d / "artist.nfo").write_text(
-            f"<artist><name>Same name</name><musicBrainzArtistID>{mbid}</musicBrainzArtistID></artist>"
+            f"<artist><name>Same name</name><musicbrainzartistid>{mbid}</musicbrainzartistid></artist>"
         )
     original = (info / "one" / "artist.nfo").read_bytes()
     assert artist_nfo.scan(music).for_artist(ALICE).profile.path == info / "one" / "artist.nfo"

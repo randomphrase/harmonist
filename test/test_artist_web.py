@@ -71,7 +71,7 @@ def artist_client(tmp_path, monkeypatch):
     folder = info / "Different directory name"
     folder.mkdir(parents=True)
     (folder / "artist.nfo").write_text(
-        f"<artist><name>Alice</name><musicBrainzArtistID>{ALICE}</musicBrainzArtistID>"
+        f"<artist><name>Alice</name><musicbrainzartistid>{ALICE}</musicbrainzartistid>"
         "<biography>&lt;script&gt;biography&lt;/script&gt;</biography><born>1980</born></artist>"
     )
     network = Mock(side_effect=AssertionError("Artist browsing must stay offline"))

@@ -18,6 +18,14 @@ NFO location is not identity: moving a file within the library must not change
 who it describes. Its MBID must agree with the album credits rather than a
 directory name, so a collaboration cannot inherit an arbitrary parent's profile.
 
+The MBID is read from one spelling of the element, `musicbrainzartistid`.
+Consumers disagree, and none reads both: Kodi and MediaElch read only
+`musicBrainzArtistID`, Navidrome's artist-NFO plugin only the lowercase form,
+and Jellyfin either. Reading both would make the spelling something a write
+has to choose, change and undo, for a format whose readers can't agree anyway.
+So Kodi's element is left alone like any field Harmonist doesn't map, and a
+file carrying only that one reads as having no MBID (#971).
+
 A file without an MBID describes no one yet, so where it is serves as its
 handle until it's identified: a hash of its path, as for an album without a
 sidecar. Moving it changes the handle, not anyone's identity, since it has none

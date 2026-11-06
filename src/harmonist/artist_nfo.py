@@ -205,7 +205,10 @@ def _read(path: Path, modified_ns: int, size: int, _ctime_ns: int, _inode: int) 
     def text(*tags: str) -> str:
         return " · ".join(values(*tags))
 
-    ids = values("musicBrainzArtistID", "musicbrainzartistid")
+    # Only the spelling Jellyfin, Lidarr and the Navidrome plugin share. Kodi's
+    # musicBrainzArtistID is left alone like any other unmapped element: reading
+    # both would make the spelling something a write has to change and undo (#971).
+    ids = values("musicbrainzartistid")
     identified = {mbid(value) for value in ids}
     if ids and (None in identified or len(identified) != 1):
         raise NfoError(f"{path}: invalid or conflicting MusicBrainz artist IDs")

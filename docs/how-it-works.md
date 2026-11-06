@@ -82,7 +82,10 @@ up to date by that album's own tag update, and browsing does not write them.
 
 Existing Kodi/Jellyfin `artist.nfo` files can supply a biography, dates, sort
 name and other artist information. An NFO belongs to the artist whose ID it
-carries, and one whose artist no album credits is still listed, with no albums.
+carries in `<musicbrainzartistid>`, the spelling Jellyfin, Lidarr and
+Navidrome's artist-NFO plugin use. Kodi and MediaElch write
+`<musicBrainzArtistID>` instead, which Harmonist doesn't read. One whose
+artist no album credits is still listed, with no albums.
 An NFO without an artist ID, including an empty file, describes no artist yet:
 it is listed on its own, under its `<name>` or else its folder's name, and
 marked **Not identified**, even when its folder holds that artist's albums.

@@ -718,7 +718,7 @@ def _seed_artist_nfos(music_dir: Path) -> None:
         if release := spec.get("release"):
             identity = MB_RELEASES[release]["artist-credit"][0]["artist"]["id"]
         if identity:
-            ET.SubElement(document, "musicBrainzArtistID").text = identity
+            ET.SubElement(document, "musicbrainzartistid").text = identity
         if image := spec.get("image"):
             filename = "artist" + Path(image).suffix
             shutil.copy(ASSETS_DIR / image, folder / filename)

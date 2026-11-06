@@ -422,10 +422,12 @@ those files yourself, or Re-download the album from Bandcamp.
 
 An `artist.nfo` without a MusicBrainz artist ID, or an empty one, describes no
 artist yet, so it's listed on its own beside the artist its folder's albums
-credit. Add the artist's ID to the file, inside `<artist>`, as
-`<musicBrainzArtistID>…</musicBrainzArtistID>`. The ID is the last part of the
-artist's MusicBrainz address. The file then belongs to that artist, and the
-second entry goes.
+credit. Harmonist reads the ID only from `<musicbrainzartistid>`, so a file
+from Kodi or MediaElch, which write it as `<musicBrainzArtistID>`, counts as
+having none. Add the artist's ID to the file, inside `<artist>`, as
+`<musicbrainzartistid>…</musicbrainzartistid>`, beside any element Kodi wrote.
+The ID is the last part of the artist's MusicBrainz address. The file then
+belongs to that artist, and the second entry goes.
 
 ## Undoing things
 
