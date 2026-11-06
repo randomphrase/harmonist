@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import html
 import json
 import logging
@@ -3003,6 +3004,34 @@ def _release_of(album: Album) -> str | None:
     return album.sidecar.mb_release_id if album.sidecar else None
 
 
+def _album_revision(album: Album) -> str | None:
+    """What an album page is drawn from, as a short token (#975): the scan
+    signature of each of the album's folders, read now. Every audio file's
+    mtime and size, the sidecar's mtime and the folder covers, so anything
+    written into the album changes it.
+
+    None when it can't be told: a folder that no longer holds an album, or
+    one that couldn't be read. An open page takes None as no answer, never as
+    a change, so a mount that blinked doesn't redraw it.
+    """
+    signatures = []
+    for folder in album.folders:
+        try:
+            contents = scanner.read_dir(folder)
+        except OSError:
+            # Kept out of the feed, as the album refresh keeps it: an open
+            # page asks this after every scan, and a flaky mount costs the
+            # user nothing but a redraw that waits for the next one.
+            log.warning(
+                "could not read %s to see if it changed", folder, exc_info=True, extra=_LOG_ONLY
+            )
+            return None
+        if contents is None:
+            return None
+        signatures.append(contents.signature)
+    return hashlib.sha256(repr(signatures).encode()).hexdigest()[:16]
+
+
 def _listed_candidate(mbid: str | None, image_id: str) -> cover_art.Candidate | None:
     """The image this release's listings name `image_id`, or None.
 
@@ -5513,6 +5542,20 @@ def _register_routes(app: FastAPI) -> None:
             )
         return response
 
+    @app.get("/album/{album_id}/revision")
+    def album_revision(request: Request, album_id: str) -> JSONResponse:
+        """What the album is now, for a page open on it (#975).
+
+        The page asks after the status bar's `tasks-changed`, which says a scan
+        published something, and after its own writes. A revision that differs
+        from the one it was drawn from is the album changing under it. Read
+        from the folders rather than the snapshot, so a page asking straight
+        after its own write sees that write. `album_id` is where the album is
+        now, since a re-tag can move it (#268), so a redraw lands there.
+        """
+        album = _find_album(request, album_id)
+        return JSONResponse({"revision": _album_revision(album), "album_id": album.id})
+
     @app.get("/album/{album_id}", response_class=HTMLResponse)
     def album_page(
         request: Request,
@@ -5697,6 +5740,9 @@ def _register_routes(app: FastAPI) -> None:
             ),
         )
         ctx["edit_assignments"] = edit_assignments
+        # What the page is drawn from, so it can tell when the album changes
+        # under it (#975): see `album_revision`.
+        ctx["album_revision"] = _album_revision(album)
         # Format evidence exists before a release is chosen too. Keep the
         # header's link useful on an unmatched album, using files alone (#720).
         if not (album.sidecar and album.sidecar.mb_release_id):

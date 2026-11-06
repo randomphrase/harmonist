@@ -5269,6 +5269,32 @@ def test_retag_failure_does_not_emit_refresh_trigger(client, cfg, monkeypatch):
     assert "album-retagged" not in r.headers.get("HX-Trigger", "")
 
 
+def test_an_album_pages_revision_changes_only_when_the_album_does(client, cfg):
+    """The page carries the revision it was drawn from, and the revision route
+    answers the same until something is written into the album (#975). An
+    open page redraws on a difference, so a revision that changed for nothing
+    would reload it after every scan."""
+    import re
+
+    from harmonist import formats
+
+    d = _album_with_art(cfg, "Revised", covers=[_png(1), None])
+    aid = _id_for(cfg, d)
+    drawn = re.search(
+        r'class="album-page[^"]*" data-revision="([0-9a-f]+)"', client.get(f"/album/{aid}").text
+    )
+    assert drawn is not None
+    assert client.get(f"/album/{aid}/revision").json() == {
+        "revision": drawn.group(1),
+        "album_id": aid,
+    }
+    assert client.get(f"/album/{aid}/revision").json()["revision"] == drawn.group(1)
+
+    formats.write_cover(d / "02 Track.m4a", _png(1))
+
+    assert client.get(f"/album/{aid}/revision").json()["revision"] != drawn.group(1)
+
+
 def test_album_page_wires_retag_progress_and_refresh(client, cfg, monkeypatch):
     """The re-tag button shows a tagging indicator, disables the whole action
     group while it runs, and refreshes the page when it lands.

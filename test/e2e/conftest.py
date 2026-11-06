@@ -339,6 +339,12 @@ def write_progress_server(tmp_path):
     yield from _run_demo_server(tmp_path, app_module="test.e2e.write_progress_app:app")
 
 
+@pytest.fixture
+def background_write_server(tmp_path):
+    """A demo server a test can write into from outside any page (#975)."""
+    yield from _run_demo_server(tmp_path, app_module="test.e2e.background_write_app:app")
+
+
 @pytest.fixture(params=["linked", "absent", "empty"])
 def digital_contribution_server(tmp_path, monkeypatch, request):
     monkeypatch.setenv("HARMONIST_TEST_DIGITAL_CONTRIBUTION", request.param)

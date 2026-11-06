@@ -20,8 +20,8 @@
 //   3. action endpoints  — fire `harmonist-status` HX-Trigger events
 //
 // Display priority (highest wins):
-//   file write  >  sync running  >  reconcile running  >  scan  >  background job (#757)
-//     >  most recent action flash  >  idle
+//   file write  >  page out of date (#975)  >  sync running  >  reconcile running
+//     >  scan  >  background job (#757)  >  most recent action flash  >  idle
 // A background job's closing line, and the end of a sync, take the action
 // flash's slot when they land while the page is open. A report there clears
 // itself after REPORT_MS (it is in the Activity feed for anyone who missed it);
@@ -48,6 +48,11 @@
     let scanDisplay = null;       // current library-scan HTML, or null
     let jobDisplay = null;        // current background-job HTML, or null
     let writeDisplay = null;      // per-file writes take priority over background work
+    // A page's word that what it shows is out of date, and the control that
+    // redraws it (#975). It stays until pressed: the page is waiting on it,
+    // and nothing else will bring it up to date.
+    let pageDisplay = null;
+    let pageReload = null;
     let lastFinishedSeq;          // last closing line seen (undefined until first poll)
     let lastSyncFinished;         // last sync end seen (undefined until first poll)
     let latestActionMessage = null;  // last flash text from an action, or null
@@ -84,7 +89,7 @@
     function renderStatus() {
         const el = document.getElementById(STATUS_EL_ID);
         if (!el) return;
-        const html = writeDisplay || syncDisplay || reconcileDisplay || scanDisplay || jobDisplay || latestActionMessage || '';
+        const html = writeDisplay || pageDisplay || syncDisplay || reconcileDisplay || scanDisplay || jobDisplay || latestActionMessage || '';
         if (html === lastStatusHtml) return;
         lastStatusHtml = html;
         el.innerHTML = html;
@@ -400,6 +405,16 @@
         const level = d.level || 'info';
         showActionMessage(verb, details, level, d.album || null);
         renderStatus();
+    });
+    document.body.addEventListener('harmonist-page-changed', function (evt) {
+        const d = evt.detail || {};
+        pageReload = d.reload;
+        pageDisplay = `<span class="px-3 py-0.5 rounded-full font-bold text-xs ${pillClasses('warning')}">${esc(d.verb)}</span>`
+            + '<button type="button" data-page-reload class="ml-3 px-2.5 py-0.5 rounded border border-white/30 text-xs font-semibold hover:bg-white/10 transition">Reload</button>';
+        renderStatus();
+    });
+    document.body.addEventListener('click', function (evt) {
+        if (pageReload && evt.target.closest('[data-page-reload]')) pageReload();
     });
 })();
 </script>

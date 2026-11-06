@@ -31,6 +31,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **An open album page redraws when a background pass writes into the album**,
+  or says the album has changed, with **Reload**, while a choice is open on it
+  (#975).
 - **An album page that finds a front cover on another release asks the Cover
   Art Archive again**, so the release group's new front is offered at once
   rather than after the stored answer expires (#974).

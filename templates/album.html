@@ -9,7 +9,7 @@
    is the album panel's definition, not because anything else includes it. #}
 {% block content %}
 {% set on_album_page = true %}
-<div class="album-page space-y-5">
+<div class="album-page space-y-5" data-revision="{{ album_revision or '' }}">
 
     {# Back to the Library page this album was opened from, not the top of the
        grid (#139). `?tab=library` is always sent: a link says where it goes, and
@@ -438,13 +438,79 @@
             input.checked = input.value === selected.value;
         }
     });
-    document.body.addEventListener('album-retagged', function (event) {
-        var now = event.detail && event.detail.album_id;
+    function reloadAt(now) {
         if (now && now !== {{ album.id | tojson }}) {
             window.location.replace('/album/' + encodeURIComponent(now) + window.location.search);
             return;
         }
         window.location.reload();
+    }
+    document.body.addEventListener('album-retagged', function (event) {
+        reloadAt(event.detail && event.detail.album_id);
     });
+    // An album something else writes into while this page is open (#975): the
+    // apply pass, a sync, a reconcile. The status bar's `tasks-changed` says a
+    // scan has published something, so the page asks whether it was this album,
+    // and redraws as it does after its own re-tag. With a choice in progress a
+    // redraw would throw the choice away, so the page says the album changed
+    // and redraws when asked to. Its own writes it has drawn already: it asks
+    // straight after each, and takes the answer as what it shows. A write can
+    // publish a scan before its own response lands, so a check that one of the
+    // page's writes overlapped takes the difference as that write too.
+    const albumPage = document.querySelector('.album-page');
+    let revisionChecks = Promise.resolve();
+    let changedUnderUs = false;
+    const writesInFlight = new Set();
+    let writeEvents = 0;  // starts and ends, so a check can tell one overlapped it
+    document.body.addEventListener('htmx:beforeSend', function (event) {
+        if (event.detail.requestConfig.verb === 'get') return;
+        const xhr = event.detail.xhr;
+        writesInFlight.add(xhr);
+        writeEvents++;
+        // `loadend`, which follows success, failure and abort alike.
+        xhr.addEventListener('loadend', function () {
+            writesInFlight.delete(xhr);
+            writeEvents++;
+            checkRevision(true);
+        });
+    });
+    function choosing() {
+        return Boolean(
+            albumWriteRequest
+            || document.querySelector('dialog[open], :popover-open')
+            || document.getElementById('album-track-editor')?.childElementCount
+            || document.querySelector('#album-artwork input[name="use"]')?.value
+        );
+    }
+    function checkRevision(own) {
+        revisionChecks = revisionChecks.then(async function () {
+            if (changedUnderUs) return;
+            const writesBefore = writeEvents;
+            let now;
+            try {
+                const response = await fetch('/album/' + encodeURIComponent({{ album.id | tojson }}) + '/revision');
+                if (!response.ok) return;
+                now = await response.json();
+            } catch (error) {
+                return;  // Moot: the next scan asks again.
+            }
+            if (!now.revision || now.revision === albumPage.dataset.revision) return;
+            const ours = own || writesInFlight.size || writeEvents !== writesBefore;
+            if (ours || !albumPage.dataset.revision) {
+                albumPage.dataset.revision = now.revision;
+                return;
+            }
+            if (!choosing()) {
+                reloadAt(now.album_id);
+                return;
+            }
+            changedUnderUs = true;
+            document.body.dispatchEvent(new CustomEvent('harmonist-page-changed', {detail: {
+                verb: 'This album has changed',
+                reload: function () { reloadAt(now.album_id); },
+            }}));
+        });
+    }
+    document.body.addEventListener('tasks-changed', function () { checkRevision(false); });
 </script>
 {% endblock %}
