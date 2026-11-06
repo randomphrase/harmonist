@@ -621,6 +621,9 @@ LISTING = {
             "id": 1,
             "types": ["Front"],
             "front": True,
+            # The archive sends a comment on every image, empty when nobody
+            # wrote one.
+            "comment": "",
             "image": "http://coverartarchive.org/release/r/1.jpg",
             "thumbnails": {
                 "250": "http://coverartarchive.org/release/r/1-250.jpg",
@@ -632,6 +635,7 @@ LISTING = {
             "id": 2,
             "types": ["Back"],
             "front": False,
+            "comment": " Track 1 ",
             "image": "http://coverartarchive.org/release/r/2.jpg",
             "thumbnails": {"small": "http://coverartarchive.org/release/r/2-250.jpg"},
         },
@@ -684,6 +688,17 @@ def test_a_listing_says_which_images_are_fronts_and_where_to_see_them():
         "https://coverartarchive.org/release/r/2-250.jpg",
     )
     assert untyped.thumbnail_url == untyped.image_url == "https://coverartarchive.org/r/6.png"
+
+
+def test_a_listing_keeps_what_each_images_comment_says():
+    """The comment is how an editor tells two images of one type apart — which
+    track a Track image is for, which page of a booklet (#973). An empty one,
+    or none at all, says nothing."""
+    client, _ = _listing_client()
+
+    first, back, untyped = cover_art.fetch_listing("release", "r", client=client)
+
+    assert (first.comment, back.comment, untyped.comment) == (None, "Track 1", None)
 
 
 def test_a_listing_the_archive_has_nothing_for_is_empty():

@@ -12735,6 +12735,54 @@ def test_a_losing_archive_cover_sits_in_a_column_of_its_own(client, cfg):
     assert "art-row__facts--mb" not in picker
 
 
+def test_a_candidate_says_what_the_archives_comment_says(client, cfg):
+    """A Track image is one of a dozen on a release with art per track, and
+    its kind cannot say which track — the archive's comment does (#973). Shown
+    for any kind of image that has one, and in the name its full-size view is
+    announced by."""
+    from bs4 import BeautifulSoup
+
+    d, _ = _listed_album(cfg, "Per Track", "rel-tracks")
+    activity_store.store_release(
+        "rel-tracks",
+        "caa-listing:release",
+        {
+            "images": [
+                {
+                    "id": "8",
+                    "image": "https://coverartarchive.org/release/rel-tracks/8.png",
+                    "thumbnails": {},
+                    "types": ["Front"],
+                    "front": True,
+                    "comment": "",
+                },
+                {
+                    "id": "7",
+                    "image": "https://coverartarchive.org/release/rel-tracks/7.png",
+                    "thumbnails": {},
+                    "types": ["Track"],
+                    "front": False,
+                    # Mixed case, so a comment capitalized along with the
+                    # kind would show.
+                    "comment": "Track 1, HH.1",
+                },
+            ]
+        },
+    )
+
+    html = client.get(f"/album/{_id_for(cfg, d)}/artwork").text
+    front, track = (BeautifulSoup(s, "html.parser") for s in _slides(html))
+
+    facts = [" ".join(s.get_text().split()) for s in track.select(".art-row__facts > span")]
+    assert facts[:2] == ["This release", "Track · Track 1, HH.1"]
+    button = track.select_one(".art-pick__image")
+    assert button is not None
+    assert button["aria-label"] == "View This release, track “Track 1, HH.1” full size"
+    # A front is the kind nobody needs telling, so with an empty comment
+    # there is nothing for the line to say.
+    assert front.select_one(".art-row__meta-plain") is None
+
+
 def test_the_archive_gets_a_column_beside_the_rows(client, cfg):
     """Three things are being weighed — what the album has, what a re-tag would
     write, and what the archive holds — so the third is a column beside the

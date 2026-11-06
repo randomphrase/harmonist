@@ -8,6 +8,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Added
 
+- **The artwork picker shows the Cover Art Archive's comment on an image**, such as which track a Track image is for (#973).
 - **Browse artists on their own page**, with List and Cards views, search, artist-specific filters and links from album credits (#813).
 - **Read local artist NFOs and pictures throughout the library**, with automatic updates. An NFO whose artist no album credits is listed too, found by the **No albums** filter, and one without an artist ID, or an empty one, is marked **Not identified**. Conflicting NFOs are shown on the artist's page, and read errors are recorded in the log (#813, #936, #939).
 

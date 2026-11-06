@@ -295,6 +295,9 @@ CANDIDATES = [
         thumbnail_url="https://caa.example/2.jpg",
         types=(),
         front=False,
+        # Kept through the store as well as the fetch (#973): the picker
+        # renders from a stored listing.
+        comment="Track 1",
     ),
 ]
 

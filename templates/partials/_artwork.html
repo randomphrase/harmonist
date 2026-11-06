@@ -325,11 +325,13 @@
    picker is an action beside it, moved from row to row (#918). A heading
    over it read as the table's third column. #}
 {#- A candidate named in a line, for its viewer's image list and its button's
-    accessible name: whose, which release, and its kind when not the front. -#}
+    accessible name: whose, which release, its kind when not the front, and
+    the archive's comment on it. -#}
 {% macro candidate_caption(c) -%}
 {%- if c.origin == 'release' %}This release{% elif c.origin == 'release-group' %}Release group{% else %}Another release{% endif -%}
 {%- if c.release %} ({{ c.release }}){% endif -%}
 {%- set kinds = c.types|reject('equalto', 'front')|list %}{% if kinds or not c.front %}, {{ (kinds|join(', ') or 'untyped')|lower }}{% endif -%}
+{%- if c.comment %} “{{ c.comment }}”{% endif -%}
 {%- endmacro %}
 {% macro candidate_facts(candidate, measure=true) %}
 <div class="art-row__facts">
@@ -344,9 +346,15 @@
     <span class="art-row__who">Another release</span>
     {% if candidate.release %}<span class="art-row__meta-plain">{{ candidate.release }}</span>{% endif %}
     {% endif %}
+    {# …and which one it is, in the words of the editor who uploaded it
+       (#973): the kind can't say which track a Track image is for, and the
+       comment is where the archive says so. One line, "Track · Track 1", and
+       the comment as written: only the kind is capitalized. #}
     {% set kinds = candidate.types|reject('equalto', 'front')|list %}
-    {% if kinds or not candidate.front %}
-    <span class="art-row__meta-plain">{{ (kinds|join(', ') or 'untyped')|capitalize }}</span>
+    {% set kind = (kinds|join(', ') or 'untyped')|capitalize if kinds or not candidate.front else none %}
+    {% set described = [kind, candidate.comment]|select|join(' · ') %}
+    {% if described %}
+    <span class="art-row__meta-plain">{{ described }}</span>
     {% endif %}
     {% if candidate.meta %}
     {{ facts_line(candidate.meta, candidate.oversize) }}

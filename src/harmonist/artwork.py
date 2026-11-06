@@ -1075,6 +1075,9 @@ class Candidate:
     #: The original's length in bytes from that measurement, when the archive
     #: said: what tells the picker it's over the image size limit (#888).
     measured_length: int | None = None
+    #: The archive's comment on it, when an editor wrote one: which track a
+    #: Track image is for, which page of a booklet (#973).
+    comment: str | None = None
 
     #: The listings a candidate can come from.
     RELEASE: ClassVar[str] = "release"

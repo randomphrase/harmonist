@@ -112,6 +112,7 @@ def offered(
                 release=listed.release,
                 measured=facts(known) if known is not None else None,
                 measured_length=known.length if known is not None else None,
+                comment=listing.comment,
             )
         )
     for image_id, front in caa_listings.picked_originals(mbid, choices or {}).items():

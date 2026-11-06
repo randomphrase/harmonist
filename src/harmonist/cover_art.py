@@ -429,6 +429,9 @@ class Candidate:
     thumbnail_url: str
     types: tuple[str, ...]
     front: bool
+    #: What the editor who uploaded it wrote about it, or None: how two images
+    #: of one type are told apart — which track a Track image is for (#973).
+    comment: str | None = None
 
 
 def fetch_listing(kind: str, mbid: str, *, client: httpx.Client | None = None) -> list[Candidate]:
@@ -482,6 +485,8 @@ def parse_listing(payload: object) -> list[Candidate]:
         thumbnail = next(
             (t for k in _THUMBNAIL_PREFERENCE if isinstance(t := thumbs.get(k), str)), None
         )
+        # The archive sends an empty comment for an image nobody wrote one for.
+        comment = entry.get("comment")
         found.append(
             Candidate(
                 image_id=str(entry.get("id")),
@@ -489,6 +494,7 @@ def parse_listing(payload: object) -> list[Candidate]:
                 thumbnail_url=_https(thumbnail) if thumbnail else image_url,
                 types=types,
                 front=bool(entry.get("front")),
+                comment=(comment.strip() or None) if isinstance(comment, str) else None,
             )
         )
     return found

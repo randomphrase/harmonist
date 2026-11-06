@@ -370,6 +370,7 @@ def _as_listing(candidates: list[cover_art.Candidate]) -> dict[str, object]:
                 "thumbnails": {"500": c.thumbnail_url},
                 "types": list(c.types),
                 "front": c.front,
+                "comment": c.comment or "",
             }
             for c in candidates
         ]
