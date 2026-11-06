@@ -2989,6 +2989,16 @@ def _widest(view: artwork.ArtworkView) -> int | None:
     return artwork_updates.download_threshold(local, frozenset(view.borrowed) | view.superseded)
 
 
+def _caa_check_due(mbid: str, view: artwork.ArtworkView) -> bool:
+    """Whether a render of the Artwork section should send the archive check
+    (#436): the stored answer is stale or short of a picture, or a listing
+    since has named a front it says isn't there (#974). One rule for every
+    response that draws the section."""
+    return caa_listings.front_listed_since_answer(mbid) or caa_cache.due(
+        mbid, keep_if_wider_than=_widest(view)
+    )
+
+
 def _release_of(album: Album) -> str | None:
     return album.sidecar.mb_release_id if album.sidecar else None
 
@@ -6037,7 +6047,7 @@ def _register_routes(app: FastAPI) -> None:
                     # a deleted release can have a cover in the archive, and this
                     # album's artwork is exactly what its owner is about to go
                     # through looking for the replacement.
-                    caa_check_due=caa_cache.due(mbid, keep_if_wider_than=_widest(gone_artwork)),
+                    caa_check_due=_caa_check_due(mbid, gone_artwork),
                 ),
             )
         except mb_lookup.MBError as e:
@@ -6088,7 +6098,7 @@ def _register_routes(app: FastAPI) -> None:
                     # service, and MusicBrainz being unreachable is no reason to
                     # stop asking it. The section armed this when it fetched
                     # itself, and must still.
-                    caa_check_due=caa_cache.due(mbid, keep_if_wider_than=_widest(failed_artwork)),
+                    caa_check_due=_caa_check_due(mbid, failed_artwork),
                 ),
             )
         return _comparison_response(request, album, mbid, release, asking=check or reread)
@@ -6236,8 +6246,7 @@ def _register_routes(app: FastAPI) -> None:
             # check: the render that opened the page arms it, and the refresh
             # landing afterwards does not arm it again.
             # `artwork_view` is None exactly when this response is `asking`.
-            caa_check_due=artwork_view is not None
-            and caa_cache.due(mbid, keep_if_wider_than=_widest(artwork_view)),
+            caa_check_due=artwork_view is not None and _caa_check_due(mbid, artwork_view),
             # What the panel's MusicBrainz ids are called (#298). Off the same
             # release the comparison is built from, so an id and the name shown
             # for it can never come from two different payloads — which is the
@@ -7179,38 +7188,15 @@ def _register_routes(app: FastAPI) -> None:
         first of the new images; `ahead` when they have only arrived at the
         last image, so the next release is listed before they ask for it.
         `browsed` is whether this page has browsed the group already — see
-        `_list_another_release` for what that spares.
+        `_list_another_release` for what that spares. A release listed with a
+        front since the stored answer said there is none makes that answer out
+        of date (#974): a step asks again, as `reread` does, and any other
+        render sends the check (`caa_listings.front_listed_since_answer`).
         """
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         mbid = album.sidecar.mb_release_id if album.sidecar else None
-        asking = check or reread
-        if asking and mbid is not None:
-            _check_cover_art(
-                mbid,
-                _artwork_view(album, folder_cover=_folder_cover_policy(request)),
-                max_age=caa_cache.FRESH if reread else None,
-            )
-            if artwork_watch.active(album.sidecar):
-                try:
-                    artwork_watch.prepare([album])
-                except cover_art.CoverArtError:
-                    log.exception("could not prepare artwork alternatives for %s", mbid)
-                artwork_updates.observe(mbid)
-            if (
-                album.sidecar is not None
-                and album.sidecar.borrowed_artwork
-                and _settle_own_front(album, mbid)
-            ):
-                album = _refreshed_from_disk(request, _find_album(request, album_id))
-                # The sidecar write is audited; this is the album's History,
-                # where the borrowed note the user saw is accounted for.
-                album_id_now, label = _live_album_ref(album)
-                activity.info(
-                    "Artwork was previously borrowed, but now updated to match the release's own",
-                    album_id=album_id_now,
-                    album_label=label,
-                )
         showing_fronts = front_only[-1] == "1" if front_only else None
+        another: str | None = None
         if more and mbid is not None:
             try:
                 another = _list_another_release(mbid, browsed=browsed)
@@ -7249,6 +7235,37 @@ def _register_routes(app: FastAPI) -> None:
                 # The first image the carousel will show, under Front only.
                 shown = [c for c in theirs if c.front or showing_fronts is False] or theirs
                 candidate = shown[0].image_id
+        # After the step, since what it lists can be what makes the stored
+        # answer out of date (#974). A step has already left the machine, so
+        # it asks; a plain render never does, and sends the check instead.
+        contradicted = mbid is not None and caa_listings.front_listed_since_answer(mbid)
+        asking = check or reread or (contradicted and bool(more))
+        if asking and mbid is not None:
+            _check_cover_art(
+                mbid,
+                _artwork_view(album, folder_cover=_folder_cover_policy(request)),
+                max_age=caa_cache.FRESH if reread or contradicted else None,
+            )
+            if artwork_watch.active(album.sidecar):
+                try:
+                    artwork_watch.prepare([album])
+                except cover_art.CoverArtError:
+                    log.exception("could not prepare artwork alternatives for %s", mbid)
+                artwork_updates.observe(mbid)
+            if (
+                album.sidecar is not None
+                and album.sidecar.borrowed_artwork
+                and _settle_own_front(album, mbid)
+            ):
+                album = _refreshed_from_disk(request, _find_album(request, album_id))
+                # The sidecar write is audited; this is the album's History,
+                # where the borrowed note the user saw is accounted for.
+                album_id_now, label = _live_album_ref(album)
+                activity.info(
+                    "Artwork was previously borrowed, but now updated to match the release's own",
+                    album_id=album_id_now,
+                    album_label=label,
+                )
         caa = caa_cache.stored(mbid) if mbid else None
         archive = album_artwork_mod.archive_image(mbid)
         choices = artwork.parse_choices(use)
@@ -7314,9 +7331,7 @@ def _register_routes(app: FastAPI) -> None:
             # the question to the archive (#436). Never on a response that has
             # just tried: a check that failed leaves the answer stale, and a
             # section that re-triggered on staleness alone would retry forever.
-            caa_check_due=mbid is not None
-            and not asking
-            and caa_cache.due(mbid, keep_if_wider_than=_widest(view)),
+            caa_check_due=mbid is not None and not asking and _caa_check_due(mbid, view),
             # The Artwork header travels with the answer it describes.
             caa_checked_at=caa.fetched_at if caa else None,
         )

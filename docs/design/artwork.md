@@ -113,6 +113,18 @@ else refreshes it; after that it drops out and the next step lists it again. An
 image chosen from it stays chosen, because its original was fetched under its id
 when it was chosen.
 
+**A front listed on another release outdates an answer that says there is
+none** (#974). MusicBrainz gives a group the front of one of its releases, so
+when a step lists a release with a front after the archive check answered that
+neither this release nor its group has one, the listing is the newer evidence.
+Left to the answer's TTL, the picker would offer the image while the plan beside
+it had nothing to add. So the check is asked again: at once by the step, which
+has already gone to both services, and otherwise by the next render, which sends
+it as it sends a stale one. The new answer postdates the listing, so each
+listing prompts one check at most, even while the archive has yet to give the
+group the front. A check that fails leaves the answer older than the listing,
+and it is due again.
+
 The carousel shows the archive's thumbnails, fetched through Harmonist like
 every other image on the page. The original is fetched only when the user
 presses Use, since that's when the plan needs its bytes, or looks at it full

@@ -31,6 +31,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **An album page that finds a front cover on another release asks the Cover
+  Art Archive again**, so the release group's new front is offered at once
+  rather than after the stored answer expires (#974).
 - **A track's row and its MusicBrainz line stay together in the track list**
   when the file includes a pregap: "Includes pregap" now follows the line
   instead of coming between them (#953).

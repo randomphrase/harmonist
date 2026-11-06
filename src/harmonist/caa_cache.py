@@ -297,6 +297,13 @@ def stored_listing(
     return cover_art.parse_listing(known.payload)
 
 
+def listed_at(kind: str, mbid: str) -> datetime | None:
+    """When this release's or release group's listing was last stored, or None
+    if it never has been. **Never the network.**"""
+    known = activity_store.cached_release(mbid, _listing_key(kind))
+    return known.fetched_at if known is not None else None
+
+
 def listing(kind: str, mbid: str, *, max_age: timedelta | None = None) -> list[cover_art.Candidate]:
     """`cover_art.fetch_listing`, served from the store when it is fresh enough.
 

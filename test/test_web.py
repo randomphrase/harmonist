@@ -11575,7 +11575,13 @@ _PRESSINGS = {
 
 
 def _album_in_a_group(
-    cfg, monkeypatch, *, own: bool = True, listed: bool = True, pressings=("rel-uk",)
+    cfg,
+    monkeypatch,
+    *,
+    own: bool = True,
+    listed: bool = True,
+    pressings=("rel-uk",),
+    covers: tuple[bytes | None, ...] = (_png(1),),
 ):
     """A tagged album whose release, `rel-this`, is one of several in group
     `rg-g` (#659), with the browse and the archive's listings stubbed and every
@@ -11586,18 +11592,18 @@ def _album_in_a_group(
     browse page another screen stored earlier, from before any pressing was
     added, is there too — so a test can see it is not what decides. Unless
     `listed`, neither this release's listing nor its group's has been stored
-    yet: the archive check has still to ask."""
+    yet: the archive check has still to ask. The tracks carry `covers`, as
+    `_album_with_art` takes them."""
     from harmonist import cover_art, mb_cache, mb_lookup
 
-    d = _release_backed_album_with_art(cfg, "Grouped", "rel-this", covers=[_png(1)], folder=None)
+    d = _release_backed_album_with_art(cfg, "Grouped", "rel-this", covers=list(covers), folder=None)
     activity_store.store_release(
         "rel-this",
         mb_cache._key(mb_lookup.RELEASE_INCLUDES),
         {"id": "rel-this", "release-group": {"id": "rg-g"}},
     )
-    activity_store.store_cover_art(
-        "rel-this", activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
-    )
+    answer = activity_store.CachedCoverArt(fetched_at=datetime.now(UTC))
+    activity_store.store_cover_art("rel-this", answer)
     if listed:
         if own:
             _listed("rel-this", ("5", "https://coverartarchive.org/release/rel-this/5.png", True))
@@ -11609,6 +11615,11 @@ def _album_in_a_group(
     )
     ids = {"rel-uk": "77", "rel-jp": "88"}
     asked: list[tuple[str, str]] = []
+
+    def check_front(mbid, *, release_group_mbid=None, **kw):
+        # The archive's answer hasn't changed: asking again gets it again.
+        asked.append(("front", mbid))
+        return replace(answer, fetched_at=datetime.now(UTC))
 
     def browse(group):
         asked.append(("browse", group))
@@ -11628,7 +11639,23 @@ def _album_in_a_group(
 
     monkeypatch.setattr(mb_lookup, "browse_release_group_editions", browse)
     monkeypatch.setattr(cover_art, "fetch_listing", fetch_listing)
+    monkeypatch.setattr(cover_art, "check_front", check_front)
     return d, asked
+
+
+def _checked_own_front() -> None:
+    """Store the archive check's answer as naming `rel-this`'s own front, the
+    image `_album_in_a_group` lists for it, as the check says once it has read
+    that listing. The fixture leaves the answer empty, so a test can measure
+    the image the way any other listed image is measured."""
+    activity_store.store_cover_art(
+        "rel-this",
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-this/5.png",
+            source="release",
+        ),
+    )
 
 
 def _step(client, aid: str, html: str, more: str) -> str:
@@ -11664,10 +11691,12 @@ def test_stepping_past_the_last_image_lists_the_groups_next_release(client, cfg,
     """Past the album's own images, › goes on to the next release in its group
     that has any (#659): one live browse — not the page another screen stored,
     which predates the pressing — and one listing, skipping the release
-    MusicBrainz says has no artwork. The new image is the one shown."""
+    MusicBrainz says has no artwork. The new image is the one shown. The
+    archive check isn't asked again: its answer already names a front (#974)."""
     import re
 
     d, asked = _album_in_a_group(cfg, monkeypatch)
+    _checked_own_front()
     aid = _id_for(cfg, d)
     page = client.get(f"/album/{aid}/artwork").text
     assert asked == []  # opening the page asks nobody anything
@@ -11712,6 +11741,7 @@ def test_later_steps_go_on_from_the_pages_own_browse(client, cfg, monkeypatch):
     """One browse per page: looking ahead from the first pressing lists the
     second without asking MusicBrainz again (#659)."""
     d, asked = _album_in_a_group(cfg, monkeypatch, pressings=("rel-uk", "rel-jp"))
+    _checked_own_front()
     aid = _id_for(cfg, d)
 
     stepped = _step(client, aid, client.get(f"/album/{aid}/artwork").text, "step")
@@ -11844,6 +11874,99 @@ def test_an_empty_picker_looks_at_the_other_releases_itself(client, cfg, monkeyp
 
     assert looked is not None and len(_slides(looked)) == 1
     assert ("browse", "rg-g") in asked
+
+
+def test_a_front_found_on_another_release_asks_the_archive_again(client, cfg, monkeypatch):
+    """The stored answer says neither this release nor its group has a front,
+    and it is fresh, so opening the page asks nothing. The empty picker's look
+    then lists a pressing that has one (#974). MusicBrainz gives a group the
+    front of one of its releases, so the stored answer is out of date: the page
+    asks the archive again, with the group, rather than offering the pressing's
+    image in the picker while the plan beside it adds nothing to an album that
+    has no artwork at all."""
+    from harmonist import caa_cache, cover_art
+    from test.test_artwork import png_bytes
+
+    d, _ = _album_in_a_group(cfg, monkeypatch, own=False, covers=(None,))
+    groups_front = png_bytes(300, 300)
+    checks: list[tuple[str, str | None]] = []
+
+    def check_front(mbid, *, release_group_mbid=None, **kw):
+        checks.append((mbid, release_group_mbid))
+        cover_art.cache_image(mbid, groups_front, "image/png")
+        return activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC),
+            image_url="https://coverartarchive.org/release/rel-uk/77.png",
+            width=300,
+            height=300,
+            length=len(groups_front),
+            mime="image/png",
+            source="release-group",
+        )
+
+    monkeypatch.setattr(cover_art, "check_front", check_front)
+    aid = _id_for(cfg, d)
+    page = client.get(f"/album/{aid}/artwork").text
+    assert checks == [] and "Apply artwork" not in page
+
+    looked = _look_ahead(client, page)
+
+    assert looked is not None
+    # The pressing the look found is offered, as before…
+    assert any("Another release" in s for s in _slides(looked))
+    # …and what it found sent the archive check back, with the group.
+    assert checks == [("rel-this", "rg-g")]
+    answer = caa_cache.stored("rel-this")
+    assert answer is not None and answer.from_release_group
+    assert "Apply artwork" in looked
+
+
+def test_each_listing_newer_than_the_answer_is_asked_about_once(client, cfg, monkeypatch):
+    """The archive can still say the group has no front just after a release
+    has gained one (#974). Asking again settles the listing that prompted it,
+    since the new answer is newer, so the page doesn't go on asking: only a
+    pressing listed after that answer asks once more."""
+    d, asked = _album_in_a_group(
+        cfg, monkeypatch, own=False, covers=(None,), pressings=("rel-uk", "rel-jp")
+    )
+    aid = _id_for(cfg, d)
+    check = f"/album/{aid}/artwork?check=1"
+
+    looked = _look_ahead(client, client.get(f"/album/{aid}/artwork").text)
+    assert looked is not None
+    assert asked.count(("front", "rel-this")) == 1
+    assert check not in looked and check not in client.get(f"/album/{aid}/artwork").text
+
+    ahead = _step(client, aid, looked, "ahead")
+    assert ("release", "rel-jp") in asked
+    assert asked.count(("front", "rel-this")) == 2
+    assert check not in ahead and check not in client.get(f"/album/{aid}/artwork").text
+
+
+def test_a_failed_check_after_a_newer_listing_is_sent_again(client, cfg, monkeypatch):
+    """A check that fails leaves the answer older than the listing that
+    contradicted it (#974), so it stays due: the response to the failure
+    doesn't send it again, and the next render of the section does."""
+    from harmonist import cover_art
+
+    d, _ = _album_in_a_group(cfg, monkeypatch, own=False, covers=(None,))
+    attempts: list[str] = []
+
+    def down(mbid, **kw):
+        attempts.append(mbid)
+        raise cover_art.CoverArtError("the archive is down")
+
+    monkeypatch.setattr(cover_art, "check_front", down)
+    aid = _id_for(cfg, d)
+    check = f"/album/{aid}/artwork?check=1"
+
+    looked = _look_ahead(client, client.get(f"/album/{aid}/artwork").text)
+    assert looked is not None and attempts == ["rel-this"]
+    assert check not in looked
+
+    assert check in client.get(f"/album/{aid}/artwork").text
+    client.get(check)
+    assert attempts == ["rel-this", "rel-this"]
 
 
 def test_an_empty_picker_stays_when_no_other_release_has_images(client, cfg, monkeypatch):

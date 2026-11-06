@@ -50,6 +50,33 @@ def other_releases(mbid: str, group: str) -> list[Release]:
     ]
 
 
+def front_listed_since_answer(mbid: str) -> bool:
+    """Whether a release in the group has been listed with a front since the
+    archive check answered that neither this release nor its group has one
+    (#974).
+
+    MusicBrainz gives a group the front of one of its releases, so that answer
+    is out of date, and the listing is the newer of the two. Left to its TTL,
+    the picker would offer the image while the plan beside it, read from the
+    answer, had nothing to add. Asking again settles it either way: the new
+    answer postdates the listing, so each listing prompts one check at most,
+    and a check that failed is due again.
+    """
+    known = caa_cache.stored(mbid)
+    group = group_of(mbid)
+    if known is None or known.has_art or group is None:
+        return False
+    for release in other_releases(mbid, group):
+        listed = caa_cache.listed_at("release", str(release["id"]))
+        if (
+            listed is not None
+            and listed > known.fetched_at
+            and any(c.front for c in caa_cache.stored_listing("release", str(release["id"])) or ())
+        ):
+            return True
+    return False
+
+
 def _release_label(release: Release) -> str:
     """What tells one release of an album from another: the same facts the
     release pickers show, minus the title they share."""
