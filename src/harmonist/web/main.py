@@ -24,7 +24,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal, Protocol, get_args
-from urllib.parse import parse_qsl, quote, urlencode
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 
 from fastapi import (
     FastAPI,
@@ -76,6 +76,8 @@ from harmonist import (
     mb_lookup,
     mb_search,
     mb_tracks,
+    nfo_history,
+    nfo_writer,
     pending_downloads,
     pregaps,
     progress,
@@ -126,6 +128,7 @@ from harmonist.web.security import BasicAuthMiddleware, CSRFMiddleware
 from harmonist.web.sync_runner import AlreadyRunningError, SyncRunner
 
 _MB_URL_RE = re.compile(r"/release/([a-f0-9-]{36})", re.IGNORECASE)
+_MB_ARTIST_URL_RE = re.compile(r"/artist/([a-f0-9-]{36})", re.IGNORECASE)
 # A bare MBID can be a real UUID (36 hex+dashes) OR a demo-mode pseudo-MBID
 # like "demo-rel-thamesmen". Accept any alphanumeric-plus-dashes token; the
 # downstream MB lookup will fail clearly if the value isn't actually valid.
@@ -3252,12 +3255,87 @@ def _albums(request: Request) -> list[Album]:
 
 
 def _artist_for(request: Request, key: str, inventory: artist_nfo.Inventory) -> artists.Artist:
-    key = artists.page_key(key) or ""
-    eligible = [a for a in _albums(request) if a.state in _TERMINAL_STATES]
-    found = next((a for a in artists.build_index(eligible, inventory) if a.key == key), None)
+    found = _artist_index(request, inventory).get(artists.page_key(key) or "")
     if found is None:
         raise HTTPException(status_code=404, detail="artist not found in the library")
     return found
+
+
+def _artist_index(request: Request, inventory: artist_nfo.Inventory) -> dict[str, artists.Artist]:
+    eligible = [a for a in _albums(request) if a.state in _TERMINAL_STATES]
+    return {a.key: a for a in artists.build_index(eligible, inventory)}
+
+
+def _moved_artist(key: str, listed: Mapping[str, artists.Artist]) -> str | None:
+    """Where an artist page whose key nothing is listed under went: the file
+    an NFO write moved off it, to the first key along the way still listed
+    (#981). A path-hash page leads to the artist its file was identified as."""
+    for successor in activity_store.artist_successors(key):
+        if successor in listed:
+            return successor
+    return None
+
+
+def _nfo_file(
+    inventory: artist_nfo.Inventory, artist_key: str, file_key: str
+) -> artist_nfo.Profile:
+    """One readable NFO on this artist's page, by the hash of its path: a
+    request names a file only as one the page lists, never by its path."""
+    for profile in inventory.by_key.get(artists.page_key(artist_key) or "", ()):
+        if id_registry.get_or_mint(profile.path) == file_key:
+            return profile
+    raise HTTPException(status_code=404, detail="no such artist NFO on this page")
+
+
+def _artist_input(value: str) -> str | None:
+    """An artist MBID from a pasted MusicBrainz artist URL or a bare MBID."""
+    found = _MB_ARTIST_URL_RE.search(value or "")
+    return artists.mbid(found.group(1) if found else (value or ""))
+
+
+class _NoArtist(Exception):
+    """Why there is no MusicBrainz artist to show, in words for the user."""
+
+
+def _read_artist(entered: str) -> Mapping[str, Any]:
+    """MusicBrainz's answer, now, for a pasted artist URL or MBID. Never stored:
+    every caller is the user asking at this moment, and one of them writes."""
+    mbid = _artist_input(entered)
+    if mbid is None:
+        raise _NoArtist("That isn't a MusicBrainz artist URL or MBID.")
+    try:
+        return mb_lookup.fetch_artist(mbid)
+    except mb_lookup.ArtistNotFoundError as exc:
+        raise _NoArtist("MusicBrainz has no artist with this ID.") from exc
+    except mb_lookup.MBError as exc:
+        log.warning("could not read MusicBrainz artist %s: %s", mbid, exc, extra=_LOG_ONLY)
+        raise _NoArtist("Couldn't read MusicBrainz. Try again later.") from exc
+
+
+def _artist_results(
+    request: Request,
+    artist_key: str,
+    file_key: str,
+    *,
+    results: Sequence[Mapping[str, Any]] = (),
+    total: int = 0,
+    query: str = "",
+    error: str | None = None,
+) -> Response:
+    """The artists the finder found for one NFO, each with Identify (#981)."""
+    return _templates(request).TemplateResponse(
+        request,
+        "partials/_artist_search_results.html",
+        _ctx(
+            request,
+            results=results,
+            total=total,
+            query=query,
+            artist_key=artists.page_key(artist_key),
+            file_key=file_key,
+            error=error,
+        ),
+    )
 
 
 def _nfo_inventory(request: Request) -> artist_nfo.Inventory:
@@ -4765,7 +4843,22 @@ def _register_routes(app: FastAPI) -> None:
         artist_view: str | None = None,
     ) -> Response:
         inventory = _nfo_inventory(request)
-        artist = _artist_for(request, artist_key, inventory)
+        listed = _artist_index(request, inventory)
+        key = artists.page_key(artist_key) or ""
+        if key not in listed:
+            # A file an NFO write moved off this key (#981). A store failure
+            # here is "couldn't check", never "no such artist" (#104).
+            try:
+                moved = _moved_artist(key, listed) if key else None
+            except activity_store.StoreUnavailableError as exc:
+                raise HTTPException(
+                    status.HTTP_503_SERVICE_UNAVAILABLE, "artist history can't be read right now"
+                ) from exc
+            if moved is None:
+                raise HTTPException(status_code=404, detail="artist not found in the library")
+            suffix = f"?{request.url.query}" if request.url.query else ""
+            return RedirectResponse(f"/artist/{moved}{suffix}", status_code=307)
+        artist = listed[key]
         result = inventory.for_artist(artist.key)
         image = inventory.image_for(artist.key)
         artist = replace(artist, nfo_paths=result.candidates, artwork_path=image)
@@ -4801,6 +4894,16 @@ def _register_routes(app: FastAPI) -> None:
                 artist_view=layout,
             )
 
+        # What Harmonist wrote into this artist's NFOs, and the Undo for each
+        # write (#981). "Couldn't read" is not "nothing recorded" (#104).
+        try:
+            history, history_writes = nfo_history.history(
+                artist.key, root=request.app.state.cfg.paths.music_dir
+            )
+            history_unavailable = False
+        except activity_store.StoreUnavailableError:
+            history, history_writes, history_unavailable = [], {}, True
+
         return _templates(request).TemplateResponse(
             request,
             "artist.html",
@@ -4810,6 +4913,15 @@ def _register_routes(app: FastAPI) -> None:
                 artist=artist,
                 artist_badges=artists.badges(artist),
                 nfo=result,
+                # Each readable NFO on the page, by the handle a request names
+                # it with, for its own Identify control.
+                nfo_files=[
+                    (id_registry.get_or_mint(profile.path), profile)
+                    for profile in inventory.by_key.get(artist.key, ())
+                ],
+                history=history,
+                history_writes=history_writes,
+                history_unavailable=history_unavailable,
                 artist_image=image is not None,
                 artist_image_url=inventory.image_url(artist.key),
                 artist_back_url=artists.index_url(
@@ -4864,6 +4976,141 @@ def _register_routes(app: FastAPI) -> None:
         except OSError as exc:
             log.exception("Could not serve local artist artwork")
             raise HTTPException(status_code=503, detail="local artist artwork unavailable") from exc
+
+    @app.get("/artist/{artist_key}/search", response_class=HTMLResponse)
+    def artist_search(request: Request, artist_key: str, file: str, name: str = "") -> Response:
+        """MusicBrainz artists by name, each with Identify, for one of this
+        page's NFOs (#981). A search the user asked for, so never cached."""
+        _nfo_file(_nfo_inventory(request), artist_key, file)
+        try:
+            results, total = mb_search.search_artists(name)
+        except mb_search.MBSearchError as exc:
+            log.warning("artist search failed: %s", exc, extra=_LOG_ONLY)
+            return _artist_results(
+                request, artist_key, file, error="Couldn't search MusicBrainz. Try again later."
+            )
+        return _artist_results(
+            request, artist_key, file, results=results, total=total, query=name.strip()
+        )
+
+    @app.get("/artist/{artist_key}/lookup", response_class=HTMLResponse)
+    def artist_lookup(request: Request, artist_key: str, file: str, artist: str = "") -> Response:
+        """The MusicBrainz artist a pasted URL or MBID names, listed as a search
+        finds one (#981)."""
+        _nfo_file(_nfo_inventory(request), artist_key, file)
+        try:
+            answer = _read_artist(artist)
+        except _NoArtist as exc:
+            return _artist_results(request, artist_key, file, error=str(exc))
+        return _artist_results(
+            request, artist_key, file, results=[mb_lookup.artist_summary(answer)]
+        )
+
+    @app.post("/artist/{artist_key}/identify", response_class=HTMLResponse)
+    def artist_identify(
+        request: Request, artist_key: str, file: str = Form(...), artist: str = Form(...)
+    ) -> Response:
+        """Fill in one of this page's NFOs from a MusicBrainz artist, and record
+        it (#981).
+
+        The row that was pressed is all the review there is, so this writes
+        what MusicBrainz says now. A failure answers 200 with the reason, which
+        lands above the rows."""
+        profile = _nfo_file(_nfo_inventory(request), artist_key, file)
+        try:
+            answer = _read_artist(artist)
+        except _NoArtist as exc:
+            return _identify_problem(str(exc))
+        try:
+            data = profile.path.read_bytes()
+        except OSError as exc:
+            return _identify_problem(f"Couldn't read the file: {exc.strerror}")
+        root = request.app.state.cfg.paths.music_dir
+        try:
+            written = nfo_history.write(
+                profile.path, root=root, expected=data, wanted=nfo_writer.mapped(answer)
+            )
+        except nfo_writer.NfoChangedError:
+            return _identify_problem("The file has just changed, so nothing was written.")
+        except nfo_writer.NfoWriteError as exc:
+            activity.record(
+                f"Couldn't write the artist NFO — {exc}",
+                Level.ERROR,
+                artist_id=profile.key,
+                artist_label=profile.name or profile.path.parent.name,
+            )
+            return _identify_problem(f"Nothing was written: {exc}")
+        if written is None:
+            return _flash_response(
+                "Nothing to change",
+                "the file already holds what MusicBrainz says",
+                tasks_changed=False,
+                record_activity=False,
+            )
+        return _artist_written(
+            request,
+            written,
+            profile.path,
+            "Identified" if "musicbrainzartistid" in written.changes else "Filled in",
+            _relative_path(profile.path, root),
+        )
+
+    @app.post("/artist/{artist_key}/undo", response_class=HTMLResponse)
+    def artist_nfo_undo(request: Request, artist_key: str, event_id: int = Form(...)) -> Response:
+        """Put back the NFO fields one write changed (#981).
+
+        `event_id` names a write in this page's own History, and the change is
+        worked out again from the stored record and the file as it is now, as
+        the tag Undo does: a request can name a History entry, never a file, a
+        field or a value. Fields changed since the write are left alone."""
+        key = artists.page_key(artist_key) or ""
+        root = request.app.state.cfg.paths.music_dir
+        try:
+            mine = any(e.id == event_id for e in activity_store.artist_history(key))
+            record = activity_store.nfo_changes_for([event_id]).get(event_id) if mine else None
+        except activity_store.StoreUnavailableError:
+            return _flash_response(
+                "Couldn't undo",
+                "this artist's history can't be read right now",
+                level=Level.ERROR,
+                tasks_changed=False,
+            )
+        if record is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no NFO change on that history entry")
+        try:
+            plan = nfo_history.undo_plan(record, root=root)
+            if not plan.revert:
+                return _flash_response(
+                    "Nothing to undo",
+                    "these fields have changed since that write"
+                    if plan.kept
+                    else "these fields are already back",
+                    tasks_changed=False,
+                    # A no-op writes no History line, as for tags (#86).
+                    record_activity=False,
+                )
+            written = nfo_history.write(
+                plan.path, root=root, expected=plan.expected, wanted=plan.revert
+            )
+        except (nfo_history.UndoUnavailableError, nfo_writer.NfoWriteError) as exc:
+            return _flash_response(
+                "Couldn't undo", str(exc), level=Level.ERROR, tasks_changed=False
+            )
+        if written is None:
+            return _flash_response(
+                "Nothing to undo",
+                "these fields are already back",
+                tasks_changed=False,
+                record_activity=False,
+            )
+        kept = ", ".join(nfo_writer.LABELS.get(f, f) for f in plan.kept)
+        return _artist_written(
+            request,
+            written,
+            plan.path,
+            "NFO fields put back",
+            f"left alone, changed since: {kept}" if kept else _relative_path(plan.path, root),
+        )
 
     @app.get("/tasks", response_class=HTMLResponse)
     def tasks(request: Request) -> Response:
@@ -9086,6 +9333,7 @@ def _flash_response(
     status_code: int = 200,
     extra_triggers: dict[str, Any] | None = None,
     album: Album | None = None,
+    artist: tuple[str, str] | None = None,
     record_activity: bool = True,
     oob: str = "",
 ) -> HTMLResponse:
@@ -9115,16 +9363,25 @@ def _flash_response(
     Pass `album` whenever the action concerns one album, so the entry joins that
     album's history (#33) and the feed can link + name it (#65). The album's id
     is re-derived from disk here — see `_live_album_ref` for why the caller's
-    `album.id` is not safe to record.
+    `album.id` is not safe to record. `artist` does the same for an artist page,
+    as its key and name once the action is over (#981).
     """
     message = verb if not details else f"{verb} — {details}"
     album_id, album_label = (None, None) if album is None else _live_album_ref(album)
+    artist_id, artist_label = artist if artist is not None else (None, None)
     # Every action outcome is also an activity-log entry (the Activity tab).
     # `record_activity=False` is for the rare case where a background worker
     # writes the authoritative entry itself — starting a sync, where only the
     # runner knows link-only vs full — and this would just duplicate it (#101).
     if record_activity:
-        activity.record(message, level, album_id=album_id, album_label=album_label)
+        activity.record(
+            message,
+            level,
+            album_id=album_id,
+            album_label=album_label,
+            artist_id=artist_id,
+            artist_label=artist_label,
+        )
     triggers: dict[str, Any] = {
         "harmonist-status": {
             "verb": verb,
@@ -9135,7 +9392,8 @@ def _flash_response(
             # (linked) position, while the status bar has no such column and must
             # inline it. Baking it into details would double it up in the feed —
             # the #65 mistake — and dropping it left the bar saying just "Tagged".
-            "album": album_label,
+            # An artist's name takes the same place: the bar only names things.
+            "album": album_label or artist_label,
         }
     }
     if tasks_changed:
@@ -9147,6 +9405,32 @@ def _flash_response(
         status_code=status_code,
         headers={"HX-Trigger": json.dumps(triggers)},
     )
+
+
+def _artist_written(
+    request: Request, written: nfo_history.Written, path: Path, verb: str, details: str
+) -> HTMLResponse:
+    """The answer to an NFO write (#981): the runner reads the file again, so
+    the page the browser is sent to lists it under the key it has now, which an
+    identification or its Undo has just changed."""
+    request.app.state.scan_runner.refresh_nfo(path)
+    request.state.skip_rescan = True
+    response = _flash_response(verb, details, artist=(written.key, written.label))
+    query = urlsplit(request.headers.get("HX-Current-URL", "")).query
+    response.headers["HX-Redirect"] = f"/artist/{written.key}" + (f"?{query}" if query else "")
+    return response
+
+
+def _identify_problem(message: str) -> HTMLResponse:
+    """Why an NFO write wasn't made, for the finder to show above its rows."""
+    return HTMLResponse(
+        f'<p role="alert" class="text-xs text-red-700 px-2 py-1 break-words">'
+        f"{html.escape(message)}</p>"
+    )
+
+
+def _relative_path(path: Path, root: Path) -> str:
+    return str(path.relative_to(root)) if path.is_relative_to(root) else str(path)
 
 
 def _quiet_response(*, tasks_changed: bool = True, oob: str = "") -> HTMLResponse:

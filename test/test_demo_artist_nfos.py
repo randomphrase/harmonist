@@ -1,6 +1,8 @@
 """The public demo exercises the real artist inventory and exclusion rules."""
 
-from harmonist import artist_nfo, artists, demo, scanner
+import pytest
+
+from harmonist import artist_nfo, artists, demo, mb_lookup, nfo_writer, scanner
 from harmonist.models import AlbumState
 
 VARIOUS = "89ad4ac3-39f7-470e-963a-56509c546377"
@@ -78,3 +80,21 @@ def test_demo_resets_and_old_dataset_upgrade_restore_identical_nfo_fixtures(tmp_
     assert demo.ensure_seeded(root)
     assert metadata() == original
     assert demo._marker_version(root) == demo.data_version()
+
+
+def test_the_demos_musicbrainz_knows_each_credited_artist_and_no_other():
+    """So the empty Wyld Stallion NFO can be filled in from its album's credit (#981)."""
+    wyld = demo.MB_RELEASES["demo-rel-wyld"]["artist-credit"][0]["artist"]["id"]
+    answer = demo.fetch_artist(wyld)
+    assert nfo_writer.mapped(answer) == {
+        "name": "Wyld Stallion",
+        "musicbrainzartistid": wyld,
+        "sortname": "Wyld Stallion",
+        "type": "Group",
+        "gender": None,
+        "disambiguation": "San Dimas rock duo",
+        "formed": "1988",
+        "disbanded": None,
+    }
+    with pytest.raises(mb_lookup.ArtistNotFoundError):
+        demo.fetch_artist("00000000-0000-4000-8000-000000000000")

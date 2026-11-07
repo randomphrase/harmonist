@@ -86,6 +86,15 @@ def test_only_the_lowercase_id_element_names_the_artist(tmp_path):
     assert artist_nfo.read(both).mbid == BOB
 
 
+def test_only_the_lowercase_sort_name_element_is_read(tmp_path):
+    """The sort name is `sortname`, the spelling Harmonist writes (#981)."""
+    path = tmp_path / "artist.nfo"
+    path.write_text(
+        "<artist><sortName>Other, The</sortName><sortname>Kodi, The</sortname></artist>"
+    )
+    assert artist_nfo.read(path).sort_name == "Kodi, The"
+
+
 @pytest.mark.parametrize(
     "payload",
     [

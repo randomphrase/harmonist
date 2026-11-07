@@ -93,6 +93,9 @@ belongs in a music folder.
   [history](history.md)).
 - **Tag changes**: per-file before-and-after values for every tagging, which is
   what makes undo possible.
+- **NFO changes**: the same for every write into an artist NFO, with the artist
+  page each write moved the file away from (see
+  [history](history.md#what-an-artist-nfo-write-records)).
 - **Album aliases**: old ID to new ID, recorded when an album is re-identified
   (see [the model](model.md#identity)).
 - **The MusicBrainz and Cover Art Archive caches** (see

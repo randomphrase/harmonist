@@ -373,6 +373,38 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
             original TEXT NOT NULL
         )""",
     ),
+    # 12 -> 13: what Harmonist writes into artist NFOs, and what MusicBrainz
+    # said about the artist it wrote (#981).
+    #
+    # `artist_id` and `artist_label` are `album_id` and `album_label` for an
+    # artist page: the artist an event is about, as the page key it had once the
+    # event was over, and its name at the time. The feed links an entry by them,
+    # and the artist page's History reads by `artist_id`.
+    #
+    # `nfo_changes` is `tag_changes` for one NFO: the fields one write changed,
+    # as {field: [before, after]}, hanging off its `nfo.write` audit row. The
+    # file is named relative to the library root, which is how Undo finds it.
+    #
+    # `key_before` is what stands in for an alias. An album's ID is the album's
+    # alone, so its old ID can be aliased to its new one; an artist's MBID is
+    # the artist's, not the file's, so undoing an identification can't alias
+    # the MBID back to the file's path hash without sending every link to the
+    # artist to that one file. So a write records the page key it moved the
+    # file away from, and an artist's History is the writes that left a file at
+    # its key (`artist_id`) or took one away from it (`key_before`). An old link
+    # to a path hash is followed by the newest write away from it.
+    (
+        "ALTER TABLE events ADD COLUMN artist_id TEXT",
+        "ALTER TABLE events ADD COLUMN artist_label TEXT",
+        "CREATE INDEX idx_events_artist_id ON events (artist_id, id)",
+        """CREATE TABLE nfo_changes (
+            event_id   INTEGER PRIMARY KEY REFERENCES events (id),
+            file       TEXT NOT NULL,
+            key_before TEXT NOT NULL,
+            changes    TEXT NOT NULL
+        )""",
+        "CREATE INDEX idx_nfo_changes_key_before ON nfo_changes (key_before)",
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
@@ -425,7 +457,9 @@ def current_action() -> str | None:
 #: One definition rather than four copies of the same list: the id was added
 #: for #86's history join, and adding it to three of four call sites would have
 #: been an unpleasant way to find out which one was missed.
-_EVENT_COLUMNS = "id, ts, level, source, message, album_id, album_label, action_id"
+_EVENT_COLUMNS = (
+    "id, ts, level, source, message, album_id, album_label, action_id, artist_id, artist_label"
+)
 
 
 @dataclass(frozen=True)
@@ -445,11 +479,15 @@ class StoredEvent:
     # The action that produced this row — shared with every other row from the
     # same user-visible outcome (#84). None outside an action scope.
     action_id: str | None = None
+    # The artist page this row is about, and the artist's name when it was
+    # written: `album_id` and `album_label` for artists (#981).
+    artist_id: str | None = None
+    artist_label: str | None = None
 
 
 def _event(row: tuple[Any, ...]) -> StoredEvent:
     """One `_EVENT_COLUMNS` row as a StoredEvent."""
-    row_id, ts, level, src, msg, album_id, label, action_id = row
+    row_id, ts, level, src, msg, album_id, label, action_id, artist_id, artist_label = row
     return StoredEvent(
         id=int(row_id),
         ts=datetime.fromisoformat(ts),
@@ -459,6 +497,8 @@ def _event(row: tuple[Any, ...]) -> StoredEvent:
         album_id=album_id,
         album_label=label,
         action_id=action_id,
+        artist_id=artist_id,
+        artist_label=artist_label,
     )
 
 
@@ -556,13 +596,17 @@ def append(
     source: Source,
     album_id: str | None = None,
     album_label: str | None = None,
+    artist_id: str | None = None,
+    artist_label: str | None = None,
 ) -> int | None:
     """Append one event, returning its row id — or None when nothing was written.
 
     `album_id` (an album's `Album.id`) ties the event to an
     album so per-album history spans both sources; None when it isn't about one
     album. `album_label` is that album's human name, stored alongside because the
-    id can stop resolving later (see the 2->3 migration). Best-effort: a failure here (e.g. a teardown race in tests) must never
+    id can stop resolving later (see the 2->3 migration). `artist_id` and
+    `artist_label` do the same for an artist page (see the 12->13 migration).
+    Best-effort: a failure here (e.g. a teardown race in tests) must never
     crash the caller or the logging path.
 
     The row id exists so a caller can attach structured detail to the row it
@@ -579,8 +623,9 @@ def append(
             conn = _ensure()
             cur = conn.execute(
                 "INSERT INTO events "
-                "(ts, level, source, message, album_id, album_label, action_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "(ts, level, source, message, album_id, album_label, action_id, "
+                "artist_id, artist_label) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     ts,
                     level.value,
@@ -589,6 +634,8 @@ def append(
                     album_id,
                     album_label,
                     _current_action.get(),
+                    artist_id,
+                    artist_label,
                 ),
             )
             conn.commit()
@@ -707,6 +754,149 @@ def tag_changes_for(event_ids: Sequence[int]) -> dict[int, TagChanges]:
                 position=position,
             )
     return out
+
+
+@dataclass(frozen=True)
+class NfoChanges:
+    """One NFO write's per-field before/after, the file it went into, relative
+    to the library root, and the page key the write moved the file away from
+    (see the 12->13 migration)."""
+
+    file: str
+    key_before: str
+    changes: dict[str, list[str | None]]
+
+
+def record_nfo_changes(
+    event_id: int, *, file: str, key_before: str, changes: Mapping[str, Sequence[str | None]]
+) -> None:
+    """Attach one NFO write's per-field before/after to its `nfo.write` audit
+    row `event_id` (#981).
+
+    Best-effort, like `record_tag_changes`: the write has happened and its audit
+    line is committed, so losing this row costs the History detail and the
+    Undo, never the record that the write took place.
+    """
+    if not changes:
+        return
+    try:
+        with _LOCK:
+            conn = _ensure()
+            conn.execute(
+                "INSERT INTO nfo_changes (event_id, file, key_before, changes) VALUES (?, ?, ?, ?)",
+                (
+                    event_id,
+                    file,
+                    key_before,
+                    json.dumps(
+                        {field: list(pair) for field, pair in changes.items()},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                ),
+            )
+            conn.commit()
+    except sqlite3.Error:
+        log.exception("activity_store record_nfo_changes failed", extra=_QUIET_MIRROR)
+
+
+def nfo_changes_for(event_ids: Sequence[int]) -> dict[int, NfoChanges]:
+    """The stored NFO write detail for `event_ids`, keyed by event id.
+
+    Raises `StoreUnavailableError` rather than returning `{}`: the artist page
+    offers Undo from what this returns, so a read failure must say "unavailable"
+    rather than show a History whose writes look as if they changed nothing.
+    A row that won't parse is skipped, as in `tag_changes_for`.
+    """
+    if not event_ids:
+        return {}
+    placeholders = ",".join("?" * len(event_ids))
+    try:
+        with _LOCK:
+            conn = _ensure()
+            rows = conn.execute(
+                "SELECT event_id, file, key_before, changes "
+                f"FROM nfo_changes WHERE event_id IN ({placeholders})",
+                list(event_ids),
+            ).fetchall()
+    except sqlite3.Error as exc:
+        log.exception("activity_store nfo_changes_for failed", extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not read the artist NFO changes") from exc
+    out: dict[int, NfoChanges] = {}
+    for event_id, file, key_before, payload in rows:
+        try:
+            parsed = json.loads(payload)
+        except TypeError, ValueError:
+            log.warning("nfo_changes row %s has unreadable JSON — skipping", event_id)
+            continue
+        if isinstance(parsed, dict):
+            out[int(event_id)] = NfoChanges(
+                file=str(file),
+                key_before=str(key_before),
+                changes={str(k): list(v) for k, v in parsed.items() if isinstance(v, list)},
+            )
+    return out
+
+
+def artist_history(key: str, limit: int = 200) -> list[StoredEvent]:
+    """Everything recorded about one artist page, newest first (#981).
+
+    The rows recorded under `key`, and every row of an action whose NFO write
+    moved a file away from it: identifying a file takes it off its path-hash
+    page, and undoing that takes it off the artist's. Both pages show the write.
+
+    Raises `StoreUnavailableError`, as `album_history` does, so the page can say
+    "unavailable" rather than "nothing recorded".
+    """
+    q = (
+        f"SELECT {_EVENT_COLUMNS} FROM events WHERE artist_id = ? OR action_id IN ("
+        "SELECT e.action_id FROM nfo_changes n JOIN events e ON e.id = n.event_id "
+        "WHERE n.key_before = ? AND e.action_id IS NOT NULL"
+        ") ORDER BY id DESC LIMIT ?"
+    )
+    try:
+        with _LOCK:
+            conn = _ensure()
+            rows = conn.execute(q, (key, key, limit)).fetchall()
+    except sqlite3.Error as exc:
+        log.exception("activity_store artist_history(%s) failed", key, extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not read this artist's history") from exc
+    return [_event(row) for row in rows]
+
+
+def artist_successors(key: str, *, max_hops: int = 20) -> list[str]:
+    """The page keys a file left `key` for, newest write first at each step.
+
+    What an old link to an artist page follows once nothing is listed under it:
+    the file identified from a path-hash page is now under its MBID. Returned
+    as the chain rather than its end, because a later write can move a file
+    back to a key it once had, and the caller wants the first key still listed.
+
+    Raises `StoreUnavailableError`: an empty chain sends the caller on to a
+    404, which a store failure must not turn into.
+    """
+    chain: list[str] = []
+    seen = {key}
+    current = key
+    try:
+        with _LOCK:
+            conn = _ensure()
+            for _ in range(max_hops):
+                row = conn.execute(
+                    "SELECT e.artist_id FROM nfo_changes n JOIN events e ON e.id = n.event_id "
+                    "WHERE n.key_before = ? AND e.artist_id IS NOT NULL "
+                    "ORDER BY n.event_id DESC LIMIT 1",
+                    (current,),
+                ).fetchone()
+                if row is None or row[0] in seen:
+                    break
+                current = str(row[0])
+                seen.add(current)
+                chain.append(current)
+    except sqlite3.Error as exc:
+        log.exception("activity_store artist_successors(%s) failed", key, extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not follow this artist page's history") from exc
+    return chain
 
 
 def recent(
@@ -1626,11 +1816,15 @@ def clear() -> None:
     Squished images (#888) go too. Keyed by content, a row stays true anywhere,
     but it's a record of writes into the library being torn down, and a reset
     leaves none of that library's history behind.
+
+    NFO changes and cached artists (#981) go for the reasons tag changes and
+    cached releases do.
     """
     try:
         with _LOCK:
             conn = _ensure()
             conn.execute("DELETE FROM tag_changes")
+            conn.execute("DELETE FROM nfo_changes")
             conn.execute("DELETE FROM events")
             conn.execute("DELETE FROM album_aliases")
             conn.execute("DELETE FROM mb_release_cache")

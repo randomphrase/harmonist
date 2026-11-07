@@ -1,0 +1,13 @@
+{# What one artist NFO write changed, field by field (#981), through the same
+   before-and-after pair as a tagging's rows. One file, so no reach beside them;
+   where an artist has two NFOs, the file is named under the rows.
+
+   Expects `write` (nfo_history.HistoryWrite) and `several_files`. #}
+{% from 'partials/_change_pair.html' import pair %}
+<dl class="tag-changes">
+    {% for c in write.changes %}
+    <dt>{{ c.label }}</dt>
+    <dd>{{ pair(c, c.before, c.after, none, none, removed_by='this write') }}</dd>
+    {% endfor %}
+</dl>
+{% if several_files %}<p class="text-2xs text-muted break-all">{{ write.file }}</p>{% endif %}

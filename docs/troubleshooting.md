@@ -32,7 +32,8 @@ what to do. For the ideas behind the answers, see
   [artwork in Plex/Navidrome](#plex-or-navidrome-shows-no-cover-or-the-wrong-one) ·
   [track lengths](#track-lengths-dont-match-musicbrainz) ·
   [Mixed formats](#an-album-is-listed-under-mixed-formats-only) ·
-  [artist listed twice](#an-artist-is-listed-twice-once-as-not-identified)
+  [artist listed twice](#an-artist-is-listed-twice-once-as-not-identified) ·
+  [NFO can't be filled in](#an-artist-nfo-cant-be-filled-in)
 - **Undoing things:** [undo a change](#undo-a-change) ·
   [undo refused](#undo-is-refused-or-missing) ·
   [remove Harmonist](#remove-harmonist-completely)
@@ -424,10 +425,27 @@ An `artist.nfo` without a MusicBrainz artist ID, or an empty one, describes no
 artist yet, so it's listed on its own beside the artist its folder's albums
 credit. Harmonist reads the ID only from `<musicbrainzartistid>`, so a file
 from Kodi or MediaElch, which write it as `<musicBrainzArtistID>`, counts as
-having none. Add the artist's ID to the file, inside `<artist>`, as
-`<musicbrainzartistid>…</musicbrainzartistid>`, beside any element Kodi wrote.
-The ID is the last part of the artist's MusicBrainz address. The file then
-belongs to that artist, and the second entry goes.
+having none.
+
+Open the **Not identified** entry and find the artist under its NFO, by name or
+by MBID with the artist's MusicBrainz address, then press **Identify** beside it.
+Harmonist writes the ID and the other fields MusicBrainz has into the file,
+beside any element Kodi wrote. The file then belongs to that artist, and the
+second entry goes.
+
+### An artist NFO can't be filled in
+
+**Identify** says why above the list of artists, and nothing is written:
+
+- **"The file has more than one `<name>`"**, or another field: Harmonist won't
+  guess which one to keep. Remove the extra one and press **Identify** again.
+- **"`<name>` holds other elements"**: a field Harmonist fills in has elements
+  or a comment inside it, which writing a value would lose. Move them out and
+  press **Identify** again.
+- **"The file has just changed"**: something else wrote to it at that moment.
+  Press **Identify** again.
+- **"Nothing was written: Could not write …"**: Harmonist can't write to that
+  folder. See [not writable by this process](#startup-fails-with-not-writable-by-this-process).
 
 ## Undoing things
 
@@ -454,6 +472,9 @@ returns to **Needs MBID** with that release as a suggestion.
 - **No artwork Undo** means Harmonist no longer has the old image. It prioritises
   each album's last five changes when its 1 GB store fills up. See
   [configuration](configuration.md#artwork_store).
+- **No Undo NFO changes** on an artist's History entry means the file has gone,
+  every field that write changed has changed again or is back already, or the
+  file [can't be written](#an-artist-nfo-cant-be-filled-in) as it stands.
 
 ### Remove Harmonist completely
 

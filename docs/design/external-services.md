@@ -27,6 +27,11 @@ cache is a layer above the MusicBrainz client, not inside it. That keeps the
 client a plain API wrapper, and lets demo mode replace the client's functions
 while everything above it still works.
 
+Artists aren't stored (#981). Each lookup is the user asking now, and the one
+that writes needs the current answer, so a stored answer would have nothing to
+serve but a row that can't say how old it is. Searching artists by name isn't
+cached either, as searching releases isn't.
+
 **A row is served for its TTL but kept forever.** Expiry means "ask again", not
 "forget". An expired row is still the last thing MusicBrainz said, which is what
 the update check compares a fresh answer against, and what any finding shown to

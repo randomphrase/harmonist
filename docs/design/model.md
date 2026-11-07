@@ -33,6 +33,10 @@ to lose. It is listed on its own rather than beside the artist its folder
 suggests, because a folder is a hint, never an identity. An empty file is such
 a file rather than a broken one: placing one is how a user picks out the
 artists whose NFOs they want, without one for every artist in the library.
+Identifying it writes the MBID into the file, which moves it to that artist's
+page; its old handle leads there through the write's record, since an artist's
+MBID can't be an alias for one file (see
+[history](history.md#what-an-artist-nfo-write-records)).
 
 Two NFOs with the same MBID are conflicting evidence. Choosing one silently
 would hide that disagreement, so the artist's page shows both. The conflict

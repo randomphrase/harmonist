@@ -1,0 +1,19 @@
+{% from 'macros.html' import release_name %}
+{# One MusicBrainz artist, as a release row draws a release
+   (`_release_candidate.html`): the name and disambiguation linked to
+   MusicBrainz, where everything not shown here is, then what tells two
+   artists of one name apart (#981). The caller supplies the row's action. #}
+{% macro artist_candidate(a) %}
+<div class="release-candidate flex flex-wrap items-center justify-between gap-2 p-2 rounded border border-line hover:border-mb-purple/40 transition bg-surface"
+     role="listitem">
+    <div class="min-w-0 flex-1">
+        <div class="text-sm text-ink break-words">
+            <a href="https://musicbrainz.org/artist/{{ a.id }}" target="_blank" rel="noopener"
+               class="font-bold text-mb-purple hover:underline">{{ release_name(a.name, a.disambiguation) }} <span class="text-xs" aria-hidden="true">↗</span></a>
+        </div>
+        {% set facts = [a.type, a.area, (a.begin or '?') ~ '–' ~ (a.end or '') if a.begin or a.end else none] | select | list %}
+        {% if facts %}<div class="text-2xs text-muted">{{ facts | join(' · ') }}</div>{% endif %}
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">{{ caller() }}</div>
+</div>
+{% endmacro %}

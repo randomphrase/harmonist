@@ -349,6 +349,17 @@ class ScanRunner:
         self._report_rebuilt(rebuilt)
         return complete
 
+    def refresh_nfo(self, path: Path) -> None:
+        """Read again an artist NFO Harmonist has just written (#981), so the
+        page a write sends the browser to already lists it under its new key.
+        Without a completed walk to build on, a full scan does it instead."""
+        if not self.is_engaged():
+            return
+        if self._completed_once and not self._nfos.walk_errors:
+            self._refresh_nfos({path})
+        else:
+            self.request_scan()
+
     def _refresh_changed(self, paths: set[Path]) -> bool:
         """Refresh known file parents; uncertain directory changes need a walk."""
         nfo_paths = {p for p in paths if p.name.lower() == "artist.nfo"}

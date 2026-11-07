@@ -144,3 +144,40 @@ Undoing artwork never rewrites tags, and undoing tags never touches artwork.
 
 What to undo is worked out from the album's own records, by the history entry the
 user clicked. A request can name an entry, but never a file or an image.
+
+## What an artist NFO write records
+
+A write into an `artist.nfo` (#981) is recorded the way a tagging is: each
+mapped field's value before and after, and no copy of the file. Whole-file
+backups were proposed (#917) and turned down. A whole-file restore can only work
+while nothing else has touched the file, and Kodi and Jellyfin rewrite NFOs as a
+matter of course, so the first rescan by a media server would end the undo for
+good. Field values survive that. The price is that a write the writer gets wrong
+has no backup to fall back on, which is why the writer checks its own work (see
+[tagging](tagging.md#artist-nfos)).
+
+**History follows a write, not an alias.** An album's ID is the album's alone,
+so an old ID can be aliased to its new one. An artist's MBID belongs to the
+artist, not to one file. Identifying a file takes it off its path-hash page and
+onto the artist's, but undoing that can't alias the MBID back to the path hash,
+or every link to the artist would lead to one file's page. So each write records
+the page key it moved the file away from, beside the one it's under afterwards.
+An artist's History is the writes that brought a file to its key or took one
+away, so both pages show an identification and its undo. An old link to a
+path-hash page leads, through the newest write away from it, to wherever the
+file went.
+
+## Undoing an NFO write
+
+The same rules as a tagging's undo, for the same reasons. **The write is the
+unit**: Undo puts back everything one write changed. **A field changed since is
+left alone** and named in the result, so an Undo offered on an old entry is safe
+after a media server or a person has edited the file. Undoing an identification
+removes the MBID, and the file is Not identified again. An undo is itself a
+write, recorded the same way, so it can be undone; one with nothing left to put
+back records nothing. Undo isn't offered once the file has gone, or when it
+can't be written safely, since a button that would only fail is worse than none.
+
+As for albums, a request names a History entry and never a file: the file and
+the values are worked out from the stored record, and only from an entry in
+that artist page's own History.

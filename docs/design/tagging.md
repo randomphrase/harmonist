@@ -503,3 +503,55 @@ it again, so its presence is normal.
 **Absent is one state.** No value, an empty string and an empty list all mean
 the tag isn't there, because Harmonist never writes an empty tag; a field with no
 value is removed.
+
+## Artist NFOs
+
+An `artist.nfo` gets the owned-set promise too (#981). Its **mapped fields** are
+the ones MusicBrainz decides: the artist ID, name, sort name, type, gender,
+disambiguation, and the dates the type uses. Everything else, the biography,
+genres, style, mood, pictures and discography, is the file's, and a write leaves
+it alone. A mapped field MusicBrainz has no value for is removed, as an owned tag
+is. There is no choosing fields one by one: MusicBrainz is canonical, so a value
+that's wrong there is corrected there.
+
+**The row is the review.** The only decision is which artist, and the row that
+offers one already says who it is, with MusicBrainz a link away, so its
+**Identify** writes. A dialog repeating the row was built and removed: it added a
+click and no fact. A release's confirmation has tracks to assign and an artist's
+has nothing, while History lists each field once it's written, with an Undo for
+the wrong click. With no review behind it, the write uses what MusicBrainz says
+at that moment.
+
+**Dates follow the type, as Kodi's own MusicBrainz scraper places them.** A
+person's or character's life span goes in `born` and `died`, a group's,
+orchestra's or choir's in `formed` and `disbanded`. Any other type, or none, gets
+no dates, and so does the pair a type doesn't use: those elements aren't
+MusicBrainz's to decide, so they're left as they are rather than removed.
+
+**One spelling of each element.** Consumers disagree on case, and none reads
+both spellings, so Harmonist reads and writes only `musicbrainzartistid` (see
+[the model](model.md#artist-identity-belongs-to-the-credits)) and `sortname`,
+the spelling Kodi and Jellyfin both read. Another spelling is just an element
+Harmonist doesn't map.
+
+**The file is edited, not re-serialised.** A parsed tree would keep the same
+content but respell all of it: quote marks, empty elements, character
+references, indentation. Every write would then rewrite the whole file, and an
+undo couldn't leave it as it found it. So a write replaces, removes or inserts
+the mapped elements' text and leaves every other byte where it was.
+
+**The promise is checked, not assumed.** History records fields, not files (see
+[history](history.md#what-an-artist-nfo-write-records)), so there is no copy to
+fall back on if the writer gets one wrong. Before writing, the new text is
+parsed and compared with the old outside the mapped elements; afterwards the
+file is read back. A difference in either refuses the write, and puts the
+original back if it was already on disk.
+
+**What would be a guess isn't written.** A file with a mapped element twice, or
+with other elements inside one, has no single value to replace. Keeping one, or
+flattening it, would be choosing for the user, so the file is refused and the
+review says why.
+
+Only a file that already exists is filled in. An empty `artist.nfo` is how a
+user asks for an artist to be filled in, so nobody gets an NFO for every artist
+in their library; creating files is a later step of #813.

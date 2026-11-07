@@ -46,6 +46,10 @@ class Event:
     # to be printed under every one of them. `None` only for an Event built by
     # hand — everything `recent()` returns carries it.
     id: int | None = None
+    # The artist page this event was about, and the artist's name when it was
+    # written: `album_id` and `album_label` for artists (#981).
+    artist_id: str | None = None
+    artist_label: str | None = None
 
 
 log = logging.getLogger(__name__)
@@ -62,12 +66,15 @@ def record(
     *,
     album_id: str | None = None,
     album_label: str | None = None,
+    artist_id: str | None = None,
+    artist_label: str | None = None,
 ) -> None:
     """Append an event (Activity feed) AND emit it to the log, so the docker
     log is a superset of the feed. `album_id` ties the event to an album for
     per-album history (#33); None when it isn't about one album. `album_label`
     is that album's display name, stored so the entry stays readable after the
-    id stops resolving (#65). Safe to call from any thread."""
+    id stops resolving (#65). `artist_id` and `artist_label` do the same for an
+    artist page (#981). Safe to call from any thread."""
     message = (message or "").strip()
     if not message:
         return
@@ -77,6 +84,8 @@ def record(
         source=Source.ACTIVITY,
         album_id=album_id,
         album_label=album_label,
+        artist_id=artist_id,
+        artist_label=artist_label,
     )
     # Mirror to the log. The `_activity` flag stops _ActivityLogHandler from
     # re-recording it (which would feed back into this function — a loop).
@@ -118,6 +127,8 @@ def recent(limit: int = 100, *, offset: int = 0, include_audit: bool = False) ->
             action_id=e.action_id,
             source=e.source,
             id=e.id,
+            artist_id=e.artist_id,
+            artist_label=e.artist_label,
         )
         for e in activity_store.recent(limit, source=source, offset=offset)
     ]

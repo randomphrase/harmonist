@@ -1,8 +1,13 @@
 {% extends 'base.html' %}
 {% block content %}
+{# `hx-disinherit`: these attributes are this container's own refresh. A
+   request from inside it, an NFO's search or Identify (#981), would otherwise
+   inherit the `hx-select` and pick `#artist-detail` out of its answer, finding
+   nothing. #}
 <div id="artist-detail" class="space-y-5"
      hx-get="{{ artist_refresh_url }}" hx-trigger="tasks-changed from:body"
-     hx-select="#artist-detail" hx-target="this" hx-swap="outerHTML" hx-sync="this:replace">
+     hx-select="#artist-detail" hx-target="this" hx-swap="outerHTML" hx-sync="this:replace"
+     hx-disinherit="*">
     <a href="{{ artist_back_url }}" class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">← Back to artists</a>
 
     <header class="flex flex-col sm:flex-row items-start gap-5">
@@ -33,13 +38,21 @@
                 {% endif %}
             </div>
         </div>
+        {% if nfo.profile %}
+        {% with file_key = nfo_files[0][0], profile = nfo.profile %}{% include 'partials/_artist_identify.html' %}{% endwith %}
+        {% endif %}
         {% for error in nfo.errors %}
         <p role="alert" class="text-sm text-amber-800 break-words">{{ error }}</p>
         {% endfor %}
         {% if nfo.candidates | length > 1 %}
-        <ul aria-label="Conflicting NFO files" class="space-y-1">
-            {% for path in artist.nfo_paths %}
-            <li class="text-xs text-muted break-all">{{ display_path(path) }}</li>
+        {# Each file is identified on its own: the two can both be right, and
+           which one a write goes to is the user's choice, never a guess. #}
+        <ul aria-label="Conflicting NFO files" class="space-y-2">
+            {% for file_key, profile in nfo_files %}
+            <li class="space-y-1">
+                <span class="block text-xs text-muted break-all">{{ display_path(profile.path) }}</span>
+                {% include 'partials/_artist_identify.html' %}
+            </li>
             {% endfor %}
         </ul>
         {% endif %}
@@ -114,6 +127,33 @@
             {% endfor %}
         </ul>
     </details>
+    {% endif %}
+
+    {# What Harmonist wrote into this artist's NFOs (#981), laid out as an
+       album's History. A write's field changes hang off its Activity entry,
+       with its Undo on the headline. Nothing can be recorded for an artist
+       without an NFO, so that page has no History to show. #}
+    {% if history or history_unavailable or nfo_files %}
+    {% from 'partials/_history.html' import history_section %}
+    {% call(e) history_section(history, history_unavailable, "this artist's",
+            "Nothing recorded for this artist yet. Entries appear here as Harmonist fills in its NFO.") %}
+    {% set write = history_writes.get(e.id) %}
+    <div class="album-history__head">
+        <span class="min-w-0">{{ e.message }}</span>
+        {% if write and write.undoable %}
+        <button hx-post="/artist/{{ artist.key }}/undo"
+                hx-vals='{"event_id": "{{ write.event_id }}"}'
+                hx-swap="none" hx-disabled-elt="this"
+                hx-confirm="Put back the NFO fields this write changed? Fields changed since are left alone, and the undo is itself recorded, so it can be undone in turn."
+                class="tag-changes__undo tag-changes__undo--tags"
+                title="Restore the values this artist NFO held before this write"
+                aria-label="Undo this write's NFO changes">Undo NFO changes</button>
+        {% endif %}
+    </div>
+    {% if write %}
+    {% with several_files = nfo_files | length > 1 %}{% include 'partials/_nfo_changes.html' %}{% endwith %}
+    {% endif %}
+    {% endcall %}
     {% endif %}
 </div>
 {% endblock %}

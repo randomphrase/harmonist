@@ -165,6 +165,32 @@ def search_releases(artist: str, title: str, limit: int = 10) -> tuple[list[dict
     return out, max(int(result.get("release-count", 0)), len(out))
 
 
+def search_artists(name: str, limit: int = 10) -> tuple[list[dict[str, Any]], int]:
+    """Search MB for artists named `name`, or known by it as an alias, for the
+    user to pick the one an artist NFO describes (#981).
+
+    Returns up to `limit` `mb_lookup.artist_summary` dicts, in MusicBrainz's
+    order, and its count of every match. Not cached, like the release search:
+    searching again means "I've just edited MusicBrainz".
+    """
+    name = (name or "").strip()
+    if not name:
+        return [], 0
+    phrase = _escape(name)
+    try:
+        result = musicbrainzngs.search_artists(
+            query=f'artist:"{phrase}" OR alias:"{phrase}"', limit=limit
+        )
+    except (
+        musicbrainzngs.NetworkError,
+        musicbrainzngs.ResponseError,
+        musicbrainzngs.AuthenticationError,
+    ) as e:
+        raise MBSearchError(f"MB search failed: {e}") from e
+    out = [mb_lookup.artist_summary(artist) for artist in result.get("artist-list", [])]
+    return out, max(int(result.get("artist-count", 0)), len(out))
+
+
 _LUCENE_RESERVED = re.compile(r'([\\"])')
 
 

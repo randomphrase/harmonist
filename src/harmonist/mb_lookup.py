@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
+from collections.abc import Mapping
 from typing import Any
 
 import musicbrainzngs
@@ -94,6 +95,15 @@ class ReleaseGoneError(MBError):
     """
 
 
+class ArtistNotFoundError(MBError):
+    """MusicBrainz 404s the artist ID: there is no such artist (#981).
+
+    A subclass for the reason `ReleaseGoneError` is one: a 404 is an answer, so
+    the review says the ID is unknown instead of "try again later". A merged
+    artist redirects instead, and comes back under the ID it has now.
+    """
+
+
 def configure(user_agent: str) -> None:
     """Configure the global musicbrainzngs user-agent.
 
@@ -162,6 +172,43 @@ def fetch_release(mbid: str) -> Release:
 
     release: Release = result["release"]
     return release
+
+
+def fetch_artist(mbid: str) -> dict[str, Any]:
+    """Fetch one MusicBrainz artist, without includes: the ID, names,
+    disambiguation, type, gender and life span an artist NFO maps (#981).
+
+    Raises `ArtistNotFoundError` when MusicBrainz has no artist with this ID.
+    """
+    try:
+        result = musicbrainzngs.get_artist_by_id(mbid)
+    except musicbrainzngs.ResponseError as e:
+        if _is_not_found(e):
+            raise ArtistNotFoundError(f"MusicBrainz has no artist {mbid}") from e
+        raise MBError(f"MB request failed: {e}") from e
+    except (
+        musicbrainzngs.NetworkError,
+        musicbrainzngs.AuthenticationError,
+    ) as e:
+        raise MBError(f"MB request failed: {e}") from e
+    artist: dict[str, Any] = result["artist"]
+    return artist
+
+
+def artist_summary(artist: Mapping[str, Any]) -> dict[str, Any]:
+    """What tells one MusicBrainz artist from another at a glance: the name and
+    disambiguation, type, area and life span (#981). The same shape from a
+    lookup and from a search, so a search row and a review draw it alike."""
+    life = artist.get("life-span") or {}
+    return {
+        "id": str(artist.get("id", "")),
+        "name": str(artist.get("name", "")),
+        "disambiguation": str(artist.get("disambiguation") or "").strip(),
+        "type": artist.get("type"),
+        "area": (artist.get("area") or {}).get("name"),
+        "begin": life.get("begin"),
+        "end": life.get("end"),
+    }
 
 
 def fetch_video_media(mbid: str) -> tuple[int, ...]:

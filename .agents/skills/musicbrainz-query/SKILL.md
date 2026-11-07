@@ -32,6 +32,8 @@ and surviving the response.
 | `mb_cache.stored_release_group_editions(rg)` | browse | stored page only, **never fetches** — for the Library filters |
 | `mb_lookup.fetch_video_media(mbid)` | by id | no — the **sidecar** is its cache |
 | `mb_search.search_releases(artist, title)` | search | no, deliberately |
+| `mb_lookup.fetch_artist(mbid)` | by id | no, deliberately: each is the user asking now, and Identify writes what it gets (#981) |
+| `mb_search.search_artists(name)` | search | no, deliberately |
 
 **Never call `mb_lookup.fetch_release` or `fetch_release_urls` directly.** They
 work perfectly, return the right release, and spend a request the cache would

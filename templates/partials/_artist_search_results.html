@@ -1,0 +1,37 @@
+{# The artists a name search or a pasted MBID found (#981), laid out as an
+   album's search results (`manual_search_results.html`). A row is all there is
+   to review, since the only decision is which artist, so its Identify writes,
+   and History's Undo takes it back. A write that fails says why above the rows,
+   and that goes with them on the next search.
+   Expects `results`, `total`, `query`, `artist_key`, `file_key` and `error`. #}
+{% from 'partials/_artist_candidate.html' import artist_candidate %}
+{% if error %}
+<p role="alert" class="text-xs text-red-700 px-2 py-1">{{ error }}</p>
+{% elif not results %}
+<p class="text-muted text-xs italic px-2 py-1">No matches.</p>
+{% else %}
+<div id="artist-problem-{{ file_key }}" class="empty:hidden"></div>
+<div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label="Matching artists">
+    <div class="space-y-1" role="list" aria-label="Artist candidates">
+        {% for a in results %}
+        {% call artist_candidate(a) %}
+        <form hx-post="/artist/{{ artist_key }}/identify" hx-target="#artist-problem-{{ file_key }}" hx-swap="innerHTML"
+              hx-disabled-elt="#artist-results-{{ file_key }} button" hx-indicator="#artist-lookup-{{ file_key }}">
+            <input type="hidden" name="file" value="{{ file_key }}">
+            <input type="hidden" name="artist" value="{{ a.id }}">
+            <button type="submit"
+                    class="px-2 py-1 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Identify</button>
+        </form>
+        {% endcall %}
+        {% endfor %}
+    </div>
+    {% if total > results | length %}
+    <p class="text-2xs text-muted italic px-2 mt-1">
+        Showing {{ results | length }} of {{ total }} —
+        <a href="https://musicbrainz.org/search?type=artist&amp;query={{ query | urlencode }}"
+           target="_blank" rel="noopener"
+           class="not-italic font-bold text-mb-purple hover:underline">see them all on MusicBrainz ↗</a>
+    </p>
+    {% endif %}
+</div>
+{% endif %}

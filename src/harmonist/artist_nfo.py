@@ -208,6 +208,7 @@ def _read(path: Path, modified_ns: int, size: int, _ctime_ns: int, _inode: int) 
     # Only the spelling Jellyfin, Lidarr and the Navidrome plugin share. Kodi's
     # musicBrainzArtistID is left alone like any other unmapped element: reading
     # both would make the spelling something a write has to change and undo (#971).
+    # The sort name likewise, as `sortname`, which Kodi and Jellyfin both read (#981).
     ids = values("musicbrainzartistid")
     identified = {mbid(value) for value in ids}
     if ids and (None in identified or len(identified) != 1):
@@ -234,7 +235,7 @@ def _read(path: Path, modified_ns: int, size: int, _ctime_ns: int, _inode: int) 
         path,
         next(iter(identified)) if identified else None,
         text("name"),
-        text("sortname", "sortName"),
+        text("sortname"),
         text("biography"),
         facts,
         next(iter(values("thumb")), ""),

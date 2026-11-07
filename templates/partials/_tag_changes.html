@@ -1,34 +1,5 @@
-{# A MusicBrainz id row's value (#801): each id as its name, linked to its page
-   with the full id as the tooltip, or cut short where the album's stored
-   release doesn't name it, and the separators between them as written. #}
-{% macro id_value(c, value) -%}
-{%- for p in c.parts(value) -%}
-{%- if p is string -%}{{ p }}{%- else -%}<a href="{{ p.url }}" target="_blank" rel="noopener" title="{{ p.id }}" class="tag-changes__id">{{ p.label }}</a>{%- endif -%}
-{%- endfor -%}
-{%- endmacro %}
-
-{# One value as written: named ids for an id row, otherwise the value with what
-   changed in it marked (`runs`, empty when there is nothing useful to mark). #}
-{% macro value_of(c, value, runs) -%}
-{%- if c.is_id %}{{ id_value(c, value) }}{% else %}{% with value = value %}{% include 'partials/_diff_runs.html' %}{% endwith %}{% endif -%}
-{%- endmacro %}
-
-{# A before-and-after pair. A field with nothing before it shows only what was
-   written. On a first tagging that is EVERY row, so "— →" would prefix the whole
-   list with two columns of chrome, and the em-dash reads as a value rather than
-   as the absence of one. The arrow stays where it carries the meaning: a
-   replacement has two real sides, and a removal has to say what went. #}
-{% macro pair(c, before, after, before_runs, after_runs) -%}
-{%- if before is not none -%}
-<span class="tag-changes__before">{{ value_of(c, before, before_runs) }}</span>
-<span class="tag-changes__arrow" aria-label="became">→</span>
-{%- endif -%}
-{%- if after is none -%}
-<span class="tag-changes__absent" title="Removed by this tagging">removed</span>
-{%- else -%}
-<span class="tag-changes__after">{{ value_of(c, after, after_runs) }}</span>
-{%- endif -%}
-{%- endmacro %}
+{# The before-and-after pair, shared with an artist NFO write's rows (#981). #}
+{% from 'partials/_change_pair.html' import pair %}
 
 {# One track's line under a field whose tracks changed differently (#820): its
    position, then its own pair. The file name is the number's tooltip, for a

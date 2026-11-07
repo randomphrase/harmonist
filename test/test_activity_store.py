@@ -1401,3 +1401,88 @@ def test_reading_squished_images_from_a_broken_store_is_an_error(monkeypatch):
     monkeypatch.setattr(activity_store, "_ensure", broken)
     with pytest.raises(activity_store.StoreUnavailableError):
         activity_store.derived_images()
+
+
+def test_migrates_a_v12_database_in_place_keeping_its_rows(tmp_path):
+    """The 12 -> 13 upgrade (#981): an album's events survive with no artist,
+    and the NFO and artist tables start empty and work."""
+    db = tmp_path / "v12.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for statements in activity_store._MIGRATIONS[:12]:
+        for sql in statements:
+            conn.execute(sql)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message, album_id) VALUES (?, ?, ?, ?, ?)",
+        ("2026-11-01T00:00:00+00:00", "info", "activity", "written by v12", "rel-old"),
+    )
+    conn.execute("PRAGMA user_version = 12")
+    conn.close()
+
+    activity_store.init(db)
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    (event,) = activity_store.recent()
+    assert (event.message, event.album_id) == ("written by v12", "rel-old")
+    assert (event.artist_id, event.artist_label) == (None, None)
+    assert activity_store.artist_history("rel-old") == []
+
+
+def _nfo_write(key_before: str, key_after: str, changes: dict[str, list[str | None]]) -> int:
+    with activity_store.action():
+        activity.record("Identified", artist_id=key_after, artist_label="Carol")
+        event = audit.record("nfo.write", artist_id=key_after, file="Carol/artist.nfo")
+        assert event is not None
+        activity_store.record_nfo_changes(
+            event, file="Carol/artist.nfo", key_before=key_before, changes=changes
+        )
+    return event
+
+
+def test_an_nfo_write_shows_on_the_page_it_left_and_the_page_it_reached():
+    event = _nfo_write("path-hash", "art-1", {"musicbrainzartistid": [None, "art-1"]})
+    for key in ("path-hash", "art-1"):
+        assert sorted(e.message for e in activity_store.artist_history(key)) == [
+            "Identified",
+            "nfo.write file=Carol/artist.nfo",
+        ]
+    detail = activity_store.nfo_changes_for([event])[event]
+    assert (detail.file, detail.key_before, detail.changes) == (
+        "Carol/artist.nfo",
+        "path-hash",
+        {"musicbrainzartistid": [None, "art-1"]},
+    )
+    assert activity_store.artist_history("art-2") == []
+
+
+def test_a_page_key_leads_to_where_its_file_went_newest_write_first():
+    _nfo_write("path-hash", "art-1", {"musicbrainzartistid": [None, "art-1"]})
+    _nfo_write("art-1", "path-hash", {"musicbrainzartistid": ["art-1", None]})
+    _nfo_write("path-hash", "art-2", {"musicbrainzartistid": [None, "art-2"]})
+    assert activity_store.artist_successors("path-hash") == ["art-2"]
+    # Back where it started is where the walk stops, rather than going round.
+    assert activity_store.artist_successors("art-1") == ["path-hash", "art-2"]
+    assert activity_store.artist_successors("never-written") == []
+
+
+def test_clear_drops_nfo_changes():
+    event = _nfo_write("path-hash", "art-1", {"name": [None, "Carol"]})
+    activity_store.clear()
+    assert activity_store.nfo_changes_for([event]) == {}
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        lambda: activity_store.artist_history("art-1"),
+        lambda: activity_store.artist_successors("art-1"),
+        lambda: activity_store.nfo_changes_for([1]),
+    ],
+    ids=["history", "successors", "changes"],
+)
+def test_reading_artist_history_from_a_broken_store_is_an_error(monkeypatch, read):
+    def broken() -> sqlite3.Connection:
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(activity_store, "_ensure", broken)
+    with pytest.raises(activity_store.StoreUnavailableError):
+        read()

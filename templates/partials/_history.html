@@ -1,0 +1,84 @@
+{# A History section: everything Harmonist recorded about one album or one
+   artist, activity and audit together, newest first. Shared by the album page
+   and the artist page (#981), so both list their records the same way; the
+   caller draws what a row carries beyond its message (`caller(e)`): an entry's
+   Undo and the changes it made.
+
+   `album-history` + the --brief modifier drive the "Show details" toggle in
+   CSS: every row is already on the page, so hiding the audit ones is a class
+   away and a round trip would be silly. Checked BY DEFAULT, unlike the feed —
+   a single album's history is often mostly audit rows (download,
+   sidecar.create, album.discovered), and an adopted album may have nothing
+   else at all, so defaulting it off would show an empty history for exactly
+   the albums this page exists to explain (#123).
+
+   `subject` says whose records these are ("this album's"), and `nothing` is
+   what to say when there are none. #}
+{% macro history_section(history, unavailable, subject, nothing) -%}
+{% set plain = history | rejectattr('source', 'equalto', 'audit') | list %}
+<section class="album-history border border-line rounded-lg p-4 space-y-3">
+    <div class="flex items-center justify-between gap-4">
+        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">
+            History
+            {% if not unavailable %}
+            <span class="text-muted font-normal normal-case tracking-normal ml-1">·
+                <span class="album-history__count-full">{{ history|length }}</span>
+                <span class="album-history__count-brief">{{ plain|length }}</span>
+            </span>
+            {% endif %}
+        </h2>
+        {% if history and not unavailable %}
+        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none
+                      text-2xs uppercase tracking-widest font-bold text-muted hover:text-ink transition"
+               title="Show the raw audit records — exactly what Harmonist changed on disk">
+            <input type="checkbox" class="cursor-pointer" checked
+                   onchange="this.closest('.album-history').classList.toggle('album-history--brief', !this.checked)">
+            Show details
+        </label>
+        {% endif %}
+    </div>
+
+    {# "Couldn't read" and "nothing to read" are different claims, and the
+       page must not make the second one when it means the first — that's the
+       lie #104 is about. No count either: 0 would be just as wrong. #}
+    {% if unavailable %}
+    <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+        <span class="font-bold">History unavailable.</span>
+        Harmonist couldn't read its history store, so {{ subject }} records
+        can't be shown — this does <em>not</em> mean nothing was recorded.
+        The error is in the application log.
+    </p>
+    {% elif not history %}
+    <p class="text-2xs text-muted italic">{{ nothing }}</p>
+    {% else %}
+    <ul class="divide-y divide-line">
+        {% for e in history %}
+        <li class="flex items-baseline gap-3 py-1.5 text-sm{% if e.source == 'audit' %} album-history__audit{% endif %}">
+            <time class="flex-shrink-0 font-mono text-2xs text-muted tabular-nums"
+                  datetime="{{ e.ts.isoformat() }}" title="{{ local_stamp(e.ts) }}">
+                {{ e.ts.astimezone().strftime('%Y-%m-%d %H:%M') }}
+            </time>
+            {# self-START, not self-center: a row carrying a tag-change
+               summary (#86) is many lines tall, and centring left the dot
+               floating in the middle of the block with nothing beside it.
+               The margin puts it on the first line's optical centre, where
+               it looks identical on the ordinary one-line rows. #}
+            <span class="flex-shrink-0 w-1.5 h-1.5 rounded-full self-start mt-[0.4rem]
+                {% if e.source == 'audit' %}bg-line
+                {% elif e.level == 'error' %}bg-red-500
+                {% elif e.level == 'warning' %}bg-amber-500
+                {% else %}bg-accent{% endif %}"
+                aria-hidden="true"></span>
+            <div class="flex-1 min-w-0 break-words
+                {% if e.source == 'audit' %}font-mono text-2xs text-muted
+                {% elif e.level == 'error' %}text-red-700
+                {% elif e.level == 'warning' %}text-amber-700
+                {% else %}text-ink{% endif %}">
+                {{ caller(e) }}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+{%- endmacro %}

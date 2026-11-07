@@ -1106,6 +1106,80 @@ def fetch_release_urls(mbid: str) -> list[str]:
     return [url for url, m in URL_RELS.items() if m == mbid]
 
 
+#: What the demo's MusicBrainz says about some artists beyond their names, so
+#: identifying an artist NFO fills in each kind of field (#981).
+ARTIST_DETAILS: dict[str, dict[str, Any]] = {
+    "Wyld Stallion": {
+        "type": "Group",
+        "disambiguation": "San Dimas rock duo",
+        "life-span": {"begin": "1988"},
+    },
+    "Barry Jive and the Uptown Five": {
+        "type": "Group",
+        "life-span": {"begin": "1997", "end": "2000", "ended": "true"},
+    },
+    "Mouse Rat": {"type": "Group", "life-span": {"begin": "2009"}},
+    "The Unplayed Satellites": {"type": "Group"},
+}
+
+
+def fetch_artist(mbid: str) -> dict[str, Any]:
+    """Demo counterpart of the artist lookup (#981): every artist the catalogue
+    credits, and the NFO-only one, by the IDs they are credited with. Any other
+    ID is unknown, as it would be to the real service."""
+    names = _known_artists()
+    if mbid not in names:
+        from .mb_lookup import ArtistNotFoundError
+
+        raise ArtistNotFoundError(f"demo: no MB artist {mbid}")
+    name = names[mbid]
+    sort_name = f"{name[4:]}, The" if name.startswith("The ") else name
+    return {"id": mbid, "name": name, "sort-name": sort_name, **ARTIST_DETAILS.get(name, {})}
+
+
+def search_artists(name: str, limit: int = 10) -> tuple[list[dict[str, Any]], int]:
+    """Demo counterpart of the artist search (#981): the artists the demo knows
+    whose names contain `name`, ignoring case, by name."""
+    from .mb_lookup import artist_summary
+
+    wanted = (name or "").strip().casefold()
+    if not wanted:
+        return [], 0
+    found = [
+        artist_summary(fetch_artist(mbid))
+        for mbid, known in sorted(_known_artists().items(), key=lambda item: item[1])
+        if wanted in known.casefold()
+    ]
+    return found[:limit], len(found)
+
+
+def _known_artists() -> dict[str, str]:
+    """Every artist the demo's MusicBrainz knows, by ID: those its catalogue
+    credits, and the NFO-only one."""
+    names = _credited_artists()
+    names.setdefault(_demo_mbid("art", "demo-unplayed-satellites"), "The Unplayed Satellites")
+    return names
+
+
+def _credited_artists() -> dict[str, str]:
+    """Each artist the demo catalogue credits anywhere, by ID."""
+    names: dict[str, str] = {}
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            artist = node.get("artist")
+            if isinstance(artist, dict) and artist.get("id") and artist.get("name"):
+                names.setdefault(str(artist["id"]), str(artist["name"]))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(MB_RELEASES)
+    return names
+
+
 def fetch_video_media(mbid: str) -> tuple[int, ...]:
     """Demo counterpart of the video-only-media lookup (#206).
 
@@ -1321,11 +1395,13 @@ def install() -> None:
 
     mb_lookup.fetch_release = fetch_release
     mb_lookup.fetch_release_urls = fetch_release_urls
+    mb_lookup.fetch_artist = fetch_artist
     mb_lookup.fetch_video_media = fetch_video_media
     mb_lookup.lookup_by_bandcamp_url = lookup_by_bandcamp_url
     mb_lookup.browse_release_group_releases = browse_release_group_releases
     mb_lookup.browse_release_group_editions = browse_release_group_editions
     mb_search.search_releases = search_releases
+    mb_search.search_artists = search_artists
     # Barcode discovery is a separate search entry point; never let a demo
     # file carrying a barcode reach the real MusicBrainz service.
     mb_search.search_barcode = lambda evidence: ([], 0)

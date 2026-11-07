@@ -94,6 +94,19 @@ audio. Two NFOs naming the same artist ID are shown as a conflict on that
 artist's page, with both paths. Unreadable NFOs are recorded in the log rather
 than treated as absent.
 
+An NFO is filled in from MusicBrainz on its artist page. A Not identified NFO
+finds its artist by name, or by MBID from the artist's MusicBrainz address, as
+an album finds its release. Each artist found is listed with a link to
+MusicBrainz for everything not shown. **Identify** writes the artist ID, name, sort
+name, type, gender, disambiguation and dates (`born` and `died` for a person,
+`formed` and `disbanded` for a group), and nothing else in the file. A field
+MusicBrainz has no value for is removed. An identified NFO has the same under
+**Identify again**, with its own ID already filled in, which fills in what the
+file lacks. Where an artist has two NFOs, each is identified on its own.
+Harmonist only fills in files that exist: an empty `artist.nfo` is how to ask
+for an artist to be filled in. Each write is listed in the artist's
+**History**, field by field, with **Undo NFO changes**.
+
 An incomplete NFO scan keeps readable profiles, biographies and local pictures
 available, with the affected paths and a warning that other matching files may
 be unreadable. Missing-metadata filters are unavailable until coverage
@@ -119,8 +132,8 @@ picture, since it might be an album cover. An explicit `<thumb>` can still
 name a folder cover; that is the owner's choice.
 
 Artist browsing reads local tags, NFOs and local raster artwork. It makes no
-MusicBrainz or image-provider requests, does not generate NFOs and never changes
-tags based on them. Remote image URLs in an NFO are not downloaded. With local
+MusicBrainz or image-provider requests, doesn't create NFOs and never changes
+tags based on them; only finding or identifying an artist asks MusicBrainz, and only **Identify** writes. Remote image URLs in an NFO are not downloaded. With local
 NFOs and image files, the artist pages remain available offline. The MusicBrainz
 link opens the artist's page separately. NFO discographies do not count as owned
 albums. The file watcher updates the inventory after local changes settle;
@@ -387,6 +400,11 @@ Artwork has its own undo. Harmonist keeps a copy of any image it replaces, up to
 Backups are removed only when the store is full, prioritising each album's last
 five artwork changes. If it can't keep a copy, it leaves the image alone rather
 than replace it.
+
+Writes into an artist NFO are recorded the same way, in the artist's
+**History**. **Undo NFO changes** puts the fields back, again leaving alone any
+that have changed since; undoing an identification leaves the file Not
+identified.
 
 The **Activity** tab lists everything Harmonist has done, newest first, across
 the whole library.

@@ -1,0 +1,16 @@
+{# How one NFO is identified (#981). A Not identified file shows its find
+   panel; an identified one keeps it folded under **Identify again**, for an
+   identification that turns out wrong once Undo can no longer put all of it
+   back, or to fill in what the file lacks.
+
+   An id and `hmt-group`, like the biography's: the page redraws itself, and an
+   open disclosure has to stay open. Expects `artist`, `file_key` and
+   `profile`. #}
+{% if profile.mbid %}
+<details id="artist-identify-{{ file_key }}" class="hmt-group">
+    <summary class="cursor-pointer text-2xs font-bold text-muted hover:text-ink uppercase tracking-widest">Identify again</summary>
+    <div class="mt-2">{% include 'partials/_artist_find.html' %}</div>
+</details>
+{% else %}
+{% include 'partials/_artist_find.html' %}
+{% endif %}
