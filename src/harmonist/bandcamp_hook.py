@@ -131,11 +131,8 @@ def _item_id(item: Any) -> int:
 def _is_preorder(item: Any) -> bool:
     """True if this purchase is a Bandcamp pre-order.
 
-    `getattr(item, "is_preorder", False)` does NOT do this: BandcampItem's
-    `__getattr__` raises **KeyError** for an absent key, and getattr's default
-    only catches AttributeError. Every live collection item carries the key
-    today, so the difference would only show on a payload that drops it — i.e.
-    it would take the sync down at the exact moment there is least to go on.
+    An item without the key isn't one: a payload that drops it must not take
+    the sync down at the exact moment there is least to go on.
     """
     try:
         return bool(item.is_preorder)
@@ -417,16 +414,10 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         if not self._unfinished:
             super()._save_collection_checkpoint()
             return
-        # The parent checkpoints the NEWEST purchase it paged, whatever this run
-        # did with the ones below it — and the next sync stops paginating there.
-        # Anything left undone would drop below that line and never be offered
-        # again: a pre-order the parent skipped is by definition the newest
-        # purchase, so it buries itself, released or not (#351).
-        #
-        # This is upstream's bug (meeb/bandcampsync#69 — same symptom, same
-        # `last_seen_item_id`, same "delete the state file" workaround), fixed
-        # here at the adapter layer because Harmonist has to keep a purchase
-        # reachable regardless. Revisit if upstream lands its own fix.
+        # The parent checkpoints the newest purchase it paged, holding back only
+        # for unreleased pre-orders — and the next sync stops paginating there.
+        # A purchase this run deferred or blocked would drop below that line and
+        # never be offered again (#351).
         #
         # Hand the parent a collection truncated to just past the OLDEST
         # unfinished purchase, so the checkpoint only ever covers finished work.
@@ -1035,6 +1026,9 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         # download — see below.
         collided = _case_collision(local_path.parent)
         result = bool(super().sync_item(item, encoding))
+        # The parent gives the item a "Title [id]" folder during this call when
+        # the ignore file lists another purchase under its name (#983).
+        local_path = self.local_media.get_path_for_purchase(item)
         if not result:
             self._note_preorder_deferral(item, local_path)
         if result:

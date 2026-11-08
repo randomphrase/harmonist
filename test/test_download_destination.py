@@ -39,9 +39,10 @@ def downloads(tmp_path, monkeypatch):
     ignores = tmp_path / "ignores.txt"
     ignores.write_text("# empty\n")
     bandcamp = MagicMock(purchases=[], collection_items=[])
-    monkeypatch.setattr("bandcampsync.sync.Bandcamp", lambda cookies: bandcamp)
+    bandcamp.check_download_stat.return_value = "https://bandcamp.invalid/download"
+    monkeypatch.setattr("bandcampsync.sync.Bandcamp", lambda cookies, impersonate: bandcamp)
 
-    def download_file(url, target):
+    def download_file(url, target, impersonate):
         with ZipFile(target, "w") as archive:
             archive.write(Path(__file__).parent / "fixtures" / "sine.m4a", "01 Track.m4a")
         return "application/zip"
@@ -190,6 +191,29 @@ def test_free_destination_downloads_once(downloads, empty_folder):
     network.assert_called_once()
     assert _snapshot(destination) == before
     assert sidecar.read(destination).bandcamp.item_id == 202
+
+
+def test_download_moved_aside_by_its_name_is_recorded_where_it_landed(downloads, monkeypatch):
+    """bandcampsync picks a "Title [id]" folder during sync_item when the ignore
+    file lists another purchase under this name."""
+    syncer, _ = downloads
+    recorded = []
+    monkeypatch.setattr(
+        "harmonist.bandcamp_hook.audit.record",
+        lambda event, **fields: recorded.append((event, fields)),
+    )
+    syncer.ignores.add(_purchase(101, "Favourite"))
+    purchase = _purchase(202, "Favourite")
+    plain = syncer.local_media.get_path_for_purchase(purchase)
+
+    assert syncer.sync_item(purchase) is True
+
+    landed = plain.with_name("Favourite [202]")
+    assert (landed / "01 Track.m4a").is_file()
+    written = sidecar.read(landed)
+    assert written is not None and written.bandcamp.item_id == 202
+    assert [f["path"] for event, f in recorded if event == "download"] == [landed]
+    assert not plain.exists()
 
 
 def test_cleaned_filename_collision_stays_pending_across_syncs(downloads):

@@ -1635,7 +1635,7 @@ def test_adopt_skips_when_ambiguous(tmp_path):
 class _StubBandcamp:
     """Lightweight stand-in for bandcampsync.bandcamp.Bandcamp — no network."""
 
-    def __init__(self, cookies):
+    def __init__(self, cookies, impersonate):
         self.is_authenticated = True
         self.purchases = []
 

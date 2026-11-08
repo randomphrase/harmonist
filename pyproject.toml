@@ -4,9 +4,11 @@ version = "1.32.0"
 requires-python = ">=3.14"
 # bandcampsync 0.8 reshaped Syncer.__init__ to take a BandcampSyncOptions
 # object (+ auto_run); HarmonistSyncer adapts to it in bandcamp_hook.py.
+# 0.9 is the first release whose login check handles Bandcamp's client
+# challenge (#983).
 # pillow re-encodes an image over the image size limit as it is written (#888);
 # reading an image's dimensions still needs no library (images.py).
-dependencies = ["mutagen", "bandcampsync~=0.8.0", "fastapi", "jinja2", "httpx", "musicbrainzngs", "pillow", "pydantic", "python-multipart", "tomlkit", "uvicorn[standard]", "watchfiles"]
+dependencies = ["mutagen", "bandcampsync~=0.9.0", "fastapi", "jinja2", "httpx", "musicbrainzngs", "pillow", "pydantic", "python-multipart", "tomlkit", "uvicorn[standard]", "watchfiles"]
 
 [project.optional-dependencies]
 # ruff + mypy are pinned exactly: an unpinned formatter/linter drifts between

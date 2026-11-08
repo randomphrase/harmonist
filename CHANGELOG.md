@@ -32,6 +32,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A Bandcamp sync no longer fails at login with "Failed to locate HomepageApp"**
+  when Bandcamp answers with a challenge page (#983).
 - **Updating an album's artwork no longer reports its files as re-tagged
   outside Harmonist** (#979).
 - **An open album page redraws when a background pass writes into the album**,
