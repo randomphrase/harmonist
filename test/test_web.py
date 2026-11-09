@@ -8341,6 +8341,73 @@ def test_sync_finish_says_nothing_about_pre_orders_when_there_are_none(monkeypat
     assert msg == "Bandcamp sync finished — 2 new items"
 
 
+def test_sync_finish_reports_failed_items_in_one_entry(client):
+    """#987: bandcampsync records a per-album failure and carries on, so a sync
+    that lost albums read as a clean one. One entry however many failed, naming
+    the count and the first reason; the log has the full list."""
+    from types import SimpleNamespace
+
+    from harmonist.web.sync_runner import SyncRunner
+
+    before = {e.id for e in activity.recent(50)}
+    errors = [f"All 3 attempts failed for Band / Album {i}: 503. Skipping." for i in range(40)]
+
+    SyncRunner(runner_fn=lambda: SimpleNamespace(new_items=1, sync_errors=errors))._run()
+
+    new = [e for e in activity.recent(100) if e.id not in before]
+    expected = (
+        "Bandcamp sync finished — 1 new item; 40 items failed and will be retried "
+        "next sync — All 3 attempts failed for Band / Album 0: 503. Skipping. "
+        "(and 39 more, listed in the container log)"
+    )
+    assert [(e.level, e.message) for e in new] == [(Level.ERROR, expected)]
+
+
+def test_a_single_failed_item_is_reported_once_through_bandcampsyncs_own_handler(client):
+    """#987, across the real seam: bandcampsync's catch-all around `_sync_item`
+    must land in the attribute the runner reads, and the error it logs must not
+    reach the feed as a second row."""
+    from types import SimpleNamespace
+
+    from bandcampsync.sync import Syncer
+
+    from harmonist.bandcamp_hook import HarmonistSyncer
+    from harmonist.web.sync_runner import SyncRunner
+
+    syncer = HarmonistSyncer.__new__(HarmonistSyncer)
+    syncer.new_items = 0
+    syncer.sync_errors = []
+    syncer.had_sync_errors = False
+
+    def disk_full(item, encoding):
+        raise OSError(28, "No space left on device")
+
+    syncer._sync_item = disk_full
+    item = SimpleNamespace(band_name="Band", item_title="Album", item_id=7)
+
+    before = {e.id for e in activity.recent(50)}
+
+    def run_sync():
+        assert Syncer.sync_item(syncer, item) is False
+        return syncer
+
+    SyncRunner(runner_fn=run_sync)._run()
+
+    new = [e for e in activity.recent(50) if e.id not in before]
+    expected = (
+        "Bandcamp sync finished — 0 new items; 1 item failed and will be retried "
+        'next sync — Failed to save "Band / Album" (id:7): OSError: [Errno 28] '
+        "No space left on device. Skipping."
+    )
+    assert [(e.level, e.message) for e in new] == [(Level.ERROR, expected)]
+
+
+def test_sync_finish_is_unchanged_when_no_item_failed(monkeypatch):
+    """The real syncer always carries `sync_errors`; empty is the clean case."""
+    msg = _sync_finished_message(monkeypatch, new_items=2, sync_errors=[])
+    assert msg == "Bandcamp sync finished — 2 new items"
+
+
 # ---------- Potential-download actions ----------
 
 

@@ -49,6 +49,19 @@ def _iso(dt: datetime | None) -> str | None:
     return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _failures_clause(failures: list[str]) -> str:
+    """The count and first reason only: a full disk fails every remaining item,
+    and one row per item would bury the feed. bandcampsync logs the whole list."""
+    count = len(failures)
+    clause = (
+        f"; {count} item{'' if count == 1 else 's'} failed and will be retried "
+        f"next sync — {failures[0]}"
+    )
+    if count > 1:
+        clause += f" (and {count - 1} more, listed in the container log)"
+    return clause
+
+
 class AlreadyRunningError(Exception):
     pass
 
@@ -112,6 +125,7 @@ class SyncRunner:
         new_items = 0
         remaining = 0
         preorders = 0
+        failures: list[str] = []
         error: str | None = None
         try:
             result = self._runner_fn()
@@ -126,6 +140,10 @@ class SyncRunner:
             # skip happens inside bandcampsync on a logger we silence, so
             # without this the sync just reports "0 new items" (#351).
             preorders = int(getattr(result, "deferred_preorders", 0))
+            # Items bandcampsync gave up on. It records each, logs it on a logger
+            # the feed doesn't mirror, and carries on with the next — so without
+            # this a full disk reads as a clean sync (#987). The demo has none.
+            failures = list(getattr(result, "sync_errors", []))
         except Exception as e:
             # `activity.error` below is the feed entry, with the reason in it.
             log.exception("sync failed", extra=_LOG_ONLY)
@@ -149,4 +167,7 @@ class SyncRunner:
                     f"; {preorders} pre-order{'' if preorders == 1 else 's'} "
                     "not released yet — each sync retries them"
                 )
-            activity.info(msg)
+            if failures:
+                activity.error(msg + _failures_clause(failures))
+            else:
+                activity.info(msg)

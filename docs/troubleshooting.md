@@ -17,6 +17,7 @@ what to do. For the ideas behind the answers, see
   [release deleted](#the-release-was-deleted-from-musicbrainz) ·
   [tracks paired wrongly](#files-are-paired-with-the-wrong-tracks)
 - **Bandcamp:** [sync fails](#sync-failed) ·
+  [sync says items failed](#a-sync-says-items-failed) ·
   [first sync downloaded nothing](#my-first-sync-didnt-download-anything) ·
   [purchase never arrived](#a-purchase-never-downloaded) ·
   [download blocked](#a-download-is-blocked-by-a-destination-conflict) ·
@@ -207,6 +208,13 @@ Export a fresh `cookies.txt` from a browser signed in to Bandcamp, then in
 **Settings → Bandcamp**, click **Reconfigure** and paste it.
 
 The exact error is in the **Activity** tab and the container's log.
+
+### A sync says items failed
+
+The rest of the sync still ran. The entry in the **Activity** tab gives the
+first reason, and the container's log lists every item. A full disk or a folder
+Harmonist can't write to is fixed on your side; a Bandcamp error often clears by
+itself. The next sync tries those items again, so there's nothing to re-queue.
 
 ### My first sync didn't download anything
 

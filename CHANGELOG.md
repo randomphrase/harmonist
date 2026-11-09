@@ -32,6 +32,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A Bandcamp sync says when items failed to download**, with how many and why,
+  rather than reporting success (#987).
 - **A potential download that shares a Bandcamp slug with another album stays in
   the inbox**, and **Download** now fetches it on the next sync (#988).
 - **A Bandcamp sync no longer fails at login with "Failed to locate HomepageApp"**
