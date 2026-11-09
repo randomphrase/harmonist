@@ -209,7 +209,7 @@ restores the old MP3s and removes the demonstration archive and skip decision.
 Reset, open **Electric Mayhem — Can You Picture That?**, wait for the comparison,
 then return to Library. Choose **Possible mismatch** and reopen it. Show Origin
 **CD**, both disc-folder paths, and the original UPC under **Additional tags**.
-The UK pressing has **Barcode matches** beside **Use**. Choose Use, inspect the
+The UK pressing has **Barcode matches** beside **Review**. Choose Review, inspect the
 four retained track pairings and expand **Tag changes**, then **Confirm
 suggestion**. Show the UK pressing as the matched release, both disc-folder
 paths and all four tracks, then its History entry.

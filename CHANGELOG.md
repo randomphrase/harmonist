@@ -6,65 +6,58 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.33.0] - 2026-11-09
+
 ### Added
 
-- **The artwork picker shows the Cover Art Archive's comment on an image**, such as which track a Track image is for (#973).
-- **Browse artists on their own page**, with List and Cards views, search, artist-specific filters and links from album credits (#813).
-- **Read local artist NFOs and pictures throughout the library**, with automatic updates. An NFO whose artist no album credits is listed too, found by the **No albums** filter, and one without an artist ID, or an empty one, is marked **Not identified**. Conflicting NFOs are shown on the artist's page, and read errors are recorded in the log (#813, #936, #939).
-- **Fill in an artist NFO from MusicBrainz on its artist page**: find the artist by name or MBID and press **Identify**. Only the ID, names, type, gender, disambiguation and dates are written, and everything else in the file is kept. Each write is in the artist's **History**, with **Undo NFO changes** (#981, #917).
+- **Browse artists on their own page**, with search, filters and links from
+  album credits (#813).
+- **Read local artist NFOs and pictures throughout the library** (#813, #936,
+  #939).
+- **Fill in an artist NFO from MusicBrainz on its artist page** with
+  **Identify**; **Undo NFO changes** is in its **History** (#981, #917).
+- **The artwork picker shows the Cover Art Archive's comment on an image**
+  (#973).
 
 ### Changed
 
-- **A release is reviewed in a dialog over the page**, opened by the **Review**
-  button on its row (formerly **Use**). A suggestion is the first row of the
-  search results, with the search beside it; nothing is written until a review
-  is confirmed, so closing one changes nothing (#933).
-- **A track's credits are listed under it in the track list**, one line each
-  for its work, composer, lyricist and writer, rather than in columns. A credit
-  a re-tag would remove now says so (#948).
-- **A track's title leads its row in the track list**, with its credits in a
-  quieter colour unless they differ from MusicBrainz (#942).
-- **Every MusicBrainz value in the track list has its own hexagon beside it**,
-  on a track's line and a disc's heading alike, rather than one per line under
-  the track number (#967).
-- **A link's underline says where it goes**: solid to Harmonist's own artist
-  and album pages, dotted out to MusicBrainz (#935).
+- **A release is reviewed in a dialog over the page**, opened by **Review**
+  (formerly **Use**) (#933).
+- **A track's credits are listed under it in the track list** rather than in
+  columns (#948).
+- **A track's title leads its row in the track list** (#942).
+- **Every MusicBrainz value in the track list has its own hexagon beside it**
+  (#967).
+- **A link's underline says where it goes**: solid within Harmonist, dotted out
+  to MusicBrainz (#935).
 
 ### Fixed
 
-- **A Bandcamp sync says when items failed to download**, with how many and why,
-  rather than reporting success (#987).
+- **A Bandcamp sync no longer fails at login with "Failed to locate
+  HomepageApp"** (#983).
+- **A Bandcamp sync says when items failed to download** (#987).
 - **A potential download that shares a Bandcamp slug with another album stays in
-  the inbox**, and **Download** now fetches it on the next sync (#988).
-- **A Bandcamp sync no longer fails at login with "Failed to locate HomepageApp"**
-  when Bandcamp answers with a challenge page (#983).
+  the inbox**, and **Download** fetches it. To bring back one that has already
+  vanished, delete `.bandcampsync-state.json` from the music folder once (#988).
 - **Updating an album's artwork no longer reports its files as re-tagged
   outside Harmonist** (#979).
-- **An open album page redraws when a background pass writes into the album**,
-  or says the album has changed, with **Reload**, while a choice is open on it
+- **An open album page redraws when a background pass writes into its album**
   (#975).
 - **An album page that finds a front cover on another release asks the Cover
-  Art Archive again**, so the release group's new front is offered at once
-  rather than after the stored answer expires (#974).
-- **A track's row and its MusicBrainz line stay together in the track list**
-  when the file includes a pregap: "Includes pregap" now follows the line
-  instead of coming between them (#953).
+  Art Archive again** (#974).
+- **A track's row and its MusicBrainz line stay together when the file includes
+  a pregap** (#953).
 - **A per-track tag that doesn't fit the track list's columns is listed under
-  every track**, not only where a re-tag changes it, so one that varies by track
-  and matches MusicBrainz no longer disappears from the page (#951).
+  every track** (#951).
 - **The artwork picker offers a new archive front as soon as an artwork update
   is reported** (#927).
-- **Embiggened, the artwork picker's two images are square and as large as the
-  window allows**, with their details just under them (#929).
-- **Embiggened, the artwork picker's ↑ and ↓ step the rows when clicked**, not
-  only from the keyboard (#931).
-- **The artwork picker's loading box is the size of the image it waits for**,
-  so the section no longer grows and shrinks as the archive answers (#946).
-- **An album the archive has no images for looks at its other releases
-  itself**, and the picker says when none of them has any either, rather than
-  disappearing (#946).
-- **Albums tagged at the same time keep their place in the Library**, ordered
-  by folder, rather than in whatever order the filesystem lists them (#963).
+- **Embiggened, the artwork picker's two images are square** (#929).
+- **Embiggened, the artwork picker's ↑ and ↓ step the rows when clicked** (#931).
+- **The artwork picker's loading box is the size of the image it waits for**
+  (#946).
+- **An album the archive has no images for looks at its other releases itself**
+  (#946).
+- **Albums tagged at the same time keep their place in the Library** (#963).
 
 ## [1.32.0] - 2026-11-01
 
