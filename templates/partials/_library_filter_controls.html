@@ -1,8 +1,10 @@
 {% from 'macros.html' import library_query %}
 
-{# Native GET buttons expose pressed state and retain a no-JS path. #}
+{# Native GET buttons expose pressed state and retain a no-JS path. The form is
+   flex so the button fills it: as a block, the button would sit on the form's
+   own text line and land lower than the chips beside it (#991). #}
 {% macro toggle(option, limit, q, classes, label=none, menu=false) -%}
-<form method="get" action="/" hx-get="/library?{{ library_query(none, limit, option.next_filter, q) }}"
+<form method="get" action="/" class="flex" hx-get="/library?{{ library_query(none, limit, option.next_filter, q) }}"
       hx-params="none"
       hx-target="#library-rows" hx-swap="innerHTML"
       hx-push-url="/?tab=library&{{ library_query(none, limit, option.next_filter, q) }}">

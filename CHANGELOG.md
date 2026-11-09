@@ -6,6 +6,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every filter chip on the Library and Artists pages lines up with the rest of
+  its row** (#991).
+
 ## [1.33.0] - 2026-11-09
 
 ### Added

@@ -33,7 +33,7 @@
         {% endfor %}
     </nav>
     {% endfor %}
-    <form method="get" action="/artists" hx-get="{{ artists_view.new_url }}" hx-params="none"
+    <form method="get" action="/artists" class="flex" hx-get="{{ artists_view.new_url }}" hx-params="none"
           hx-target="#artists-rows" hx-swap="innerHTML" hx-push-url="{{ artists_view.new_url }}">
         <input type="hidden" name="artist_q" value="{{ artists_view.q }}">
         <input type="hidden" name="view" value="{{ artists_view.view }}">
