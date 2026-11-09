@@ -15,6 +15,8 @@ versions follow [semantic versioning](https://semver.org).
 
 - **Every filter chip on the Library and Artists pages lines up with the rest of
   its row** (#991).
+- **Filling in an artist NFO no longer rescans the whole library** a few seconds
+  later (#995).
 
 ## [1.33.0] - 2026-11-09
 

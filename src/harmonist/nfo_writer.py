@@ -451,10 +451,18 @@ def _read(path: Path) -> bytes:
         raise NfoWriteError(f"Could not read {path}: {exc.strerror}") from exc
 
 
+_TEMPORARY_SUFFIX = ".tmp"
+
+
+def is_temporary(path: Path) -> bool:
+    """Whether `path` is the file a write goes through on its way to an NFO."""
+    return path.name.lower() == "artist.nfo" + _TEMPORARY_SUFFIX
+
+
 def _replace(path: Path, data: bytes) -> None:
     """Replace `path` with `data` through a temporary file beside it, keeping
     its permissions: another program, a media server perhaps, reads it too."""
-    temporary = path.with_name(path.name + ".tmp")
+    temporary = path.with_name(path.name + _TEMPORARY_SUFFIX)
     try:
         mode = stat.S_IMODE(path.stat().st_mode)
         with open(temporary, "wb") as stream:

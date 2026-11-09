@@ -44,6 +44,7 @@ from harmonist import (
     library_index,
     library_titles,
     live_counts,
+    nfo_writer,
     scanner,
 )
 from harmonist.models import Album
@@ -362,6 +363,10 @@ class ScanRunner:
 
     def _refresh_changed(self, paths: set[Path]) -> bool:
         """Refresh known file parents; uncertain directory changes need a walk."""
+        # An NFO write's temporary file sits in an artist's folder, usually no
+        # album's, so it would read as a change of layout. The NFO's own path
+        # says everything it could.
+        paths = {p for p in paths if not nfo_writer.is_temporary(p)}
         nfo_paths = {p for p in paths if p.name.lower() == "artist.nfo"}
         if any(p.is_dir() for p in paths):
             return False  # New directory layout needs the collector's full walk.

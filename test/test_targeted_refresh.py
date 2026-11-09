@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import pytest
 from mutagen.mp4 import MP4
 
-from harmonist import formats, library_index, live_counts, scanner
+from harmonist import formats, library_index, live_counts, nfo_writer, scanner
 from harmonist.web.dir_watcher import watch_music_dir
 from harmonist.web.scan_runner import ScanRunner
 from test.test_auto_apply import _cfg, _flagged, _no_musicbrainz
@@ -346,6 +346,63 @@ def test_real_watcher_delivers_paths_to_targeted_refresh(tmp_path, monkeypatch):
             await _finish(runner)
             assert runner.status()["seq"] == seq
             assert walks == []
+        finally:
+            stop.set()
+            watcher.cancel()
+            with suppress(asyncio.CancelledError):
+                await watcher
+
+    asyncio.run(run())
+
+
+def test_writing_an_nfo_in_an_artist_folder_does_not_walk(tmp_path, monkeypatch):
+    # The writer goes through a temporary file beside the NFO, and the watcher
+    # reports that too. An artist's folder is no album, so read as a change of
+    # layout it would cost a walk of the library on every Identify (#981).
+    album_dir = _album(tmp_path, "One")
+    nfo = album_dir.parent / "artist.nfo"
+    nfo.write_bytes(b"")
+    runner = ScanRunner(tmp_path)
+    walks = []
+    original = scanner.iter_album_dirs
+
+    def walk(root, **kwargs):
+        walks.append(root)
+        yield from original(root, **kwargs)
+
+    async def run():
+        runner.attach_loop()
+        await _finish(runner)
+        monkeypatch.setattr(scanner, "iter_album_dirs", walk)
+        stop = asyncio.Event()
+        events = []
+
+        def changed(paths):
+            events.append(paths)
+            runner.request_refresh(paths)
+
+        watcher = asyncio.create_task(
+            watch_music_dir(tmp_path, changed, settle=timedelta(seconds=0.1), stop_event=stop)
+        )
+        try:
+            # The watcher has no ready signal, so change something until it says so.
+            async with asyncio.timeout(5):
+                while not events:
+                    (album_dir / "notes.txt").touch()
+                    await asyncio.sleep(0.25)
+            await asyncio.sleep(0)
+            await _finish(runner)
+            walks.clear()
+            nfo_writer.write(nfo, expected=b"", wanted={"name": "Artist"})
+            runner.refresh_nfo(nfo)
+            seq = runner.status()["seq"]
+            async with asyncio.timeout(5):
+                while not any(nfo in batch for batch in events):
+                    await asyncio.sleep(0.01)
+            await asyncio.sleep(0)
+            await _finish(runner)
+            assert walks == []
+            assert runner.status()["seq"] == seq
         finally:
             stop.set()
             watcher.cancel()
