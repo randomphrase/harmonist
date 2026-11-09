@@ -32,6 +32,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A potential download that shares a Bandcamp slug with another album stays in
+  the inbox**, and **Download** now fetches it on the next sync (#988).
 - **A Bandcamp sync no longer fails at login with "Failed to locate HomepageApp"**
   when Bandcamp answers with a challenge page (#983).
 - **Updating an album's artwork no longer reports its files as re-tagged

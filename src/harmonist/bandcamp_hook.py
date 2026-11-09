@@ -964,6 +964,9 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 getattr(item, "item_id", "?"),
                 ", ".join(str(c.album_dir.name) for c in lookalikes),
             )
+            # Undecided, so the checkpoint must stay behind it or the next sync
+            # stops before it and the decision can never be acted on (#988).
+            self._unfinished.add(item_id_int)
             self._pending_this_run.append(
                 PendingPurchase(
                     item_id=item_id_int,

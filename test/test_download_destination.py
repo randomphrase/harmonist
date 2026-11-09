@@ -3,6 +3,7 @@
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from zipfile import ZipFile
 
@@ -214,6 +215,34 @@ def test_download_moved_aside_by_its_name_is_recorded_where_it_landed(downloads,
     assert written is not None and written.bandcamp.item_id == 202
     assert [f["path"] for event, f in recorded if event == "download"] == [landed]
     assert not plain.exists()
+
+
+def test_undecided_lookalike_stays_reachable_by_later_syncs(downloads, monkeypatch):
+    """A purchase held for the user's decision must not fall behind the checkpoint,
+    or the next sync stops before it and Download can never be acted on."""
+    syncer, network = downloads
+    lookalike, older = _purchase(202, "Tides"), _purchase(101, "Older")
+    other_page = SimpleNamespace(album_dir=Path("Tides"), linked=True)
+    monkeypatch.setattr(
+        syncer,
+        "_copies_of_release",
+        lambda url: ([], [other_page] if url.endswith("edition-202") else []),
+    )
+    syncer.bandcamp.purchases = [lookalike]
+    syncer.bandcamp.collection_items = [lookalike, older]
+
+    asyncio.run(syncer.sync_items())
+    asyncio.run(syncer.sync_items())
+
+    network.assert_not_called()
+    assert [p.item_id for p in pending_downloads.all_pending()] == [202]
+    syncer.collection_checkpoint_token = syncer._load_collection_checkpoint()
+    assert syncer._should_stop_loading_purchase(lookalike) is False
+    assert syncer._should_stop_loading_purchase(older) is True
+
+    pending_downloads.approve(202)
+    assert syncer.sync_item(lookalike) is True
+    network.assert_called_once()
 
 
 def test_cleaned_filename_collision_stays_pending_across_syncs(downloads):
