@@ -192,7 +192,9 @@ Deliberately not evidence:
 - **Hi-res audio** proves the files aren't from a CD, not that they were
   downloaded: vinyl, SACD and Blu-ray rips are hi-res too.
 - **A CD table of contents** (`iTunes_CDDB_1`) is synthesised by XLD from the
-  track lengths on any transcode, so a download can carry one.
+  track lengths on any transcode, so a download can carry one. It's read only
+  for a [disc ID search](matching.md#disc-id-search), which lists candidates for
+  review.
 - **`MEDIA`** is owned: Picard and Harmonist write it from the release, so it
   describes the match, not the files.
 - **Juno's and eMusic's marks** don't name their store clearly enough.

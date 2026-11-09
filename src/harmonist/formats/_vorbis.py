@@ -312,6 +312,7 @@ class VorbisTagger:
                 accuraterip_disc_id=first("ACCURATERIPDISCID"),
             ),
             barcodes=tuple(str(v) for key in (KEY_BARCODE, "UPC") for v in tags.get(key, [])),
+            cd_toc=first("ITUNES_CDDB_1"),
             album_id=first(KEY_ALBUM_ID),
             release_group_id=first(KEY_RELEASE_GROUP_ID),
             artist=first(KEY_ARTIST),

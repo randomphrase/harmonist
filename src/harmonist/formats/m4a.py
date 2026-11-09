@@ -314,6 +314,7 @@ def read_scan_fields(path: Path) -> ScanFields:
             for key in (ATOM_BARCODE, "----:com.apple.iTunes:UPC")
             for value in _binary_atom_list(audio, key)
         ),
+        cd_toc=_binary_atom_str(audio, f"{ATOM_PREFIX}iTunes_CDDB_1"),
         album_id=_binary_atom_str(audio, ATOM_MB_ALBUM_ID),
         release_group_id=_binary_atom_str(audio, ATOM_MB_RELEASE_GROUP_ID),
         artist=_text_atom(audio, ATOM_ARTIST),

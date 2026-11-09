@@ -72,7 +72,7 @@ It works best on a library with **one album per folder**. See
 
 Albums in **New** and **Needs MBID** are waiting for a release. Each one either
 has a suggested match, to check against the side-by-side tracklist and confirm,
-or can be searched for on MusicBrainz by name, barcode or store URL.
+or can be searched for on MusicBrainz by name, barcode, disc ID or store URL.
 
 ![The Review dialog for "The Thamesmen — Gimme Some Money". Under "Suggested
 match: Gimme Some Money", the three files on disk sit beside the three

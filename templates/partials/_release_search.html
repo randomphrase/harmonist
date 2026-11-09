@@ -10,9 +10,15 @@
 {% set waiting_url = waiting and waiting.found_by == 'store_url' and public_url %}
 {% set siblings_default = show_siblings|default(false) and not prefer_name %}
 {% set barcode_default = album.barcode and not prefer_name and not siblings_default and not waiting_url %}
+{% set disc_id_default = album.disc_id and not prefer_name and not siblings_default and not album.barcode and not public_url %}
 {# Look up on render only when nothing already names a release. Files tagged with
    an MBID are reconcile's to adopt; a lookup fired here races it and loses (#671). #}
 {% set auto_lookup = not album.has_tag_mbid and not (sc and sc.mb_match_candidate) %}
+{# Only on an album page, which is one album the user opened. The Inbox draws
+   every unmatched album at once, so a library of untagged rips would spend a
+   rate-limited request per card on each load. #}
+{% set disc_id_looks_up = disc_id_default and auto_lookup and on_album %}
+{% macro hand_over_to_name(mode) %}const mode = this.querySelector('input[value={{ mode }}]'); if (mode && mode.checked) { const name = this.querySelector('input[value=name]'); name.checked = true; htmx.trigger(name, 'change'); this.querySelector('.find-mode__panel--name form').requestSubmit(); }{% endmacro %}
 {% macro seed() %}{% if waiting %}
 {% with results=[suggested_row(waiting)], album_id=album.id, local_track_count=album.track_count,
         local_artist=album.artist, on_album_page=on_album, heading=none, more_count=none,
@@ -26,7 +32,8 @@
 {# Changing mode clears the last search's results, and puts the suggestion back:
    it is a row in every mode until it is confirmed or dismissed. #}
 <div class="find-mode mb-2"
-     hx-on:release-group-empty="const mode = this.querySelector('input[value=siblings]'); if (mode && mode.checked) { const name = this.querySelector('input[value=name]'); name.checked = true; htmx.trigger(name, 'change'); this.querySelector('.find-mode__panel--name form').requestSubmit(); }"
+     hx-on:release-group-empty="{{ hand_over_to_name('siblings') }}"
+     hx-on:disc-id-empty="{{ hand_over_to_name('discid') }}"
      hx-on:change="if (event.target.type === 'radio') { const box = document.getElementById('mbid-results-{{ album.id }}'); const seed = document.getElementById('mbid-seed-{{ album.id }}'); box.replaceChildren(...(seed ? seed.content.cloneNode(true).childNodes : [])); if (seed) htmx.process(box); }">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-xs">
         <span class="text-muted font-bold uppercase tracking-widest text-2xs">Find release:</span>
@@ -39,7 +46,7 @@
         {% endif %}
         <label class="inline-flex items-center gap-1.5 cursor-pointer">
             <input type="radio" name="find-{{ album.id }}" value="name"
-                   {% if prefer_name or (not siblings_default and not album.barcode and not public_url) %}checked{% endif %} class="accent-mb-purple">
+                   {% if prefer_name or (not siblings_default and not album.barcode and not public_url and not album.disc_id) %}checked{% endif %} class="accent-mb-purple">
             <span>By name</span>
         </label>
         <label class="inline-flex items-center gap-1.5 {% if album.barcode %}cursor-pointer{% else %}text-muted{% endif %}">
@@ -47,6 +54,13 @@
                    {% if barcode_default %}checked{% endif %} {% if not album.barcode %}disabled{% endif %} class="accent-mb-purple">
             <span>By barcode</span>
         </label>
+        {% if album.disc_id %}
+        <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input id="disc-id-mode-{{ album.id }}" type="radio" name="find-{{ album.id }}" value="discid"
+                   {% if disc_id_default %}checked{% endif %} class="accent-mb-purple">
+            <span>By disc ID</span>
+        </label>
+        {% endif %}
         {% if public_url %}
         <label class="inline-flex items-center gap-1.5 cursor-pointer">
             <input id="url-mode-{{ album.id }}" type="radio" name="find-{{ album.id }}" value="url"
@@ -90,6 +104,23 @@
               class="flex items-center gap-2">
             <input type="hidden" name="on_album_page" value="{{ 'true' if on_album else 'false' }}">
             <span class="flex-1 text-xs text-muted">{{ album.barcode }}</span>
+            <button type="submit" class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Search</button>
+        </form>
+    </div>
+    {% endif %}
+    {% if album.disc_id %}
+    <div class="find-mode__panel find-mode__panel--discid">
+        <form hx-post="/manual/{{ album.id }}/disc-id"
+              hx-target="#mbid-results-{{ album.id }}" hx-swap="innerHTML settle:0ms"
+              hx-trigger="{% if disc_id_looks_up %}load delay:1ms, {% endif %}submit, change from:#disc-id-mode-{{ album.id }}"
+              {# Only the first request is the automatic one: its field has been
+                 collected by now, and every later search is one the user asked for. #}
+              hx-on::before-request="this.setAttribute('hx-trigger', 'submit, change from:#disc-id-mode-{{ album.id }}'); this.querySelector('input[name=automatic]')?.remove()"
+              hx-disabled-elt="find button" hx-indicator="#lookup-progress-{{ album.id }}"
+              class="flex items-center gap-2">
+            <input type="hidden" name="on_album_page" value="{{ 'true' if on_album else 'false' }}">
+            {% if disc_id_looks_up %}<input type="hidden" name="automatic" value="true">{% endif %}
+            <span class="flex-1 min-w-0 truncate text-xs text-muted">{{ album.disc_id }}</span>
             <button type="submit" class="px-3 py-1.5 bg-surface hover:bg-line text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Search</button>
         </form>
     </div>

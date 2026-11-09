@@ -248,6 +248,7 @@ def read_scan_fields(path: Path) -> ScanFields:
             for frame in (tags.getall(f"TXXX:{name}") if tags is not None else [])
             for value in frame.text
         ),
+        cd_toc=_cd_toc(tags),
         album_id=_txxx(tags, TXXX_ALBUM_ID),
         release_group_id=_txxx(tags, TXXX_RELEASE_GROUP_ID),
         artist=_text(tags, "TPE1"),
@@ -338,6 +339,16 @@ def _comment_text(tags: Any) -> str | None:
         if frame.text and frame.text[0]:
             return str(frame.text[0])
     return None
+
+
+def _cd_toc(tags: Any) -> str | None:
+    """`iTunes_CDDB_1`, which an MP3 carries as a comment of that description."""
+    if tags is None:
+        return None
+    return next(
+        (str(f.text[0]) for f in tags.getall("COMM") if f.desc == "iTunes_CDDB_1" and f.text),
+        None,
+    )
 
 
 def _provenance(tags: Any) -> ProvenanceTags:

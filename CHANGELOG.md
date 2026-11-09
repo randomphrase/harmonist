@@ -6,6 +6,11 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **Find a CD rip's release by its disc ID**, computed from the table of contents
+  XLD leaves in the tags (#984).
+
 ### Fixed
 
 - **Every filter chip on the Library and Artists pages lines up with the rest of

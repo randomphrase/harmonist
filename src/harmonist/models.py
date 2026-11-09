@@ -247,6 +247,7 @@ class FoundBy(StrEnum):
 
     STORE_URL = "store_url"
     BARCODE = "barcode"
+    DISC_ID = "disc_id"
     NAME_SEARCH = "name_search"
     RELEASE_GROUP = "release_group"
     MBID = "mbid"  # pasted by the user
@@ -475,6 +476,9 @@ class Album:
     # barcode a download was sold under — but only once something else proves
     # the files ARE a download (#632); derived, never persisted.
     source_upc: str | None = None
+    # The first disc's ID, from the CD table of contents in the tags (#984).
+    # Drives the By disc ID search and nothing else; derived, never persisted.
+    disc_id: str | None = None
     # The release's track count as the FILES report it (#195) — `trkn`/`disk`
     # totals, written by the tagging from MusicBrainz. Scanner-derived, never
     # persisted: it replaced a sidecar field holding the same number from the

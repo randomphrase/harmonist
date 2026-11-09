@@ -29,7 +29,7 @@
     {% for r in results %}
     {% set is_waiting = r.id == waiting|default(none) %}
     {% set is_suggested = is_waiting or r.id == suggested|default(none) %}
-    {% call release_candidate(r, local_track_count, local_artist, suggested=is_suggested, store_match=store_url, barcode_match=barcode, restored=is_waiting and restored|default(false), suggested_label='Suggested release') %}
+    {% call release_candidate(r, local_track_count, local_artist, suggested=is_suggested, store_match=store_url, barcode_match=barcode, disc_id_match=disc_id|default(none), restored=is_waiting and restored|default(false), suggested_label='Suggested release') %}
             {# Rendered by a route, not included from a card, so the flag has to
                be carried into this response rather than inherited from a
                surrounding template (#150) — see `_render_release_picker`. #}

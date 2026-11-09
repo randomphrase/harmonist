@@ -62,6 +62,29 @@ def search_barcode(evidence: barcodes.Evidence) -> tuple[list[dict[str, Any]], i
     return list(results.values()), total if total > len(releases) else len(results)
 
 
+def search_disc_id(disc_id: str) -> tuple[list[dict[str, Any]], int]:
+    """The releases this exact disc ID is attached to (#984): one uncached request.
+
+    No table of contents goes with it, because that turns a miss into
+    MusicBrainz's fuzzy match on track lengths. A 404 is the ordinary answer for
+    a disc nobody has submitted, so it is an empty result rather than a failure.
+    """
+    try:
+        response = musicbrainzngs.get_releases_by_discid(
+            disc_id, includes=["artist-credits", "labels"], cdstubs=False
+        )
+    except (
+        musicbrainzngs.NetworkError,
+        musicbrainzngs.ResponseError,
+        musicbrainzngs.AuthenticationError,
+    ) as exc:
+        if isinstance(exc, musicbrainzngs.ResponseError) and mb_lookup._is_not_found(exc):
+            return [], 0
+        raise MBSearchError(f"MusicBrainz disc ID lookup failed: {exc}") from exc
+    releases = response["disc"]["release-list"]
+    return [mb_lookup.release_summary(release) for release in releases], len(releases)
+
+
 def barcode_suggestion(
     evidence: barcodes.Evidence,
     results: list[dict[str, Any]],

@@ -446,6 +446,13 @@ def barcode_outcome_server(tmp_path, monkeypatch, request):
         yield base, tmp_path / "harmonist-demo", request.param
 
 
+@pytest.fixture
+def disc_id_server(tmp_path, monkeypatch, request):
+    monkeypatch.setenv("HARMONIST_TEST_DISC_ID_RESULTS", request.param)
+    for base in _run_demo_server(tmp_path, app_module="test.e2e.disc_id_app:app"):
+        yield base, tmp_path / "harmonist-demo", request.param
+
+
 @pytest.fixture(scope="module")
 def upc_contribution_server(tmp_path_factory):
     root = tmp_path_factory.mktemp("e2e-upc-contribution")

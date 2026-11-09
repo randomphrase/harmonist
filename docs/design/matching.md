@@ -62,6 +62,46 @@ results are enriched with release data, bounding the MusicBrainz cost; larger
 sets remain manual choices. Initial adoption may reuse cached releases, while an
 explicit lookup refreshes them.
 
+### Disc ID search
+
+A CD ripped without first choosing a release carries names and not much else.
+XLD does write the disc's table of contents to `iTunes_CDDB_1`, and a
+MusicBrainz disc ID can be computed from that. **By disc ID** looks up that exact
+ID and lists the releases it's attached to (#984).
+
+**It only ever lists.** A table of contents in the tags may be one a transcoder
+synthesised from the track lengths, so the tag can't show that a disc was ever
+read. That rules it out as evidence, but not as a way of finding candidates:
+someone reviews every result, and the worst a bad table can do is find nothing or
+offer a release to turn down. It isn't a step in adoption, stores no suggestion,
+gives no mismatch reason and says nothing about Origin.
+
+**The lookup is exact.** MusicBrainz can also match a table of contents by track
+lengths, which would help a transcoded download. The case that matters is a CD
+rip, where an exact hit is the reliable answer. On one album the fuzzy match
+listed five releases where the exact lookup listed one, among them digital and
+cassette releases a rip can't be.
+
+**A hit covers only the releases the ID has been attached to.** Another edition
+of the same pressing goes unlisted until someone attaches the ID to it, and By
+name still finds it.
+
+**It's the default only when the files offer nothing stronger**, a barcode or a
+store URL, since nothing can vouch for where the tag came from.
+
+**An album page looks itself up; the Inbox waits to be asked.** An album page is
+one album the user opened. The Inbox draws every unmatched album at once, and a
+library of untagged rips would spend a rate-limited request per card on each
+load.
+
+**Few releases have disc IDs attached, so a miss says little.** A lookup that ran
+by itself and found nothing moves on to a search by name. One the user asked for
+says it found nothing.
+
+A multi-disc album has one table of contents per disc. Each must be whole, with
+one file per track, and only the first is looked up: that finds the release, and
+the review covers the rest.
+
 ## Match confidence
 
 A release found by URL or barcode is exact as an *identity*, but the files on

@@ -53,7 +53,9 @@ round where downloads and rips differ:
 A rip with no UPC supplies no barcode evidence, and the matched release's
 barcode cannot stand in for one. A disc ID would be another kind of identity
 evidence, but a table of contents in the tags may have been synthesised by a
-transcoder, so only one recorded by the ripper itself would count.
+transcoder, so only one recorded by the ripper itself would count. A
+[disc ID search](matching.md#disc-id-search) can use that table all the same,
+because it only lists candidates for review.
 
 ## Settle the match first
 

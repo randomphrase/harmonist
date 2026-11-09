@@ -2204,6 +2204,7 @@ def _release_name_parts(release: Release) -> tuple[str, str]:
 _FOUND_BY = {
     FoundBy.STORE_URL: "found by store URL",
     FoundBy.BARCODE: "found by barcode",
+    FoundBy.DISC_ID: "found by disc ID",
     FoundBy.NAME_SEARCH: "chosen from a name search",
     FoundBy.RELEASE_GROUP: "chosen from its release group",
     FoundBy.MBID: "entered by MBID",
@@ -9110,6 +9111,63 @@ def _register_routes(app: FastAPI) -> None:
             suggested=release["id"] if release else None,
         )
 
+    @app.post("/manual/{album_id}/disc-id", response_class=HTMLResponse)
+    def disc_id_lookup(
+        request: Request,
+        album_id: str,
+        on_album_page: bool = Form(False),
+        automatic: bool = Form(False),
+    ) -> Response:
+        """The releases this album's disc ID is attached to (#984).
+
+        Only ever a list for review: the table of contents it comes from may
+        have been synthesized by a transcoder, so it is evidence of nothing.
+        """
+        request.state.skip_rescan = True
+        album = _find_album(request, album_id)
+        if album.disc_id is None or (album.sidecar and album.sidecar.mb_release_id):
+            response = _flash_response(
+                "Disc ID lookup unavailable",
+                "Requires an unmatched album with a complete CD table of contents",
+                level=Level.WARNING,
+                tasks_changed=False,
+                album=album,
+            )
+            response.headers["HX-Retarget"] = f"#mbid-results-{album.id}"
+            return response
+        try:
+            results, total = mb_search.search_disc_id(album.disc_id)
+        except mb_search.MBSearchError as exc:
+            response = _flash_response(
+                "Disc ID lookup failed",
+                str(exc),
+                level=Level.ERROR,
+                tasks_changed=False,
+                album=album,
+            )
+            # Keep an automatic lookup failure visible instead of reloading
+            # the page and immediately triggering another lookup.
+            response.headers["HX-Retarget"] = f"#mbid-results-{album.id}"
+            return response
+        picker = _render_release_picker(
+            request,
+            album,
+            results,
+            total,
+            heading=None,
+            on_album_page=on_album_page,
+            retarget=True,
+            disc_id=album.disc_id,
+        )
+        # Few releases have disc IDs attached, so a miss says little. One the
+        # user didn't ask for moves on to the search that usually works; one
+        # they did ask for stays on screen.
+        if automatic and not results:
+            picker.headers["HX-Trigger-After-Swap"] = json.dumps(
+                {"disc-id-empty": {"target": f"#mbid-results-{album.id}"}}
+            )
+        return picker
+
     @app.post("/manual/{album_id}/candidates", response_class=HTMLResponse)
     def manual_candidates(
         request: Request,
@@ -9456,6 +9514,7 @@ def _render_release_picker(
     retarget: bool = False,
     on_album_page: bool = False,
     barcode: str | None = None,
+    disc_id: str | None = None,
     store_url: str | None = None,
     mb_query: str | None = None,
     suggested: str | None = None,
@@ -9497,6 +9556,7 @@ def _render_release_picker(
             "local_artist": album.artist,
             "on_album_page": on_album_page,
             "barcode": barcode,
+            "disc_id": disc_id,
             "store_url": store_url,
             # The search a truncated list hands over to musicbrainz.org (#878).
             "mb_query": mb_query,
@@ -9506,6 +9566,8 @@ def _render_release_picker(
             "found_by": (
                 FoundBy.BARCODE
                 if barcode
+                else FoundBy.DISC_ID
+                if disc_id
                 else FoundBy.STORE_URL
                 if store_url
                 else FoundBy.NAME_SEARCH

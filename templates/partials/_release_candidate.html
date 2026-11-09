@@ -11,7 +11,7 @@
         class="px-2 py-1 {% if suggested %}bg-accent hover:bg-accent-dark text-white border border-accent{% else %}bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30{% endif %} rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Review</button>
 {%- endmacro %}
 
-{% macro release_candidate(r, local_track_count, local_artist, suggested=false, store_match=false, barcode_match=false, store_pages=none, restored=false, suggested_label='Suggested digital release') %}
+{% macro release_candidate(r, local_track_count, local_artist, suggested=false, store_match=false, barcode_match=false, store_pages=none, restored=false, suggested_label='Suggested digital release', disc_id_match=false) %}
 {% set tc_mismatch = r.track_count and local_track_count and r.track_count != local_track_count %}
 {% set artist_mismatch = local_artist and r.artist and (r.artist | lower | trim) != (local_artist | lower | trim) %}
 <div class="release-candidate flex flex-wrap items-center justify-between gap-2 p-2 rounded border border-line hover:border-mb-purple/40 transition {% if suggested %}bg-amber-50/40{% else %}bg-surface{% endif %}"
@@ -37,10 +37,11 @@
         </div>
     </div>
     <div class="flex items-center gap-2 flex-shrink-0">
-        {% if store_match or barcode_match or store_pages or restored %}
+        {% if store_match or barcode_match or disc_id_match or store_pages or restored %}
         <div class="text-xs {% if suggested %}text-amber-700 font-bold{% else %}text-muted{% endif %}">
             {% if store_match %}<div class="text-accent font-bold">Store URL matches</div>{% endif %}
             {% if barcode_match %}<div>Barcode matches</div>{% endif %}
+            {% if disc_id_match %}<div>Disc ID matches</div>{% endif %}
             {# The release an undone tagging unlinked, offered back. #}
             {% if restored %}<div>Previously tagged</div>{% endif %}
             {# The store the download came from, not the download's own page:

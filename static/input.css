@@ -360,6 +360,7 @@ button[disabled],
 .find-mode:has(input[value="mbid"]:checked) .find-mode__panel--mbid,
 .find-mode:has(input[value="url"]:checked) .find-mode__panel--url,
 .find-mode:has(input[value="barcode"]:checked) .find-mode__panel--barcode,
+.find-mode:has(input[value="discid"]:checked) .find-mode__panel--discid,
 .find-mode:has(input[value="name"]:checked) .find-mode__panel--name {
   display: block;
 }

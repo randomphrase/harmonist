@@ -28,6 +28,7 @@ _PRISTINE_GLOBALS = {
     (mb_search, "search_releases"): mb_search.search_releases,
     (mb_search, "search_artists"): mb_search.search_artists,
     (mb_search, "search_barcode"): mb_search.search_barcode,
+    (mb_search, "search_disc_id"): mb_search.search_disc_id,
     (cover_art, "front_image"): cover_art.front_image,
     (cover_art, "check_front"): cover_art.check_front,
     (cover_art, "fetch_image"): cover_art.fetch_image,

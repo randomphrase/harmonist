@@ -111,6 +111,10 @@ class ScanFields(NamedTuple):
     quality: AudioQuality = AudioQuality()
     # Preserve every alias/value until album-wide consistency is checked.
     barcodes: tuple[str, ...] = ()
+    # The CD table of contents `iTunes_CDDB_1` holds, for finding a release by
+    # disc ID (#984). Not provenance: XLD also synthesizes it on a transcode, so
+    # it can list search results but proves nothing about where a file came from.
+    cd_toc: str | None = None
     # Where the file came from, kept apart from everything above (#632).
     provenance: ProvenanceTags = ProvenanceTags()
 
