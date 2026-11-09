@@ -95,6 +95,11 @@ devcontainer up --remove-existing-container
 devcontainer exec bash .devcontainer/setup.sh
 ```
 
+Setup runs only when a container is created, so a dependency that changes while
+the container exists is not picked up on its own. `make check` starts by asking
+uv whether the installed packages still satisfy `pyproject.toml`, and stops and
+names the ones that differ if they don't.
+
 A rebuild creates a new container, and setup runs again in it; `/opt/venv` does
 not survive the old container. The uv download cache lives in the
 `harmonist-uv-cache` volume, so reinstalling is quick. The fixed name

@@ -1,4 +1,4 @@
-.PHONY: css css-watch browser-assets test coverage run lint format typecheck template-lint check e2e demo
+.PHONY: css css-watch browser-assets test coverage run lint format typecheck template-lint deps-check check e2e demo
 
 # Pin the Tailwind standalone binary so `make css` is byte-reproducible across
 # machines + CI — pytailwindcss otherwise downloads 'latest', whose minified
@@ -53,8 +53,13 @@ typecheck:
 template-lint:
 	python3 scripts/lint_templates.py
 
-# Everything CI would gate on (lint + format + types + tests).
-check: lint format-check typecheck template-lint test
+# Do the installed packages still satisfy pyproject.toml? Installs nothing.
+deps-check:
+	@sh scripts/check_installed_deps.sh
+
+# Everything CI would gate on (lint + format + types + tests), once the
+# environment is known to be current.
+check: deps-check lint format-check typecheck template-lint test
 
 # Browser smoke tests (opt-in): pip install -e .[e2e] && playwright install chromium webkit
 e2e:
