@@ -12,6 +12,7 @@ versions follow [semantic versioning](https://semver.org).
   XLD leaves in the tags (#984).
 - **Artist NFOs without an ID wait in the Inbox**, offering the artists their
   folder's albums credit (#996).
+- **A library scan counts the artists it finds**, as it does albums (#997).
 
 ### Fixed
 

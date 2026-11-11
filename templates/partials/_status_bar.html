@@ -326,7 +326,7 @@
         lastArtworkRevision = data.artwork_revision;
         lastScanState = scan.state;
         if (scan.state === 'scanning') {
-            const prog = `${scan.dirs_scanned} dirs · ${scan.albums_found} albums`;
+            const prog = `${scan.dirs_scanned} dirs · ${scan.albums_found} albums · ${scan.artists_found} artists`;
             const pill = `<span class="px-3 py-0.5 bg-mb-purple/15 text-mb-purple border border-mb-purple/40 rounded-full font-bold text-xs">Scanning</span>`;
             scanDisplay = pill + `<span class="ml-2 text-slate-300">${prog}</span>`;
         } else {

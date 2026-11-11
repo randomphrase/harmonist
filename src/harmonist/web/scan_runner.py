@@ -62,6 +62,10 @@ class ScanStatus:
     state: str = "idle"  # "idle" | "scanning" | "done"
     dirs_scanned: int = 0
     albums_found: int = 0
+    # The artists the Artists page will list (#997): while walking, those the
+    # Library albums found so far credit; once done, its total, which also has
+    # the artists known only from NFOs, read after the walk.
+    artists_found: int = 0
     started_at: datetime | None = None
     finished_at: datetime | None = None
     last_error: str | None = None
@@ -82,6 +86,7 @@ class ScanStatus:
             "state": self.state,
             "dirs_scanned": self.dirs_scanned,
             "albums_found": self.albums_found,
+            "artists_found": self.artists_found,
             "started_at": _iso(self.started_at),
             "finished_at": _iso(self.finished_at),
             "last_error": self.last_error,
@@ -677,6 +682,7 @@ class ScanRunner:
         # which is what the user watches move.
         scanned: list[scanner.ScannedDir] = []
         results: list[Album] = []
+        credited: set[str] = set()
         last_log = started
 
         # The walk generator does blocking scandir/stat; it is advanced ONLY on
@@ -705,6 +711,8 @@ class ScanRunner:
             if entry is not None:
                 scanned.append(entry)
                 status.albums_found = len(scanned)
+                credited |= artists.library_ids([entry.album])
+                status.artists_found = len(credited)
 
             now = time.monotonic()
             if now - last_log >= _LOG_INTERVAL_S:
@@ -747,6 +755,7 @@ class ScanRunner:
         artist_nfo.report_failures(failures)
         self._report_rebuilt(rebuilt)
         status.albums_found = len(results)
+        status.artists_found = artists.library_count(results, inventory)
         self._announce_discoveries(results)
         first = not self._completed_once
         self._completed_once = True

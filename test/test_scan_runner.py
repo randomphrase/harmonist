@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import threading
 from pathlib import Path
 
 from harmonist.web.scan_runner import ScanRunner
@@ -161,6 +162,51 @@ def test_scan_runner_scans_and_reports(tmp_path):
     assert status["state"] == "done"
     assert status["albums_found"] == 2
     assert status["dirs_scanned"] >= 2
+
+
+def test_a_scan_counts_artists_as_it_goes_and_ends_on_the_artists_total(tmp_path, monkeypatch):
+    """Progress counts artists as it does albums (#997): those the Library
+    albums read so far credit, then the Artists page's total, which has the
+    artists known only from an NFO too."""
+    from harmonist import scanner
+    from test.test_artist_web import ALICE, BOB, RELEASE, SOLO, make_album
+    from test.test_nfo_inventory import write_nfo
+
+    music = tmp_path / "music"
+    make_album(music, "First", RELEASE, ["Alice"], [ALICE])
+    make_album(music, "Second", SOLO, ["Bob"], [BOB])
+    write_nfo(music, "metadata/Carol", "77777777-7777-4777-8777-777777777777", "Carol")
+    runner = ScanRunner(music)
+    # Hold the walk as it starts reading the second album.
+    entered, release = threading.Event(), threading.Event()
+    resolve = scanner.resolve_dir
+    calls = 0
+
+    def held(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            entered.set()
+            release.wait(5)
+        return resolve(*args, **kwargs)
+
+    monkeypatch.setattr(scanner, "resolve_dir", held)
+
+    async def go() -> None:
+        runner.attach_loop()
+        loop = asyncio.get_running_loop()
+        try:
+            assert await loop.run_in_executor(None, entered.wait, 5)
+            # One album read: its artist, and not yet the NFO's.
+            status = runner.status()
+            assert (status["state"], status["artists_found"]) == ("scanning", 1)
+        finally:
+            release.set()
+        await _await_scan(runner)
+
+    asyncio.run(go())
+    status = runner.status()
+    assert (status["albums_found"], status["artists_found"]) == (2, 3)
 
 
 def test_scan_seq_advances_for_a_new_snapshot_and_not_for_an_identical_one(tmp_path):

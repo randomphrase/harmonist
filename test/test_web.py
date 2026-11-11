@@ -6683,6 +6683,7 @@ def test_tasks_shows_scanning_placeholder_while_scanning(client, cfg, monkeypatc
             "state": "scanning",
             "dirs_scanned": 42,
             "albums_found": 10,
+            "artists_found": 7,
             "started_at": None,
             "finished_at": None,
             "last_error": None,
@@ -6690,8 +6691,11 @@ def test_tasks_shows_scanning_placeholder_while_scanning(client, cfg, monkeypatc
     )
     r = client.get("/tasks")  # no albums on disk → empty snapshot
     assert "Scanning your library" in r.text
-    assert "42" in r.text
-    assert "directories" in r.text
+    # The counts as they climb, artists among them (#997).
+    from bs4 import BeautifulSoup
+
+    progress = " ".join(BeautifulSoup(r.text, "html.parser").get_text(" ").split())
+    assert "42 directories · 10 albums · 7 artists found" in progress
     assert "Inbox is empty" not in r.text
 
 
