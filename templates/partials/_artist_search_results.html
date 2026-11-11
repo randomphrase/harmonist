@@ -4,7 +4,7 @@
    and History's Undo takes it back. A write that fails says why above the rows,
    and that goes with them on the next search.
    Expects `results`, `total`, `query`, `artist_key`, `file_key` and `error`. #}
-{% from 'partials/_artist_candidate.html' import artist_candidate %}
+{% from 'partials/_artist_candidate.html' import artist_candidate, identify_button %}
 {% if error %}
 <p role="alert" class="text-xs text-red-700 px-2 py-1">{{ error }}</p>
 {% elif not results %}
@@ -15,13 +15,7 @@
     <div class="space-y-1" role="list" aria-label="Artist candidates">
         {% for a in results %}
         {% call artist_candidate(a) %}
-        <form hx-post="/artist/{{ artist_key }}/identify" hx-target="#artist-problem-{{ file_key }}" hx-swap="innerHTML"
-              hx-disabled-elt="#artist-results-{{ file_key }} button" hx-indicator="#artist-lookup-{{ file_key }}">
-            <input type="hidden" name="file" value="{{ file_key }}">
-            <input type="hidden" name="artist" value="{{ a.id }}">
-            <button type="submit"
-                    class="px-2 py-1 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Identify</button>
-        </form>
+        {{ identify_button(artist_key, file_key, a.id, '#artist-problem-' ~ file_key, '#artist-results-' ~ file_key ~ ' button') }}
         {% endcall %}
         {% endfor %}
     </div>

@@ -94,9 +94,16 @@ audio. Two NFOs naming the same artist ID are shown as a conflict on that
 artist's page, with both paths. Unreadable NFOs are recorded in the log rather
 than treated as absent.
 
-An NFO is filled in from MusicBrainz on its artist page. A Not identified NFO
-finds its artist by name, or by MBID from the artist's MusicBrainz address, as
-an album finds its release. Each artist found is listed with a link to
+An NFO is filled in from MusicBrainz on its artist page, and a Not identified
+NFO also waits in the Inbox with the same choices. **From contained albums**
+lists the artists credited by the Library albums beneath its folder, most
+credited first, and is the first choice whenever there are any. Each is named
+as MusicBrainz names it, with its disambiguation, from a release Harmonist has
+already stored for one of those albums, or by the album's tags when none is
+stored. The one credited on every album there is the suggestion, but nothing is
+identified until **Identify** is pressed. Otherwise an NFO finds its artist by
+name, or by MBID from the artist's MusicBrainz address, as an album finds its
+release. Each artist found is listed with a link to
 MusicBrainz for everything not shown. **Identify** writes the artist ID, name, sort
 name, type, gender, disambiguation and dates (`born` and `died` for a person,
 `formed` and `disbanded` for a group), and nothing else in the file. A field

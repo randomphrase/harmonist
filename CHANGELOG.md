@@ -10,6 +10,8 @@ versions follow [semantic versioning](https://semver.org).
 
 - **Find a CD rip's release by its disc ID**, computed from the table of contents
   XLD leaves in the tags (#984).
+- **Artist NFOs without an ID wait in the Inbox**, offering the artists their
+  folder's albums credit (#996).
 
 ### Fixed
 

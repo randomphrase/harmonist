@@ -357,6 +357,7 @@ button[disabled],
   display: none;
 }
 .find-mode:has(input[value="siblings"]:checked) .find-mode__panel--siblings,
+.find-mode:has(input[value="albums"]:checked) .find-mode__panel--albums,
 .find-mode:has(input[value="mbid"]:checked) .find-mode__panel--mbid,
 .find-mode:has(input[value="url"]:checked) .find-mode__panel--url,
 .find-mode:has(input[value="barcode"]:checked) .find-mode__panel--barcode,

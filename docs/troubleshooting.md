@@ -435,8 +435,10 @@ credit. Harmonist reads the ID only from `<musicbrainzartistid>`, so a file
 from Kodi or MediaElch, which write it as `<musicBrainzArtistID>`, counts as
 having none.
 
-Open the **Not identified** entry and find the artist under its NFO, by name or
-by MBID with the artist's MusicBrainz address, then press **Identify** beside it.
+Its Inbox card, and its **Not identified** entry, list any artists its folder's
+albums credit under **From contained albums**; press **Identify** beside the
+right one. Otherwise, find the artist by name, or by MBID with the artist's
+MusicBrainz address, then press **Identify** beside it.
 Harmonist writes the ID and the other fields MusicBrainz has into the file,
 beside any element Kodi wrote. The file then belongs to that artist, and the
 second entry goes.

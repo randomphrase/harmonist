@@ -9,20 +9,21 @@ its path while it has none.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 
 from .formats.types import ScanFields
 from .models import Album, AlbumArtist, AlbumState
 
 if TYPE_CHECKING:
-    from .artist_nfo import Inventory
+    from .artist_nfo import Inventory, Profile
 
 _MBID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", re.IGNORECASE)
 # `id_registry`'s path hashes, the handle of an NFO that names no artist yet.
@@ -171,6 +172,157 @@ def build_index(albums: Sequence[Album], inventory: Inventory | None = None) -> 
             sort_name = next((p.sort_name for p in profiles if p.sort_name), None)
             result.append(Artist(key, name, profiles[0].mbid, sort_name, ()))
     return sorted(result, key=lambda a: (alphabetical(a.name), a.key))
+
+
+@dataclass(frozen=True)
+class Hint:
+    """An artist the albums beneath an NFO's folder credit, and how many do.
+    Named as MusicBrainz names it, with its disambiguation, when one of those
+    albums' releases is stored; by the tag's credit otherwise."""
+
+    mbid: str
+    name: str
+    credited: int
+    disambiguation: str = ""
+
+
+@dataclass(frozen=True)
+class Hints:
+    """What an NFO's folder says about whom it describes (#996): the albums
+    beneath it, and the artists they credit, most credited first."""
+
+    albums: int
+    artists: tuple[Hint, ...]
+
+    @property
+    def suggestion(self) -> Hint | None:
+        """The one artist every album there credits. Two who share every album
+        are a pair, and the folder can't say which of them the file is about."""
+        every = [h for h in self.artists if h.credited == self.albums]
+        return every[0] if len(every) == 1 else None
+
+    @property
+    def token(self) -> str:
+        """Changes when what the folder offers does. A page keeps its finder
+        across redraws, so that a search being read survives them; it keeps
+        it only while this is the same, so an album reaching the Library shows
+        up in the list."""
+        return hashlib.sha256(repr((self.albums, self.artists)).encode()).hexdigest()[:12]
+
+
+# What MusicBrainz last said about a release, from the store and never the
+# network: `mb_cache.stored_release`.
+StoredRelease = Callable[[str], Mapping[str, Any] | None]
+
+
+def _musicbrainz_artist(release: Mapping[str, Any] | None, artist_id: str) -> Hint | None:
+    """The artist's own name and disambiguation, from a release crediting it.
+    A credit's `name` is how the release credits it, which can differ."""
+    for credit in (release or {}).get("artist-credit") or ():
+        artist = credit.get("artist") if isinstance(credit, Mapping) else None
+        if isinstance(artist, Mapping) and mbid(str(artist.get("id") or "")) == artist_id:
+            name = str(artist.get("name") or "")
+            if not name:
+                return None
+            return Hint(artist_id, name, 0, str(artist.get("disambiguation") or ""))
+    return None
+
+
+def _hints(beneath: Sequence[Album], stored: StoredRelease) -> Hints:
+    """The hints the albums beneath one NFO's folder give.
+
+    Worked out afresh from the scan each time, never stored. Credits count
+    only by their IDs, as in the index. An album crediting no one identified
+    still counts, so that a suggestion is true of every album there. Naming an
+    artist reads stored releases only, so drawing the hints asks MusicBrainz
+    nothing; with none stored, the tag's credit names it."""
+    tagged: dict[str, str] = {}
+    credited: dict[str, int] = {}
+    releases: dict[str, list[str]] = {}
+    for album in beneath:
+        keys: dict[str, str] = {}
+        for credit in album.artist_credits:
+            key = mbid(credit.mbid or "")
+            if key is not None and key not in SPECIAL_ARTIST_IDS:
+                keys.setdefault(key, credit.name)
+        release = album.sidecar.mb_release_id if album.sidecar else None
+        for key, name in keys.items():
+            tagged.setdefault(key, name)
+            credited[key] = credited.get(key, 0) + 1
+            if release:
+                releases.setdefault(key, []).append(release)
+    read: dict[str, Mapping[str, Any] | None] = {}
+
+    def named(key: str) -> Hint:
+        for release in releases.get(key, ()):
+            if release not in read:
+                read[release] = stored(release)
+            if found := _musicbrainz_artist(read[release], key):
+                return replace(found, credited=credited[key])
+        return Hint(key, tagged[key], credited[key])
+
+    hints = [named(key) for key in credited]
+    return Hints(
+        len(beneath),
+        tuple(sorted(hints, key=lambda h: (-h.credited, alphabetical(h.name), h.mbid))),
+    )
+
+
+@dataclass(frozen=True)
+class Unidentified:
+    """An NFO without an artist ID, as its Inbox card shows it (#996)."""
+
+    profile: Profile
+    hints: Hints
+
+    @property
+    def key(self) -> str:
+        return self.profile.key
+
+    @property
+    def name(self) -> str:
+        """The file's own name for its artist, or its folder's, as the index
+        names an artist known only from an NFO."""
+        return self.profile.name or self.profile.path.parent.name
+
+
+def _beneath(albums: Sequence[Album], root: Path) -> dict[Path, list[Album]]:
+    """Each folder in the library holding an album at any depth, with those
+    albums, so that a file's hints are one lookup however many files there are:
+    a Kodi library can have an NFO without our ID for every artist (#971).
+    The top of the library is left out. It holds every album, so it says
+    nothing about one artist."""
+    folders: dict[Path, list[Album]] = {}
+    for album in sorted(albums, key=lambda a: a.id):
+        if not album.path.is_relative_to(root):
+            continue
+        for folder in (album.path, *album.path.parents):
+            if folder == root:
+                break
+            folders.setdefault(folder, []).append(album)
+    return folders
+
+
+def folder_hints(
+    profiles: Sequence[Profile], albums: Sequence[Album], root: Path, stored: StoredRelease
+) -> dict[Path, Hints]:
+    """What the albums beneath each NFO's folder suggest, by the NFO's path:
+    the finder's **From contained albums**, wherever it is drawn."""
+    beneath = _beneath(albums, root)
+    return {p.path: _hints(beneath.get(p.path.parent, ()), stored) for p in profiles}
+
+
+def unidentified(
+    inventory: Inventory, albums: Sequence[Album], root: Path, stored: StoredRelease
+) -> list[Unidentified]:
+    """The readable NFOs naming no artist yet, each with what the albums
+    beneath its folder suggest."""
+    profiles = [p for p in inventory.profiles if p.mbid is None]
+    hints = folder_hints(profiles, albums, root, stored)
+    return sorted(
+        (Unidentified(p, hints[p.path]) for p in profiles),
+        key=lambda u: (alphabetical(u.name), str(u.profile.path)),
+    )
 
 
 def badges(artist: Artist) -> tuple[str, ...]:

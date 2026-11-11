@@ -39,7 +39,7 @@
             </div>
         </div>
         {% if nfo.profile %}
-        {% with file_key = nfo_files[0][0], profile = nfo.profile %}{% include 'partials/_artist_identify.html' %}{% endwith %}
+        {% with file_key = nfo_files[0][0], profile = nfo.profile, hints = nfo_hints[nfo.profile.path] %}{% include 'partials/_artist_identify.html' %}{% endwith %}
         {% endif %}
         {% for error in nfo.errors %}
         <p role="alert" class="text-sm text-amber-800 break-words">{{ error }}</p>
@@ -51,7 +51,7 @@
             {% for file_key, profile in nfo_files %}
             <li class="space-y-1">
                 <span class="block text-xs text-muted break-all">{{ display_path(profile.path) }}</span>
-                {% include 'partials/_artist_identify.html' %}
+                {% with hints = nfo_hints[profile.path] %}{% include 'partials/_artist_identify.html' %}{% endwith %}
             </li>
             {% endfor %}
         </ul>

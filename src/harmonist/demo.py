@@ -135,6 +135,32 @@ _AREAS: dict[str, str] = {"US": "United States", "GB": "United Kingdom", "JP": "
 #: explainable: it is the first of these, not the only one.
 _EVENT_DATES: tuple[str, ...] = ("2024-01-01", "2024-01-15", "2024-02-01")
 
+#: What the demo's MusicBrainz says about some artists beyond their names, so
+#: identifying an artist NFO fills in each kind of field (#981).
+ARTIST_DETAILS: dict[str, dict[str, Any]] = {
+    "Wyld Stallion": {
+        "type": "Group",
+        "disambiguation": "San Dimas rock duo",
+        "life-span": {"begin": "1988"},
+    },
+    "Barry Jive and the Uptown Five": {
+        "type": "Group",
+        "life-span": {"begin": "1997", "end": "2000", "ended": "true"},
+    },
+    "Mouse Rat": {"type": "Group", "life-span": {"begin": "2009"}},
+    "The Unplayed Satellites": {"type": "Group"},
+}
+
+
+def _credited_artist(artist_id: str, name: str) -> dict[str, str]:
+    """An artist as a release's credit carries it. MusicBrainz includes the
+    disambiguation, which the Inbox names an artist with without asking
+    MusicBrainz again (#996)."""
+    found = {"id": artist_id, "name": name}
+    if disambiguation := ARTIST_DETAILS.get(name, {}).get("disambiguation"):
+        found["disambiguation"] = disambiguation
+    return found
+
 
 def _release(
     mbid: str,
@@ -204,7 +230,7 @@ def _release(
         "date": _EVENT_DATES[0],
         "barcode": None,
         "artist-credit": [
-            {"artist": {"id": artist_ids[artist], "name": artist}, "name": shown},
+            {"artist": _credited_artist(artist_ids[artist], artist), "name": shown},
         ],
         "release-group": {
             "id": rg or f"demo-rg-{mbid}",
@@ -234,7 +260,7 @@ def _release(
                         "title": title,
                         "artist-credit": [
                             {
-                                "artist": {"id": artist_ids[credit], "name": credit},
+                                "artist": _credited_artist(artist_ids[credit], credit),
                                 "name": shown if credit == artist else credit,
                             },
                         ],
@@ -1104,23 +1130,6 @@ def fetch_release(mbid: str) -> Release:
 
 def fetch_release_urls(mbid: str) -> list[str]:
     return [url for url, m in URL_RELS.items() if m == mbid]
-
-
-#: What the demo's MusicBrainz says about some artists beyond their names, so
-#: identifying an artist NFO fills in each kind of field (#981).
-ARTIST_DETAILS: dict[str, dict[str, Any]] = {
-    "Wyld Stallion": {
-        "type": "Group",
-        "disambiguation": "San Dimas rock duo",
-        "life-span": {"begin": "1988"},
-    },
-    "Barry Jive and the Uptown Five": {
-        "type": "Group",
-        "life-span": {"begin": "1997", "end": "2000", "ended": "true"},
-    },
-    "Mouse Rat": {"type": "Group", "life-span": {"begin": "2009"}},
-    "The Unplayed Satellites": {"type": "Group"},
-}
 
 
 def fetch_artist(mbid: str) -> dict[str, Any]:

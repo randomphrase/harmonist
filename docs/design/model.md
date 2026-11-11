@@ -38,6 +38,22 @@ page; its old handle leads there through the write's record, since an artist's
 MBID can't be an alias for one file (see
 [history](history.md#what-an-artist-nfo-write-records)).
 
+The folder still has something to say, so the Inbox, where such a file waits as
+an unmatched album does, offers the artists its albums credit (#996). They stay
+offers. An artist credited on every album there is marked as the suggestion,
+but identifying is still the user's click: a folder is evidence about whom a
+file describes, and a file in an information folder has none at all. Only
+Library albums count, since an album still in the Inbox may carry credits its
+match will change; that is also the set an artist page lists. Two artists on
+every album are a pair the folder can't split, so neither is the suggestion,
+and the top of the library holds every album, so it suggests no one. The
+offers are worked out from the scan whenever the Inbox is drawn and never
+stored, so they follow albums into the Library with nothing to keep in step.
+Each is named as MusicBrainz names it, with its disambiguation, so that two
+artists of one name can be told apart (#982). That comes from a release already
+stored for one of the albums, whatever its age, because drawing the Inbox asks
+MusicBrainz nothing; without one, the tags' credit names the artist.
+
 Two NFOs with the same MBID are conflicting evidence. Choosing one silently
 would hide that disagreement, so the artist's page shows both. The conflict
 belongs to that one artist, not to the whole list. Likewise, a file whose

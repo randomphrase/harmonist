@@ -3267,6 +3267,17 @@ def _artist_index(request: Request, inventory: artist_nfo.Inventory) -> dict[str
     return {a.key: a for a in artists.build_index(eligible, inventory)}
 
 
+def _artist_cards(request: Request, albums: list[Album]) -> list[artists.Unidentified]:
+    """The Inbox's artist NFOs without an ID (#996), each hinted at by the
+    Library albums beneath it: the albums an artist page lists."""
+    return artists.unidentified(
+        _nfo_inventory(request),
+        [a for a in albums if a.state in _TERMINAL_STATES],
+        request.app.state.cfg.paths.music_dir,
+        mb_cache.stored_release,
+    )
+
+
 def _moved_artist(key: str, listed: Mapping[str, artists.Artist]) -> str | None:
     """Where an artist page whose key nothing is listed under went: the file
     an NFO write moved off it, to the first key along the way still listed
@@ -4920,6 +4931,13 @@ def _register_routes(app: FastAPI) -> None:
                     (id_registry.get_or_mint(profile.path), profile)
                     for profile in inventory.by_key.get(artist.key, ())
                 ],
+                # And what its folder's albums offer, as on its Inbox card (#996).
+                nfo_hints=artists.folder_hints(
+                    inventory.by_key.get(artist.key, ()),
+                    [a for a in _albums(request) if a.state in _TERMINAL_STATES],
+                    request.app.state.cfg.paths.music_dir,
+                    mb_cache.stored_release,
+                ),
                 history=history,
                 history_writes=history_writes,
                 history_unavailable=history_unavailable,
@@ -5154,6 +5172,7 @@ def _register_routes(app: FastAPI) -> None:
             albums=_inbox_albums(albums, joined=_auto_filled(request, albums)),
             updates=_review_updates(request, albums),
             artwork_cards=_artwork_cards(request, albums),
+            artist_cards=_artist_cards(request, albums),
             total_albums=len(albums),
             pending=pending,
             redownloading=redownloads.all_pending(),
@@ -5586,8 +5605,12 @@ def _register_routes(app: FastAPI) -> None:
         # The Inbox also holds the updates routed to it (#273). Derived on each
         # poll from the snapshot's flags, which move without a state transition
         # for live_counts to see.
-        counts["artists"] = artists.library_count(albums, _nfo_inventory(request))
+        inventory = _nfo_inventory(request)
+        counts["artists"] = artists.library_count(albums, inventory)
         counts["inbox"] += len(_review_updates(request, albums))
+        # And the artist NFOs waiting to be identified (#996), counted without
+        # working out their hints, which only the Inbox itself shows.
+        counts["inbox"] += sum(1 for p in inventory.profiles if p.mbid is None)
         # And the artwork updates routed to it (#852), each its own card: an
         # album with both a tag and an artwork update has two things to look at.
         counts["inbox"] += len(_review_artwork(request, albums))
@@ -9470,12 +9493,18 @@ def _artist_written(
 ) -> HTMLResponse:
     """The answer to an NFO write (#981): the runner reads the file again, so
     the page the browser is sent to lists it under the key it has now, which an
-    identification or its Undo has just changed."""
+    identification or its Undo has just changed.
+
+    The Inbox, at `/`, stays where it is (#996): the card leaves as a confirmed
+    album's does, so the next can be done in turn."""
     request.app.state.scan_runner.refresh_nfo(path)
     request.state.skip_rescan = True
     response = _flash_response(verb, details, artist=(written.key, written.label))
-    query = urlsplit(request.headers.get("HX-Current-URL", "")).query
-    response.headers["HX-Redirect"] = f"/artist/{written.key}" + (f"?{query}" if query else "")
+    current = urlsplit(request.headers.get("HX-Current-URL", ""))
+    if current.path != "/":
+        response.headers["HX-Redirect"] = f"/artist/{written.key}" + (
+            f"?{current.query}" if current.query else ""
+        )
     return response
 
 

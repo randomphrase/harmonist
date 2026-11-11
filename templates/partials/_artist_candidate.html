@@ -2,11 +2,15 @@
 {# One MusicBrainz artist, as a release row draws a release
    (`_release_candidate.html`): the name and disambiguation linked to
    MusicBrainz, where everything not shown here is, then what tells two
-   artists of one name apart (#981). The caller supplies the row's action. #}
-{% macro artist_candidate(a) %}
-<div class="release-candidate flex flex-wrap items-center justify-between gap-2 p-2 rounded border border-line hover:border-mb-purple/40 transition bg-surface"
-     role="listitem">
-    <div class="min-w-0 flex-1">
+   artists of one name apart (#981). The caller supplies the row's action, and
+   any evidence for it beside that. A suggested row is tinted and named as the
+   suggestion, as a release row is (#996). #}
+{% macro artist_candidate(a, suggested=false) %}
+<div class="release-candidate flex flex-wrap items-center justify-between gap-2 p-2 rounded border border-line hover:border-mb-purple/40 transition {% if suggested %}bg-amber-50/40{% else %}bg-surface{% endif %}"
+     role="listitem"{% if suggested %} aria-label="Suggested artist"{% endif %}>
+    {# A width it keeps, so that on a phone the action and its evidence wrap
+       under the name rather than squeezing it a letter to a line. #}
+    <div class="min-w-40 flex-1">
         <div class="text-sm text-ink break-words">
             <a href="https://musicbrainz.org/artist/{{ a.id }}" target="_blank" rel="noopener"
                class="font-bold text-mb-purple hover:underline">{{ release_name(a.name, a.disambiguation) }} <span class="text-xs" aria-hidden="true">↗</span></a>
@@ -17,3 +21,18 @@
     <div class="flex items-center gap-2 flex-shrink-0">{{ caller() }}</div>
 </div>
 {% endmacro %}
+
+{#- A row's Identify (#981): fills in one NFO, `file_key`, from the artist
+    `mbid` as MusicBrainz has it now, and records the write. The row is all the
+    review there is, and History's Undo takes it back. A failure is said in
+    `problem`; `busy` is what to disable meanwhile. The suggested row's is the
+    primary action, as a release row's Review is. #}
+{% macro identify_button(artist_key, file_key, mbid, problem, busy, suggested=false) -%}
+<form hx-post="/artist/{{ artist_key }}/identify" hx-target="{{ problem }}" hx-swap="innerHTML"
+      hx-disabled-elt="{{ busy }}" hx-indicator="#artist-lookup-{{ file_key }}">
+    <input type="hidden" name="file" value="{{ file_key }}">
+    <input type="hidden" name="artist" value="{{ mbid }}">
+    <button type="submit"
+            class="px-2 py-1 {% if suggested %}bg-accent hover:bg-accent-dark text-white border border-accent{% else %}bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30{% endif %} rounded text-xs font-bold uppercase tracking-widest transition whitespace-nowrap">Identify</button>
+</form>
+{%- endmacro %}

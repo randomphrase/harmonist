@@ -1,22 +1,41 @@
 {# Finding the MusicBrainz artist one NFO describes (#981), laid out as an
    album's "Find release" panel (`_release_search.html`): a radio picks the way
-   to look, by name or by MBID, and only that way's controls show. Either way
-   lists the artists found under the panel, and only a row's Identify writes.
+   to look, and only that way's controls show. Every way lists artists as rows,
+   and only a row's Identify writes.
+
+   **From contained albums** (#996) comes first, as the album side's "In this
+   release group" does: the artists the Library albums beneath the NFO's
+   folder credit, most credited first, with nothing to ask for. It's the way
+   chosen when the folder has any, and disabled when it has none, as "By
+   barcode" is for an album without a barcode. An identified file keeps By
+   MBID, its own ID filled in.
 
    `hx-preserve`, with an id per file: the page redraws itself when a scan
-   publishes, and that must not take away results the user is reading.
+   publishes, and that must not take away results the user is reading. The
+   preserved id also carries what the folder offers, so a redraw that changes
+   that replaces the finder rather than keeping a stale list; the wrapper's id
+   stays the file's.
 
-   Expects `artist`, `file_key` and `profile`. #}
+   Expects `artist`, `file_key`, `profile` and `hints` (an `artists.Hints`). #}
+{% from 'partials/_artist_candidate.html' import artist_candidate, identify_button %}
 {% set by_mbid = profile.mbid is not none %}
-<div id="artist-find-{{ file_key }}" hx-preserve class="find-mode"
+{% set offered = hints.artists if hints else () %}
+{% set from_albums = offered and not by_mbid %}
+<div id="artist-find-{{ file_key }}">
+<div id="artist-find-{{ file_key }}-{{ hints.token if hints else 'none' }}" hx-preserve class="find-mode"
      hx-on:change="if (event.target.type === 'radio') document.getElementById('artist-results-{{ file_key }}').replaceChildren()">
     {# A form of its own because a radio group is per form: the page's redraw
        has a second copy of this panel in the document for a moment, and the
        same group name there would clear the choice made here. #}
     <form onsubmit="return false" class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-xs">
         <span class="text-muted font-bold uppercase tracking-widest text-2xs">Find artist:</span>
+        <label class="inline-flex items-center gap-1.5 {% if offered %}cursor-pointer{% else %}text-muted{% endif %}">
+            <input type="radio" name="find-{{ file_key }}" value="albums" {% if from_albums %}checked{% endif %}
+                   {% if not offered %}disabled{% endif %} class="accent-mb-purple">
+            <span>From contained albums</span>
+        </label>
         <label class="inline-flex items-center gap-1.5 cursor-pointer">
-            <input type="radio" name="find-{{ file_key }}" value="name" {% if not by_mbid %}checked{% endif %} class="accent-mb-purple">
+            <input type="radio" name="find-{{ file_key }}" value="name" {% if not by_mbid and not from_albums %}checked{% endif %} class="accent-mb-purple">
             <span>By name</span>
         </label>
         <label class="inline-flex items-center gap-1.5 cursor-pointer">
@@ -24,6 +43,24 @@
             <span>By MBID</span>
         </label>
     </form>
+    {% if offered %}
+    <div class="find-mode__panel find-mode__panel--albums">
+        <div id="artist-contained-problem-{{ file_key }}" class="empty:hidden"></div>
+        {# The one artist on every album there is the suggestion, as a release
+           search marks the release its evidence points to. #}
+        <div class="space-y-1" role="list" aria-label="Artists on contained albums">
+            {% for hint in offered %}
+            {% set suggested = hint == hints.suggestion %}
+            {% call artist_candidate({'id': hint.mbid, 'name': hint.name, 'disambiguation': hint.disambiguation}, suggested=suggested) %}
+            <div class="text-xs {% if suggested %}text-amber-700 font-bold{% else %}text-muted{% endif %}">
+                On {{ hint.credited }} of {{ hints.albums }} album{{ 's' if hints.albums != 1 }}
+            </div>
+            {{ identify_button(artist.key, file_key, hint.mbid, '#artist-contained-problem-' ~ file_key, '#artist-find-' ~ file_key ~ ' button', suggested=suggested) }}
+            {% endcall %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
     <div class="find-mode__panel find-mode__panel--name">
         <form hx-get="/artist/{{ artist.key }}/search" hx-target="#artist-results-{{ file_key }}" hx-swap="innerHTML"
               hx-disabled-elt="find button" hx-indicator="#artist-lookup-{{ file_key }}" class="flex gap-2">
@@ -58,4 +95,5 @@
     {# Not `find-mode__results`, which hides under By MBID: an album's paste goes
        straight to its review, but this one lists its artist here. #}
     <div id="artist-results-{{ file_key }}" class="mt-2"></div>
+</div>
 </div>
