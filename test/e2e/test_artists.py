@@ -423,7 +423,11 @@ def test_artwork_filter_and_open_menu_follow_local_picture_changes(
     browser_factory, artists_server, artists_root, engine
 ):
     root = artists_root / "harmonist-demo"
-    nfo = write_nfo(root, f"metadata/artwork-live/{engine}", "22222222-2222-4222-8222-222222222222")
+    # Named as the tags name the artist: an NFO's name is the one the list
+    # searches (#1001).
+    nfo = write_nfo(
+        root, f"metadata/artwork-live/{engine}", "22222222-2222-4222-8222-222222222222", "Zed"
+    )
     page = browser_factory(engine).new_page(viewport={"width": 390, "height": 900})
     page.goto(artists_server + "/artists?artwork=with&artist_q=zed")
     rows = page.get_by_role("list", name="Artists").locator("li > a")
