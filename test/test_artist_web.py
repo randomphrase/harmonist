@@ -253,7 +253,9 @@ def test_nfo_paths_belong_to_the_artist_with_the_embedded_id(artist_client):
     )
     alice = client.get(f"/artist/{ALICE}").context["artist"]
     bob = client.get(f"/artist/{BOB}").context["artist"]
-    assert (alice.name, alice.mbid, alice.nfo_paths) == ("Alice", ALICE, (path,))
+    # The file belongs to Alice's ID whatever it calls her, and what it calls
+    # her is her canonical name (#1001).
+    assert (alice.name, alice.mbid, alice.nfo_paths) == ("Bob", ALICE, (path,))
     assert bob.nfo_paths == ()
     path.write_text("<artist><name>Alice</name></artist>")
     assert client.get(f"/artist/{ALICE}").context["artist"].nfo_paths == ()

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from 'macros.html' import release_name %}
 {% block content %}
 {# `hx-disinherit`: these attributes are this container's own refresh. A
    request from inside it, an NFO's search or Identify (#981), would otherwise
@@ -15,14 +16,17 @@
         <img src="{{ artist_image_url }}" alt="{{ artist.name }}" class="w-40 h-40 object-cover rounded-md border border-line bg-surface">
         {% endif %}
         <div class="min-w-0 space-y-2">
-            <h1 class="text-2xl font-bold text-ink break-words">{{ artist.name }}</h1>
+            <h1 class="text-2xl font-bold text-ink break-words">{{ release_name(artist.name, artist.disambiguation) }}</h1>
             {% if artist_badges %}
             <p class="flex flex-wrap gap-1">{% for label in artist_badges %}<span class="album-warning__badge">{{ label }}</span>{% endfor %}</p>
             {% endif %}
             {% if artist.sort_name %}<p class="text-sm text-muted">{{ artist.sort_name }}</p>{% endif %}
             {% if artist.mbid %}
+            {# Named as MusicBrainz names the artist, from a stored release of
+               one of their albums, so a heading that has drifted from it
+               shows (#1001). #}
             <a href="https://musicbrainz.org/artist/{{ artist.mbid }}" target="_blank" rel="noopener noreferrer"
-               class="inline-block text-sm font-bold text-mb-purple hover:underline">MusicBrainz ↗</a>
+               class="inline-block text-sm font-bold text-mb-purple hover:underline">{% if artist_musicbrainz %}{{ release_name(artist_musicbrainz.name, artist_musicbrainz.disambiguation) }}{% else %}MusicBrainz{% endif %} ↗</a>
             {% endif %}
         </div>
     </header>
@@ -58,9 +62,6 @@
         {% endif %}
         {% if nfo.profile %}
         <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            {% if nfo.profile.name and nfo.profile.name != artist.name %}
-            <div><dt class="text-xs text-muted">NFO name</dt><dd class="text-ink">{{ nfo.profile.name }}</dd></div>
-            {% endif %}
             {% if nfo.profile.sort_name %}
             <div><dt class="text-xs text-muted">Sort name</dt><dd class="text-ink">{{ nfo.profile.sort_name }}</dd></div>
             {% endif %}

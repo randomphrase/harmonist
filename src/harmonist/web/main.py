@@ -1990,7 +1990,6 @@ def _library_page_vars(
     rows = done[start : start + limit]
     return {
         "rows": rows,
-        "album_artist_ids": {artist.key for artist in artists.build_index(rows)},
         "new_album_ids": new_album_ids,
         "artwork_operations": artwork_operations,
         "page": page,
@@ -3264,7 +3263,15 @@ def _artist_for(request: Request, key: str, inventory: artist_nfo.Inventory) -> 
 
 def _artist_index(request: Request, inventory: artist_nfo.Inventory) -> dict[str, artists.Artist]:
     eligible = [a for a in _albums(request) if a.state in _TERMINAL_STATES]
-    return {a.key: a for a in artists.build_index(eligible, inventory)}
+    index = artists.build_index(eligible, inventory)
+    return {a.key: a for a in artists.disambiguate(index, mb_cache.stored_release, inventory)}
+
+
+def _album_artists(listed: Mapping[str, artists.Artist]) -> dict[str, str]:
+    """The artists an album's credit can link to, by page key, each with the
+    link's tooltip: the canonical name, with its disambiguation where shared.
+    The link itself keeps the credit's words, which are the album's (#1001)."""
+    return {key: artist.label for key, artist in listed.items()}
 
 
 def _artist_cards(request: Request, albums: list[Album]) -> list[artists.Unidentified]:
@@ -3382,6 +3389,7 @@ def _artists_view(
         page,
         q,
         inventory=_nfo_inventory(request),
+        stored=mb_cache.stored_release,
         nfo=nfo,
         artwork=artwork,
         album_filter=album_filter,
@@ -4778,6 +4786,7 @@ def _register_routes(app: FastAPI) -> None:
                 _library_filter(filter),
                 _library_search(q),
             ),
+            album_artists=_album_artists(_artist_index(request, _nfo_inventory(request))),
         )
         response = _templates(request).TemplateResponse(request, "index.html", ctx)
         _remember_library_limit(response, limit)
@@ -4922,7 +4931,11 @@ def _register_routes(app: FastAPI) -> None:
             _ctx(
                 request,
                 **grid,
+                album_artists=_album_artists(listed),
                 artist=artist,
+                # The link to MusicBrainz names the artist as MusicBrainz does,
+                # so a canonical name that has drifted from it shows (#1001).
+                artist_musicbrainz=artists.musicbrainz_name(artist, mb_cache.stored_release),
                 artist_badges=artists.badges(artist),
                 nfo=result,
                 # Each readable NFO on the page, by the handle a request names
@@ -5795,7 +5808,13 @@ def _register_routes(app: FastAPI) -> None:
             _library_search(q),
         )
         response = _templates(request).TemplateResponse(
-            request, "partials/library_page.html", _ctx(request, **vars_)
+            request,
+            "partials/library_page.html",
+            _ctx(
+                request,
+                **vars_,
+                album_artists=_album_artists(_artist_index(request, _nfo_inventory(request))),
+            ),
         )
         _remember_library_limit(response, limit)
         if anchor is not None or request.headers.get(_LIBRARY_PUSH_HEADER):
@@ -5988,12 +6007,7 @@ def _register_routes(app: FastAPI) -> None:
             from_page=max(1, from_page),
             from_filter=_library_filter(from_filter),
             from_q=_library_search(from_q),
-            album_artist_ids={
-                artist.key
-                for artist in artists.build_index(
-                    [a for a in albums if a.state in _TERMINAL_STATES]
-                )
-            },
+            album_artists=_album_artists(_artist_index(request, _nfo_inventory(request))),
             artist_back_url=(
                 artists.detail_url(
                     from_artist,

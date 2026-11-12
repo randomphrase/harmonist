@@ -69,6 +69,61 @@ List and Cards offer name-led and picture-led browsing of the same collection.
 Keeping both accommodates libraries with different picture coverage. The layout
 is a browser preference, not artist metadata, so it does not belong in an NFO.
 
+## An artist's names
+
+An artist goes by several names, and each place that names one shows the name
+that answers its question (#1001):
+
+- The **canonical name** is what Harmonist calls the artist wherever it means
+  the artist: the Artists page and the artist's own page. It is the NFO's
+  name, or without an NFO a name the tags credit.
+- The **MusicBrainz name** is the artist's own name on MusicBrainz, the one
+  Picard calls standardized. It names every link to the artist on MusicBrainz
+  and every MusicBrainz candidate.
+- A **credited name** is how one release prints one artist, MusicBrainz's
+  "credited as", and an **artist credit** is a release's or track's whole
+  credit: its credited names and the words between them. Both belong to the
+  album, and are what its tags hold.
+
+The NFO comes first because it is the library's own record of the artist, so
+the page agrees with the file. An NFO that has fallen behind MusicBrainz is
+brought into step by updating the file, as an album's tags are by their
+update, not by a page quietly preferring MusicBrainz: that would leave the
+file wrong and hide that it is. The link to MusicBrainz names the artist as
+MusicBrainz does, so a disagreement stays in view.
+
+Without an NFO, the tags name the artist. The MusicBrainz name was the
+alternative, but browsing asks MusicBrainz nothing, so it would mean reading a
+stored release for every such artist each time a page is drawn, a cost that
+grows with the library. The tags cost nothing, and under the default
+**Standardize artist names** they already hold the MusicBrainz name for all but
+an artist's former names, following MusicBrainz as each album's tags are
+updated. Where albums spell an artist differently (*GY!BE*, *Godspeed You!
+Black Emperor*), which spelling names them is arbitrary; an NFO is the way to
+choose.
+
+An album's credit links each artist to their page in the credit's own words,
+with the canonical name as the link's tooltip. Rewriting the credit in
+canonical names (*GY!BE & Friends* reading *Godspeed You! Black Emperor &
+Friends*) would make every link name the artist alike, but it means rebuilding
+the album's wording around names it never printed. The simpler choice stands
+until experience says the difference matters.
+
+**Standardize artist names** decides whether an album's tags hold credited
+names or MusicBrainz names ([tagging](tagging.md#artist-names)). It changes how
+an album's credit reads, never the canonical name: the setting is about the
+album, not about who the artist is.
+
+An ID keeps two artists of one name apart, but it doesn't tell a reader which
+is which. MusicBrainz's disambiguation does. Beside a canonical name, Harmonist
+shows it only where another artist in the library shares the name, as
+MusicBrainz does: a comment beside every name would bury the two that need one
+(#982). An artist with an NFO has the NFO's, or none. Tags carry no comment, so
+one without has MusicBrainz's, from a stored release; that is read only for a
+shared name, so the common case reads nothing. Beside a MusicBrainz name it is
+always shown, since a candidate is chosen from among artists who may share a
+name.
+
 ## An album is its release, not its folder
 
 A library assembled over decades keeps one release in several places:

@@ -86,6 +86,11 @@ carries in `<musicbrainzartistid>`, the spelling Jellyfin, Lidarr and
 Navidrome's artist-NFO plugin use. Kodi and MediaElch write
 `<musicBrainzArtistID>` instead, which Harmonist doesn't read. One whose
 artist no album credits is still listed, with no albums.
+An artist with an NFO is named by its `<name>` on the Artists page and the
+artist's own page; one without is named by the album credits. Each album keeps
+its own credit's spelling, and its link to the artist names them in full on
+hover. Where two artists share a name, each shows its disambiguation: the
+NFO's `<disambiguation>`, or without an NFO MusicBrainz's.
 An NFO without an artist ID, including an empty file, describes no artist yet:
 it is listed on its own, under its `<name>` or else its folder's name, and
 marked **Not identified**, even when its folder holds that artist's albums.

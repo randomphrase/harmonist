@@ -22,6 +22,20 @@ sentences and controls can contradict one another when assembled.
 - MusicBrainz has **releases** and **release groups**. Don't call releases
   "editions" or interchange those two entities. Use **album** for the user's
   library item where that distinction matters.
+- An artist has several names, and "artist name" alone could mean any of them.
+  `docs/design/model.md` (*An artist's names*) defines them and why; which
+  place shows which:
+  - **Canonical name** (the NFO's, else the tags'): wherever the screen
+    means the artist. The Artists page and the artist page heading; inside an
+    album's credit, a link to an artist page keeps the credit's words and
+    carries the canonical name as its tooltip.
+  - **MusicBrainz name**: a link to the artist on MusicBrainz, and every
+    MusicBrainz candidate, always with its disambiguation.
+  - **Credited name** and **artist credit**: the album's own. Its tag rows,
+    the Inbox cards and review dialog, and the text a release search starts
+    from. **Standardize artist names** changes these, never the canonical name.
+  - **Disambiguation** beside a canonical name only where another artist in
+    the library shares the name; drawn with `release_name` in `macros.html`.
 - Reuse the same label for the same action, source, or status across Inbox,
   Library, searches, and review. Check existing shared components before
   introducing a new label or presentation. A terminology review includes

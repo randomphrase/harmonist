@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -131,19 +132,28 @@ class Artist:
     sort_name: str | None
     albums: tuple[Album, ...]
 
-    # Derived from NFO contents on the detail page, never persisted. The artist's
-    # name remains the tag credit even when an NFO supplies a different name.
+    # Derived from NFO contents on the detail page, never persisted.
     nfo_paths: tuple[Path, ...] = ()
     artwork_path: Path | None = None
+    # Derived on every page that names the artist, never persisted: what tells
+    # them apart from another artist of the same name (#982).
+    disambiguation: str = ""
+
+    @property
+    def label(self) -> str:
+        """The name with its disambiguation, as plain text for a tooltip."""
+        return f"{self.name} ({self.disambiguation})" if self.disambiguation else self.name
 
 
 def build_index(albums: Sequence[Album], inventory: Inventory | None = None) -> list[Artist]:
     """Share identified collaborations without coalescing homonymous artists.
 
     With an inventory, its NFOs that no album credits are artists too, with no
-    albums. A credited artist keeps the tagged name; one known only from NFOs
-    takes the first name they give, or the folder's when none gives one. That
-    name is only shown: the key is the ID, or the path of a file without one.
+    albums. Each artist has its canonical name (#1001): a credited artist is
+    named by their NFOs where those agree on a name, and by the tags'
+    credit otherwise; one known only from NFOs takes the first name they give,
+    or the folder's when none gives one. That name is only shown: the key is
+    the ID, or the path of a file without one.
     """
     credits: dict[str, AlbumArtist] = {}
     groups: dict[str, dict[str, Album]] = {}
@@ -165,6 +175,7 @@ def build_index(albums: Sequence[Album], inventory: Inventory | None = None) -> 
         for key, c in credits.items()
     ]
     if inventory is not None:
+        result = [_named(a, inventory.by_key.get(a.key, ())) for a in result]
         for key, profiles in inventory.by_key.items():
             if key in credits or key in SPECIAL_ARTIST_IDS:
                 continue
@@ -172,6 +183,24 @@ def build_index(albums: Sequence[Album], inventory: Inventory | None = None) -> 
             sort_name = next((p.sort_name for p in profiles if p.sort_name), None)
             result.append(Artist(key, name, profiles[0].mbid, sort_name, ()))
     return sorted(result, key=lambda a: (alphabetical(a.name), a.key))
+
+
+def _nfo_says(profiles: Sequence[Profile], read: Callable[[Profile], str]) -> str:
+    """What every NFO for an artist gives for one field: "" where none gives
+    one, or where they disagree. Choosing between conflicting files is the
+    user's call, made on the artist's page."""
+    said = {read(p) for p in profiles}
+    return said.pop() if len(said) == 1 else ""
+
+
+def _named(artist: Artist, profiles: Sequence[Profile]) -> Artist:
+    """A credited artist as their NFOs name them. The sort name comes from the
+    same place as the name, so an NFO without one gives none rather than the
+    tags' sort for a name the tags don't use."""
+    name = _nfo_says(profiles, lambda p: p.name)
+    if not name:
+        return artist
+    return replace(artist, name=name, sort_name=_nfo_says(profiles, lambda p: p.sort_name) or None)
 
 
 @dataclass(frozen=True)
@@ -325,6 +354,50 @@ def unidentified(
     )
 
 
+def disambiguate(
+    index: Sequence[Artist], stored: StoredRelease | None, inventory: Inventory | None = None
+) -> list[Artist]:
+    """The index with each artist who shares a name told apart (#982).
+
+    Only where canonical names fold to one, as MusicBrainz adds its comment
+    only where a name needs one, so the common case reads nothing. Worked out
+    afresh for each page and never stored. Homonyms already sit together;
+    their comments put them in order."""
+    shared = Counter(alphabetical(a.name) for a in index)
+    told = [
+        replace(a, disambiguation=_comment(a, stored, inventory))
+        if shared[alphabetical(a.name)] > 1
+        else a
+        for a in index
+    ]
+    return sorted(told, key=lambda a: (alphabetical(a.name), alphabetical(a.disambiguation), a.key))
+
+
+def _comment(artist: Artist, stored: StoredRelease | None, inventory: Inventory | None) -> str:
+    """The comment from the same source as the canonical name (#1001). An
+    artist with NFOs has the one they agree on, or none, whatever MusicBrainz
+    says: an NFO behind MusicBrainz is for updating, not for the page to
+    override. One without has MusicBrainz's."""
+    profiles = inventory.by_key.get(artist.key, ()) if inventory is not None else ()
+    if profiles:
+        return _nfo_says(profiles, lambda p: dict(p.facts).get("Disambiguation", ""))
+    found = musicbrainz_name(artist, stored) if stored is not None else None
+    return found.disambiguation if found else ""
+
+
+def musicbrainz_name(artist: Artist, stored: StoredRelease) -> Hint | None:
+    """The artist as MusicBrainz names them, with its disambiguation, from the
+    first stored release of their albums that credits them: never from the
+    network. None for an artist with no such release."""
+    if artist.mbid is None:
+        return None
+    for album in artist.albums:
+        release = album.sidecar.mb_release_id if album.sidecar else None
+        if release and (found := _musicbrainz_artist(stored(release), artist.mbid)):
+            return found
+    return None
+
+
 def badges(artist: Artist) -> tuple[str, ...]:
     """What the card and the page say about an artist's NFOs. A path-keyed
     artist has exactly one file, so the two never meet."""
@@ -411,6 +484,7 @@ def page_vars(
     q: str | None = None,
     *,
     inventory: Inventory | None = None,
+    stored: StoredRelease | None = None,
     nfo: str | None = None,
     artwork: str | None = None,
     album_filter: str | None = None,
@@ -418,7 +492,9 @@ def page_vars(
     now: datetime | None = None,
     view: str = "list",
 ) -> dict[str, object]:
-    all_artists = build_index(albums, inventory)
+    # Across the whole library, not the page: a filter showing one Air still
+    # shows an artist another Air shares a name with.
+    all_artists = disambiguate(build_index(albums, inventory), stored, inventory)
     view = view if view in VIEWS else "list"
     if inventory is not None:
         all_artists = [

@@ -13,6 +13,13 @@ versions follow [semantic versioning](https://semver.org).
 - **Artist NFOs without an ID wait in the Inbox**, offering the artists their
   folder's albums credit (#996).
 - **A library scan counts the artists it finds**, as it does albums (#997).
+- **Artists who share a name are told apart** by their disambiguation, on the
+  Artists page and on each one's own page (#982).
+
+### Changed
+
+- **An artist with an NFO is called what the NFO calls them**, and the artist
+  page's MusicBrainz link shows MusicBrainz's name for them (#1001).
 
 ### Fixed
 
