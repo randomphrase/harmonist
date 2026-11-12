@@ -250,7 +250,13 @@ def test_album_heading_links_each_artist_with_muted_solid_underlines(
     heading = page.locator("#album-identity h1")
     pw.expect(heading).to_have_text("Unstructured collaboration — Álice feat. Zed")
     muted = heading.locator(".text-muted").evaluate("e => getComputedStyle(e).color")
+    # Demo MusicBrainz has no such release, so when the comparison lands it puts
+    # an alert above the album and moves the heading down. A hover before that
+    # is left under the pointer at the old place, and the link loses it: CI
+    # caught it there once. Wait for the alert each time the page is drawn.
+    gone = page.get_by_text("This release is gone from MusicBrainz", exact=True)
     for name, identity in (("Álice", ALICE), ("Zed", BOB)):
+        pw.expect(gone).to_be_visible()
         link = heading.get_by_role("link", name=name, exact=True)
         pw.expect(link).to_have_attribute("href", f"/artist/{identity}")
         page.mouse.move(0, 0)
