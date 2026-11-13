@@ -39,6 +39,9 @@ class PendingRedownload:
     """An album archived and awaiting its replacement download."""
 
     item_id: int
+    #: The album as it was archived: the address of the page Re-download was
+    #: pressed on, which stays open through the round trip (#1003).
+    album_id: str
     artist: str
     title: str
     #: Bandcamp URL of the purchase, so the card can link out to it.
@@ -90,6 +93,20 @@ class CarriedMatch:
 # which is the same bound as everything else in this module.
 _carried: dict[int, CarriedMatch] = {}
 
+# Album id → what was archived from it, for the album's own page (#1003).
+#
+# **A third lifetime**, for the same reason `_carried` is a second one. The page
+# Re-download was pressed on stays open and has to become the replacement's
+# page, so it waits for an *album* holding the purchase to be in the library,
+# which is later than the files landing (when the card clears) and not the same
+# event as the tagging (the replacement may come back untaggable, under an id
+# of its own). Keyed by the album's id because that is all the page's address
+# has to ask with.
+#
+# Ended by `settle`, when the page has been sent to the replacement. One nobody
+# comes back to stays until restart, as an unconsumed `_carried` entry does.
+_awaited: dict[str, PendingRedownload] = {}
+
 
 def add(entry: PendingRedownload, *, match: CarriedMatch | None = None) -> None:
     """Record an archived album as awaiting re-download.
@@ -101,8 +118,22 @@ def add(entry: PendingRedownload, *, match: CarriedMatch | None = None) -> None:
     """
     with _lock:
         _pending[entry.item_id] = entry
+        _awaited[entry.album_id] = entry
         if match:
             _carried[entry.item_id] = match
+
+
+def for_album(album_id: str) -> PendingRedownload | None:
+    """The re-download the album at this id was archived for, while its page
+    still has to be sent to the replacement (see `_awaited`)."""
+    with _lock:
+        return _awaited.get(album_id)
+
+
+def settle(album_id: str) -> None:
+    """The album's page has gone to the replacement: nothing waits at this id."""
+    with _lock:
+        _awaited.pop(album_id, None)
 
 
 def take_match(item_id: int) -> CarriedMatch | None:
@@ -121,6 +152,8 @@ def remove(item_id: int) -> None:
     with _lock:
         _pending.pop(item_id, None)
         _carried.pop(item_id, None)
+        for album_id in [a for a, entry in _awaited.items() if entry.item_id == item_id]:
+            del _awaited[album_id]
 
 
 def prune(present_item_ids: set[int]) -> None:
@@ -155,3 +188,4 @@ def reset() -> None:
     with _lock:
         _pending.clear()
         _carried.clear()
+        _awaited.clear()

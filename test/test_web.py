@@ -10082,6 +10082,67 @@ def test_history_splits_when_the_replacement_tags_a_different_release(client, cf
     assert any(m.startswith("redownload.archive") for m in old_side)
 
 
+def _redownloading(html: str) -> str | None:
+    """What a page says about an awaited re-download, or None where it says
+    nothing: the text of the card the Inbox draws for one."""
+    from bs4 import BeautifulSoup
+
+    card = BeautifulSoup(html, "html.parser").select_one("#redownload-section")
+    return " ".join(card.get_text().split()) if card else None
+
+
+def test_the_album_page_stays_through_its_redownload(client, cfg, quiet_sync):
+    """#1003: Re-download is pressed on the album's page, and that is where the
+    reader waits for it. With the album off disk the page says so, names the zip
+    holding the old files, and still carries the album's history; once the
+    replacement is in the library it is the album's page again."""
+    d = _make_tagged_album(cfg, "Away", mbid="rel-rd-30", tagged_at=datetime.now(UTC), item_id=3030)
+    album_id = _id_for(cfg, d)
+    client.post(f"/library/{album_id}/redownload")
+
+    r = client.get(f"/album/{album_id}")
+
+    assert r.status_code == 200
+    said = _redownloading(r.text)
+    assert said is not None and "Away" in said and "(archived " in said
+    assert "Archived to" in r.text  # the history, where the archive was recorded
+    assert client.get(f"/album/{album_id}/revision").json() == {
+        "revision": None,
+        "album_id": album_id,
+        "redownloading": True,
+    }
+
+    _replay_the_download(cfg, "Away", item_id=3030, mbid="rel-rd-30")
+
+    assert "redownloading" not in client.get(f"/album/{album_id}/revision").json()
+    r = client.get(f"/album/{album_id}")
+    assert r.status_code == 200
+    assert _redownloading(r.text) is None
+    assert f"/library/{album_id}/redownload" in r.text  # the panel, and its actions
+
+
+def test_the_album_page_follows_a_replacement_that_came_back_as_another_album(
+    client, cfg, quiet_sync
+):
+    """A replacement that couldn't be tagged as the same release is in the Inbox
+    under an id of its own, so the address the reader is waiting at would never
+    answer. The page goes to wherever the purchase is now, keeping the way back
+    to the Library it was opened from."""
+    d = _make_tagged_album(
+        cfg, "Moved", mbid="rel-rd-32", tagged_at=datetime.now(UTC), item_id=3232
+    )
+    album_id = _id_for(cfg, d)
+    client.post(f"/library/{album_id}/redownload")
+    now_id = _id_for(cfg, _replay_the_download(cfg, "Moved", item_id=3232, mbid=None))
+    assert now_id != album_id
+
+    assert client.get(f"/album/{album_id}/revision").json()["album_id"] == now_id
+    r = client.get(f"/album/{album_id}?from_page=3", follow_redirects=False)
+
+    assert r.status_code == 303
+    assert r.headers["location"] == f"/album/{now_id}?from_page=3"
+
+
 def test_a_replacement_musicbrainz_cannot_match_lands_in_the_inbox_not_the_library(
     client, cfg, quiet_sync
 ):
@@ -10294,6 +10355,7 @@ def test_the_carried_release_is_let_go_of_once_it_has_been_used(
     redownloads.add(
         redownloads.PendingRedownload(
             item_id=8007,
+            album_id="rel-letgo",
             artist="Artist",
             title="Let Go",
             url="",

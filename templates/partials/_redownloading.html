@@ -14,19 +14,27 @@
    the filename.
 
    Cleared by derivation in /tasks — `redownloads.prune` drops anything the
-   library can see again, so nothing has to remember to remove a card. #}
+   library can see again, so nothing has to remember to remove a card.
+
+   Also what the album's own page is while the album is off disk (#1003), with
+   `on_album_page` set: one album, already where it will reappear, so the count
+   and the sentence about the Library have nothing to say there. #}
 <section id="redownload-section" class="space-y-3 mb-6">
     {% if redownloading %}
     <div class="rounded-md border-l-4 border-mb-purple bg-mb-purple/10 px-3 py-2">
         <h3 class="text-sm font-bold text-mb-purple">
             Re-downloading
+            {% if not on_album_page %}
             <span class="text-muted font-normal ml-1">· {{ redownloading|length }}</span>
+            {% endif %}
         </h3>
         <p class="text-xs text-muted mt-0.5">
-            Archived and being fetched from Bandcamp again. They reappear in your Library
-            when the download finishes.
+            Archived and being fetched from Bandcamp again.
+            {% if not on_album_page %}
+            They reappear in your Library when the download finishes.
+            {% endif %}
             {% if not (sync and sync.state == 'running') %}
-            <span class="font-bold text-mb-purple">Click Sync</span> if one doesn't arrive.
+            <span class="font-bold text-mb-purple">Click Sync</span> if {{ 'it' if on_album_page else 'one' }} doesn't arrive.
             {% endif %}
         </p>
     </div>

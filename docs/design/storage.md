@@ -148,8 +148,8 @@ the decisions that matter are already recorded somewhere durable:
 - **Albums being re-downloaded.** The decision to re-download persists as a
   missing folder plus a purchase removed from `ignores.txt`, which is exactly
   what makes any later sync fetch it. A restart in the seconds between the
-  archive and the sync loses only the Inbox card and the carried release; the
-  purchase then appears as a potential download.
+  archive and the sync loses only the Inbox card, the album page's wait and the
+  carried release; the purchase then appears as a potential download.
 - **The scan snapshot and its indexes** (albums by purchase, by URL, by slug) and
   **the state counts**. Each full scan rebuilds them, so drift from a missed
   update corrects itself. Between scans they're updated from the one place every

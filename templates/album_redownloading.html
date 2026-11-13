@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+
+{# The album's page while the album is off disk, archived and being fetched from
+   Bandcamp again (#1003).
+
+   Re-download used to send the reader to the Inbox: with no folder the album
+   derives no state, and `album.html` is drawn from files that are gone. But the
+   album page is where the button is and where the replacement will be, so it
+   is where the reader waits — and the address has to answer meanwhile, for a
+   refresh and for the link Activity gives the archive.
+
+   What it shows is what is known without the files: the re-download, drawn by
+   the partial the Inbox draws it with, and the album's history, which already
+   holds the archive. Everything else on `album.html` describes files. #}
+{% block content %}
+{% set on_album_page = true %}
+<div class="album-page space-y-5">
+    {% include 'partials/_album_back.html' %}
+
+    {% include 'partials/_redownloading.html' %}
+
+    {% from 'partials/_history.html' import history_section %}
+    {% call(e) history_section(history, history_unavailable, "this album's",
+            "Nothing recorded for this album yet. Entries appear here as Harmonist tags, links, or otherwise changes it.") %}
+                    <div class="album-history__head">
+                    <span class="min-w-0">{{ e.message }}</span>
+                    </div>
+    {% endcall %}
+</div>
+
+{# Become the album's page again once the replacement is in the library. The
+   answer asked for is only whether the wait is over: the reload is what goes
+   to the replacement, because the route knows where that is and whether it is
+   still this address.
+
+   Asked with every status poll, not on `tasks-changed` as an album page asks
+   whether its album changed (#975). That event is the status bar noticing a
+   scan it hadn't seen, and its first poll only records which scan it found: a
+   scan publishing the replacement between this page being drawn and that poll
+   would never be reported, leaving the page waiting on an album already back.
+   The question is a lookup while the album is away, and this page is open for
+   one download. #}
+<script>
+    document.body.addEventListener('htmx:afterSwap', async function (event) {
+        if (event.detail.target.id !== 'app-status') return;
+        let now;
+        try {
+            const response = await fetch('/album/' + encodeURIComponent({{ awaited.album_id | tojson }}) + '/revision');
+            if (!response.ok) return;
+            now = await response.json();
+        } catch (error) {
+            return;  // Moot: the next poll asks again.
+        }
+        if (!now.redownloading) window.location.reload();
+    });
+</script>
+{% endblock %}

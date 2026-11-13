@@ -267,6 +267,15 @@ def demo_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
 
 
 @pytest.fixture(scope="module")
+def redownload_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """A demo server whose sync a test can hold, to see an album's page while
+    its re-download is awaited (#1003)."""
+    yield from _run_demo_server(
+        tmp_path_factory.mktemp("e2e-redownload"), app_module="test.e2e.redownload_app:app"
+    )
+
+
+@pytest.fixture(scope="module")
 def pregap_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     yield from _run_demo_server(
         tmp_path_factory.mktemp("e2e-pregap"), app_module="test.e2e.pregap_app:app"

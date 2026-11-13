@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from harmonist import archive
+from harmonist import archive, progress
 
 WHEN = datetime(2026, 8, 24, tzinfo=UTC)
 
@@ -169,6 +169,61 @@ def test_a_member_stored_at_the_wrong_size_is_caught(monkeypatch, tmp_path):
     with pytest.raises(archive.ArchiveError, match="wrong size"):
         archive.archive_and_remove([d], music_root=tmp_path, label="A — B", now=WHEN)
     assert d.exists()
+
+
+def test_a_member_whose_bytes_changed_on_the_way_in_is_caught(monkeypatch, tmp_path):
+    """The check the other two can't make: every name present, every size right,
+    and one byte different from the file it was read from."""
+    d = _album(tmp_path)
+    real_write = archive._write
+
+    def _corrupting_write(zip_path, members):
+        real_write(zip_path, members)
+        stored = bytearray(zip_path.read_bytes())
+        stored[stored.index(b"audio")] ^= 0xFF  # stored, not deflated: the bytes are in the clear
+        zip_path.write_bytes(stored)
+
+    monkeypatch.setattr(archive, "_write", _corrupting_write)
+
+    with pytest.raises(archive.ArchiveError, match="CRC check on Artist/Album/01 Track.m4a"):
+        archive.archive_and_remove([d], music_root=tmp_path, label="A — B", now=WHEN)
+    assert d.exists()
+    assert not list(tmp_path.glob("*.zip"))
+
+
+def test_the_status_bar_follows_the_archive_file_by_file(monkeypatch, tmp_path):
+    """Writing the zip and reading it back to check it are the two slow halves of
+    a re-download, and both happen inside one request (#1003). Each is a file
+    write the bar shows as it shows a tagging: foreground, so a scan can't hide
+    it, and naming the file it is on."""
+    d = _album(tmp_path)
+    names = sorted(p.name for p in d.iterdir())
+    during: dict[str, list[dict[str, object]]] = {"write": [], "check": []}
+    real_write, real_open = zipfile.ZipFile.write, zipfile.ZipFile.open
+
+    def _write(self, *args, **kwargs):
+        during["write"] += progress.status()["jobs"]
+        return real_write(self, *args, **kwargs)
+
+    def _open(self, name, mode="r", *args, **kwargs):
+        if mode == "r":  # `write` opens each member too, to write it
+            during["check"] += progress.status()["jobs"]
+        return real_open(self, name, mode, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "write", _write)
+    monkeypatch.setattr(zipfile.ZipFile, "open", _open)
+
+    archive.archive_and_remove([d], music_root=tmp_path, label="A — B", now=WHEN)
+
+    def _bar(label: str) -> list[dict[str, object]]:
+        return [
+            {"label": label, "done": i, "total": len(names), "item": name, "foreground": True}
+            for i, name in enumerate(names)
+        ]
+
+    assert during["write"] == _bar("Archiving")
+    assert during["check"] == _bar("Checking archive")
+    assert progress.status()["jobs"] == []
 
 
 def test_refuses_a_directory_outside_the_music_folder(tmp_path):

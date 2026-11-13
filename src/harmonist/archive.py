@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from . import audit
+from . import audit, progress
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +50,10 @@ _FREE_SPACE_MARGIN = 64 * 1024 * 1024
 #: Filesystem limit on a single name is 255 bytes nearly everywhere; leave room
 #: for the " (archived YYYY-MM-DD) (12).zip" tail this appends.
 _MAX_STEM = 180
+
+#: How much of a member `_verify` reads at once: a FLAC is tens of megabytes, and
+#: it is read only to be checked.
+_READ_CHUNK = 1024 * 1024
 
 #: Characters that can't go in a filename on the platforms Harmonist runs on
 #: (Linux under Docker, macOS, and Windows via a SMB share onto either).
@@ -181,25 +185,45 @@ def _check_space(music_root: Path, total: int) -> None:
 
 
 def _write(zip_path: Path, members: list[tuple[Path, str, int]]) -> None:
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as zf:
-        for source, arcname, _ in members:
+    """Copy every member into the zip, shown in the status bar file by file.
+
+    This and `_verify` each read the whole album, inside the one request that
+    Re-download is, so they are what the user waits on (#1003). Foreground, as
+    every file write is: a scan running behind it must not hide it.
+    """
+    with (
+        zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as zf,
+        progress.job("Archiving", len(members), foreground=True) as job,
+    ):
+        for source, arcname, _ in job.items(members, lambda member: member[0].name):
             zf.write(source, arcname)
 
 
 def _verify(zip_path: Path, members: list[tuple[Path, str, int]]) -> None:
     """Re-open the archive and prove it holds what went into it.
 
-    Three checks, because they fail differently: `testzip` catches corrupted
-    bytes, the manifest comparison catches a member that never got written, and
-    the size comparison catches one truncated to a valid-looking short entry.
-    Only the first is what `zipfile` would tell you on its own.
+    Three checks, because they fail differently: reading each member back
+    catches corrupted bytes, the manifest comparison catches a member that never
+    got written, and the size comparison catches one truncated to a
+    valid-looking short entry. Only the first is what `zipfile` would tell you
+    on its own.
+
+    The read is `ZipFile.testzip` done here a member at a time, so the status
+    bar can name the file being checked: reading a member to its end is what
+    makes `zipfile` compare its CRC, and a mismatch raises `BadZipFile`.
     """
     expected = {arcname: size for _, arcname, size in members}
     with zipfile.ZipFile(zip_path) as zf:
-        bad = zf.testzip()
-        if bad is not None:
-            raise ArchiveError(f"failed its CRC check on {bad}")
-        got = {info.filename: info.file_size for info in zf.infolist()}
+        stored = zf.infolist()
+        with progress.job("Checking archive", len(stored), foreground=True) as job:
+            for info in job.items(stored, lambda info: Path(info.filename).name):
+                try:
+                    with zf.open(info) as member:
+                        while member.read(_READ_CHUNK):
+                            pass
+                except zipfile.BadZipFile as e:
+                    raise ArchiveError(f"failed its CRC check on {info.filename}") from e
+        got = {info.filename: info.file_size for info in stored}
     if missing := sorted(set(expected) - set(got)):
         raise ArchiveError(f"{len(missing)} file(s) missing from the archive, e.g. {missing[0]}")
     if short := sorted(name for name, size in expected.items() if got[name] != size):

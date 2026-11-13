@@ -3905,6 +3905,62 @@ def _find_album(request: Request, album_id: str) -> Album:
     raise HTTPException(status.HTTP_404_NOT_FOUND, f"album {album_id} not found")
 
 
+def _redownloading_page(
+    request: Request, entry: redownloads.PendingRedownload, back_to: dict[str, Any]
+) -> Response:
+    """The page of an album that is off disk while it is fetched again (#1003).
+
+    There are no files to describe, so it is what is known without them: the
+    re-download, drawn as the Inbox draws it, and the album's history, which is
+    where the archive was recorded.
+    """
+    history: list[activity_store.StoredEvent] = []
+    history_unavailable = False
+    try:
+        history = activity_store.album_history(entry.album_id)
+    except activity_store.StoreUnavailableError:
+        history_unavailable = True  # already logged with a traceback in the store
+    return _templates(request).TemplateResponse(
+        request,
+        "album_redownloading.html",
+        _ctx(
+            request,
+            awaited=entry,
+            redownloading=[entry],
+            sync=request.app.state.sync_runner.status(),
+            history=history,
+            history_unavailable=history_unavailable,
+            **back_to,
+        ),
+    )
+
+
+def _awaited_redownload(
+    request: Request, album_id: str
+) -> tuple[redownloads.PendingRedownload, Album | None] | None:
+    """The re-download this album's page is waiting on, and the album that has
+    come back for it once there is one (#1003). None when the id awaits nothing.
+
+    Asked before `_find_album`, which has no answer for an album that is off
+    disk and would give a stale one from a snapshot taken before the archive.
+    `library_index` is the test of the purchase being on disk again, as it is
+    for the Inbox card: Re-download takes the purchase out of it as it deletes
+    the folders, and the sidecar the download writes puts it back. The album
+    itself then comes from the snapshot, so the page waits for the scan that
+    has seen it.
+    """
+    entry = redownloads.for_album(album_id)
+    if entry is None:
+        return None
+    if entry.item_id not in library_index.item_ids():
+        return entry, None
+    for album in _albums(request):
+        bc = album.sidecar.bandcamp if album.sidecar else None
+        if bc and bc.item_id == entry.item_id:
+            return entry, album
+    return entry, None
+
+
 def _norm_name(s: str) -> str:
     """Casefold + strip to alphanumerics for approximate artist/title matching:
     '&' → 'and', drop punctuation, collapse whitespace. Deliberately strict — we
@@ -5842,8 +5898,18 @@ def _register_routes(app: FastAPI) -> None:
         from the folders rather than the snapshot, so a page asking straight
         after its own write sees that write. `album_id` is where the album is
         now, since a re-tag can move it (#268), so a redraw lands there.
+
+        An album archived for a re-download is off disk, with nothing to take a
+        revision of (#1003): `redownloading` says its page is still waiting.
+        Only a question here. The page's own route is what sends it on to the
+        replacement, and settles the wait.
         """
-        album = _find_album(request, album_id)
+        album: Album | None = None
+        if (awaited := _awaited_redownload(request, album_id)) is not None:
+            _, album = awaited
+            if album is None:
+                return JSONResponse({"revision": None, "album_id": album_id, "redownloading": True})
+        album = album or _find_album(request, album_id)
         return JSONResponse({"revision": _album_revision(album), "album_id": album.id})
 
     @app.get("/album/{album_id}", response_class=HTMLResponse)
@@ -5889,7 +5955,44 @@ def _register_routes(app: FastAPI) -> None:
         The album's own directories are re-read before rendering (#151), so what
         this page shows is what is on disk now — not what the last background
         scan happened to see, which on a network mount could be startup.
+
+        An album archived for a re-download keeps its page while it is off disk
+        (#1003): that is where Re-download was pressed, and where the reader
+        waits. It says what the Inbox card says, over the album's history, and
+        once the replacement is in the library it is the album's page again,
+        at the replacement's address if that is no longer this one.
         """
+        # Where Back goes, which is the same wherever on this address it is drawn.
+        back_to: dict[str, Any] = {
+            "from_page": max(1, from_page),
+            "from_filter": _library_filter(from_filter),
+            "from_q": _library_search(from_q),
+            "artist_back_url": (
+                artists.detail_url(
+                    from_artist,
+                    page=max(1, from_page),
+                    artist_page=max(1, artist_page),
+                    artist_q=artist_q[:100],
+                    artist_nfo=artist_nfo,
+                    artist_artwork=artist_artwork,
+                    artist_albums=artist_albums,
+                    artist_new=artist_new,
+                    artist_view=_artists_layout(request, artist_view),
+                )
+                if from_artist and artists.mbid(from_artist)
+                else None
+            ),
+        }
+        if (awaited := _awaited_redownload(request, album_id)) is not None:
+            entry, back = awaited
+            if back is None:
+                return _redownloading_page(request, entry, back_to)
+            redownloads.settle(album_id)
+            if back.id != album_id:
+                # The replacement couldn't be tagged as the same release, so it
+                # has an id of its own and this one will never answer again.
+                query = f"?{request.url.query}" if request.url.query else ""
+                return RedirectResponse(f"/album/{quote(back.id, safe='')}{query}", status_code=303)
         album = _refreshed_from_disk(request, _find_album(request, album_id))
         contributions.warm(album)
         # The tracklist and actions don't depend on the store, so a broken store
@@ -6004,25 +6107,8 @@ def _register_routes(app: FastAPI) -> None:
                 pending_downloads.all_pending(),
                 request.app.state.cfg.paths.music_dir,
             )[1],
-            from_page=max(1, from_page),
-            from_filter=_library_filter(from_filter),
-            from_q=_library_search(from_q),
             album_artists=_album_artists(_artist_index(request, _nfo_inventory(request))),
-            artist_back_url=(
-                artists.detail_url(
-                    from_artist,
-                    page=max(1, from_page),
-                    artist_page=max(1, artist_page),
-                    artist_q=artist_q[:100],
-                    artist_nfo=artist_nfo,
-                    artist_artwork=artist_artwork,
-                    artist_albums=artist_albums,
-                    artist_new=artist_new,
-                    artist_view=_artists_layout(request, artist_view),
-                )
-                if from_artist and artists.mbid(from_artist)
-                else None
-            ),
+            **back_to,
         )
         ctx["edit_assignments"] = edit_assignments
         # What the page is drawn from, so it can tell when the album changes
@@ -7218,6 +7304,7 @@ def _register_routes(app: FastAPI) -> None:
             redownloads.add(
                 redownloads.PendingRedownload(
                     item_id=item_id,
+                    album_id=aid,
                     artist=album.artist,
                     title=album.title,
                     url=sc.store_url or "" if sc else "",

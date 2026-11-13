@@ -283,7 +283,7 @@ stateDiagram-v2
 
 **Re-download leaves the state machine.** Between the archive and the download,
 the album has no folder, so it derives nothing. It's held in memory and shown as
-an Inbox card until the replacement appears (see
+an Inbox card, and on the album's own page, until the replacement appears (see
 [Bandcamp](bandcamp.md#re-download)).
 
 ## Identity

@@ -18,6 +18,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **Re-download stays on the album's page**, which shows the replacement when
+  it lands, and the status bar follows the archive file by file (#1003).
 - **An artist with an NFO is called what the NFO calls them**, and the artist
   page's MusicBrainz link shows MusicBrainz's name for them (#1001).
 

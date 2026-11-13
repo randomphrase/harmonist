@@ -190,5 +190,16 @@ History spans the round trip: tagging the replacement as the same release links
 its new ID to the old one, so the album page shows the archive and the download
 together.
 
+**The album's page waits with it.** Re-download is pressed on the album's page
+and the replacement belongs there, so the page stays open through the round
+trip. Sending the reader to the Inbox, as it first did, was true to the album
+having no state, but left them to find their own way back to see the result.
+With no files to describe, the page shows the re-download as the Inbox card does
+and the album's history, and it becomes the replacement's page once an album
+holding the purchase is in the library. That is later than the files landing,
+which is when the card clears, and it follows the purchase rather than the
+release: a replacement that couldn't be tagged as the carried release has a new
+ID, and the page goes there.
+
 Re-download is offered only for an album linked to exactly one purchase.
 Fetching one of several candidates would be a guess.

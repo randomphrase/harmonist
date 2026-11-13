@@ -11,26 +11,7 @@
 {% set on_album_page = true %}
 <div class="album-page space-y-5" data-revision="{{ album_revision or '' }}">
 
-    {# Back to the Library page this album was opened from, not the top of the
-       grid (#139). `?tab=library` is always sent: a link says where it goes, and
-       arriving here from Activity leaves the remembered tab on Inbox, which
-       would otherwise make "Back to library" land on the Inbox.
-
-       No `&limit=`: the page size the reader chose is in a cookie the index reads
-       when the URL omits one (#144), so `page` alone lands on the same albums.
-       Threading it through the tile as well would add a second copy of the same
-       fact, free to disagree with the first.
-
-       `&filter=` IS threaded through, for the opposite reason (#174): a filter is
-       deliberately never remembered anywhere, so this link is the only thing that
-       can carry it. Drop it and Back silently widens the view — the reader
-       working through "the 12 albums with no artwork" returns to all 400. `&q=`
-       rides along for exactly the same reason (#180), urlencoded because unlike
-       the filter's slug it is free text. #}
-    <a href="{% if artist_back_url %}{{ artist_back_url }}{% else %}/?tab=library{% if from_page > 1 %}&page={{ from_page }}{% endif %}{% if from_filter %}&filter={{ from_filter }}{% endif %}{% if from_q %}&q={{ from_q | urlencode }}{% endif %}{% endif %}"
-       class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">
-        ← Back to {{ 'artist' if artist_back_url else 'library' }}
-    </a>
+    {% include 'partials/_album_back.html' %}
 
     {# Empty until the /compare fetch below discovers something the page could
        not know at render time — currently only that MusicBrainz has deleted this

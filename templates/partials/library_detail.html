@@ -236,12 +236,19 @@
            files. `hx-confirm` names the archive and the format, because both are
            things the user cannot see beforehand and would want to have known —
            the format especially, since it comes from Settings rather than from
-           anything on this page. #}
+           anything on this page.
+
+           Stays on this album's page (#1003), which the route draws without the
+           files until the replacement is in the library. At the album's own id
+           rather than a reload: the page may have been opened at an id the album
+           has since moved on from, and the wait is recorded under the one it
+           has now. `replace`, as a re-tag's redraw is, so Back still reaches
+           the Library. #}
         {% set bc = album.sidecar.bandcamp if album.sidecar else None %}
         {% if bc and bc.item_id %}
         <button hx-post="/library/{{ album.id }}/redownload"
                 hx-swap="none" hx-disabled-elt="this" hx-indicator="#archiving-{{ album.id }}"
-                hx-on::after-request="if (event.detail.successful) window.location.href = '/'"
+                hx-on::after-request="if (event.detail.successful) window.location.replace('/album/{{ album.id | urlencode }}' + window.location.search)"
                 hx-confirm="Re-download this album as {{ cfg.bandcamp.download_format|upper }}? The files you have now are zipped into the top of your music folder first, then removed, and the next sync fetches a fresh copy."
                 class="px-3 py-1.5 bg-surface hover:bg-line text-muted hover:text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition"
                 title="Archive this album to a .zip in your music folder and download it again from Bandcamp, in the format set in Settings ({{ cfg.bandcamp.download_format|upper }}). Use this to upgrade the format, or to pick up tracks added to the release since you bought it."
