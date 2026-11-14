@@ -92,7 +92,7 @@ def test_the_inbox_refreshing_leaves_an_open_review_alone(
     card, _ = _suggestion(page, base)
     dialog = open_review(page, card)
     htmx_ready(dialog.get_by_role("button", name="Edit track assignments", exact=True)).click()
-    accept = dialog.get_by_role("button", name="Accept changes", exact=True)
+    accept = dialog.get_by_role("button", name="Done", exact=True)
     pw.expect(accept).to_be_visible()
     with page.expect_response(lambda r: "/tasks" in r.url and r.ok):
         page.evaluate("htmx.trigger(document.body, 'tasks-changed')")

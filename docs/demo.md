@@ -224,8 +224,8 @@ cover from this confirmation. Reset before using the original pressing again.
 Reset and choose **Incomplete → Fever Dog**. Show “3 of 4 tracks on disk”, then
 the **Structure** finding. The track-assignment editor opens automatically once
 the comparison loads; **Review assignments** returns to it if needed. Keep the
-three known pairings, expand **Tag changes**, then press **Accept changes** to
-apply them directly. The old total of four becomes three and the Incomplete
+three known pairings, expand **Tag changes**, then press **Apply assignments**
+to write them. The old total of four becomes three and the Incomplete
 badge clears. No audio track has been downloaded or invented.
 
 ### Bring tags into line with your preferences (about 60 seconds)

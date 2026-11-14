@@ -17,8 +17,15 @@
     </div>
     {% if artwork %}
     {# The write plan can split one image between tracks and folder cover.
-       Current images must keep the same rows before and after CAA answers. #}
-    {% set current = artwork.images|unique(attribute='image.digest')|list %}
+       Current images must keep the same rows before and after CAA answers.
+
+       The folder cover leads (#1005). Differing track images are kept, so it
+       is then all a review replaces, and listed after them it left the
+       selected release's cover rows below the checkbox that takes it. Not
+       ordered by what is written: that changes when CAA answers. #}
+    {% set distinct = artwork.images|unique(attribute='image.digest')|list %}
+    {% set cover_digests = artwork.images|rejectattr('folder', 'none')|map(attribute='image.digest')|list %}
+    {% set current = (distinct|selectattr('image.digest', 'in', cover_digests)|list) + (distinct|rejectattr('image.digest', 'in', cover_digests)|list) %}
     {# Identity is the exact image digest, so at most one current image matches
        the selected release's, and it is marked beside that image alone: the
        other carriers may still differ and be written. The candidate is shown
@@ -80,8 +87,10 @@
     </div>
     {% if artwork.cover_unreadable %}<p class="text-xs text-amber-700">The folder cover could not be read. It will be left alone.</p>{% endif %}
     {% if artwork.plan.preserves_per_track_art %}<p class="text-xs text-muted">Differing per-track artwork is preserved.</p>{% endif %}
-    {% for image, who in artwork.distinct %}
-        {{ full_size(image, album.id, who, image_prefix, review if archive_image and image.digest == archive_image.digest and not selected.identical else '', gallery=artwork.distinct) }}
+    {# The viewer steps through the images in the order they are listed above. #}
+    {% set gallery = (artwork.distinct|selectattr('0.digest', 'in', cover_digests)|list) + (artwork.distinct|rejectattr('0.digest', 'in', cover_digests)|list) %}
+    {% for image, who in gallery %}
+        {{ full_size(image, album.id, who, image_prefix, review if archive_image and image.digest == archive_image.digest and not selected.identical else '', gallery=gallery) }}
     {% endfor %}
     {% endif %}
 </div>

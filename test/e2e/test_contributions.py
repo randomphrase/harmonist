@@ -327,7 +327,7 @@ def test_contribution_check_and_library_filter(
     ).click()
     review.get_by_role("button", name="Edit track assignments", exact=True).click()
     playwright_sync.expect(review.get_by_role("button", name="Cancel", exact=True)).to_have_count(1)
-    review.get_by_role("button", name="Accept changes", exact=True).click()
+    review.get_by_role("button", name="Done", exact=True).click()
     playwright_sync.expect(
         review.get_by_role("button", name="Confirm suggestion", exact=True)
     ).to_be_enabled()

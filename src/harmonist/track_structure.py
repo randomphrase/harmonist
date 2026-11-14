@@ -119,15 +119,20 @@ def pairs(
 
 @dataclass(frozen=True)
 class Review:
+    #: What changed about the release's layout, in the words the editor shows.
     reasons: tuple[str, ...] = ()
     unassigned: int = 0
     #: The files, by index, that a reviewed confirmation left unassigned: they
     #: carry this release's ID and no track's. Counted in `unassigned`.
     left_unassigned: frozenset[int] = frozenset()
+    #: Whether a file is waiting on a track to be chosen for it. Apart from
+    #: `reasons` because the editor shows these files and their count itself,
+    #: and a sentence above them said it a second time (#1005).
+    needs_assignment: bool = False
 
     @property
     def required(self) -> bool:
-        return bool(self.reasons)
+        return bool(self.reasons) or self.needs_assignment
 
 
 def review(
@@ -178,10 +183,10 @@ def review(
         before = tag.owned.get("disc_total")
         if len(eligible) == len(targets) and before is not None and before != target.disc_total:
             reasons.append(f"Disc total {before} on disk → {target.disc_total} on MusicBrainz.")
-    unassigned = conflicting + len(left)
     unpaired_tracks = eligible - {slot for slot in pairing.slots if slot is not None}
-    if conflicting or (left and unpaired_tracks):
-        reasons.append(
-            f"{unassigned} {'file needs' if unassigned == 1 else 'files need'} track assignments."
-        )
-    return Review(tuple(dict.fromkeys(reasons)), unassigned, frozenset(left))
+    return Review(
+        tuple(dict.fromkeys(reasons)),
+        conflicting + len(left),
+        frozenset(left),
+        bool(conflicting or (left and unpaired_tracks)),
+    )

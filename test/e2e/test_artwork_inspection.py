@@ -218,7 +218,9 @@ def test_native_pixels_and_switching_preserve_scale_and_position(
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     host = _open(page, artwork_inspection_server, review)
-    thumb = host.locator("button.art-row__art[popovertarget]").first
+    # The tracks' image, which the sizes below are: the review lists the
+    # folder cover ahead of it (#1005).
+    thumb = host.locator("button.art-row__art[popovertarget]").nth(1 if review else 0)
     target = thumb.get_attribute("popovertarget")
     thumb.click()
     viewer = page.locator(f'[id="{target}"]')
@@ -291,7 +293,10 @@ def test_review_images_align_below_wrapping_headings(
     browser = browser_factory("chromium")
     page = browser.new_page(viewport={"width": width, "height": 800})
     host = _open(page, artwork_inspection_server, True)
-    current = host.get_by_alt_text("Current artwork: All 3 tracks", exact=True)
+    # The first image listed, which the selected release's sits beside: the
+    # folder cover, since it leads (#1005).
+    current = host.locator('img[alt^="Current artwork: "]').first
+    pw.expect(current).to_have_attribute("alt", "Current artwork: cover.png")
     candidate = host.get_by_alt_text("Artwork for selected release", exact=True)
     pw.expect(candidate).to_be_visible()
     checkbox = host.get_by_role("checkbox", name="Use artwork from the selected release")

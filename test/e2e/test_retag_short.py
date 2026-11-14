@@ -64,7 +64,7 @@ def test_changed_track_count_opens_review_and_cancel_preserves_finding(
     pw.expect(review).to_be_enabled()
     review.click()
     with page.expect_response(lambda r: r.url.endswith(f"/confirm/{ALBUM_ID}/accept")) as applied:
-        editor.get_by_role("button", name="Accept changes").click()
+        editor.get_by_role("button", name="Apply assignments").click()
     fields = parse_qs(applied.value.request.post_data)
     assert fields["incomplete"] == ["true"]
     assert fields["include_artwork"] == ["false"]
@@ -111,7 +111,7 @@ def test_combined_pregap_is_a_cancelable_assignment_choice(
     pw.expect(box).not_to_be_checked()
     box.check()
     pw.expect(rows).to_have_count(2)
-    editor.get_by_role("button", name="Accept changes", exact=True).click()
+    editor.get_by_role("button", name="Apply assignments", exact=True).click()
     note = page.locator("#album-track-view [data-pregap-note]")
     pw.expect(note).to_have_text("Includes pregap: Hidden Prelude")
     note_length = page.locator("#album-track-view [data-pregap-row] .track-diff__len")
@@ -126,7 +126,7 @@ def test_combined_pregap_is_a_cancelable_assignment_choice(
     pw.expect(rows).to_have_count(2)
     box.uncheck()
     pw.expect(rows).to_have_count(3)
-    editor.get_by_role("button", name="Accept changes", exact=True).click()
+    editor.get_by_role("button", name="Apply assignments", exact=True).click()
     pw.expect(page.locator("main")).to_contain_text("2 of 3 tracks on disk")
     page.context.close()
 

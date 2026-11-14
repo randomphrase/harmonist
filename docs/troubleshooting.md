@@ -191,13 +191,13 @@ may not know which file is which track. The album shows **Tracks unassigned**,
 or its update says **Track assignments need review**.
 
 Click the pencil beside **Tracks** on the album's page (**Edit track
-assignments**) and use the arrows to move files into place. **Accept changes**, then apply.
-Files left opposite a gap keep their own title and numbering, and take the
-album's tags from the release.
+assignments**) and use the arrows to move files into place, then **Apply
+assignments**. Files left opposite a gap keep their own title and numbering,
+and take the album's tags from the release.
 
 ![The Track assignments editor: files on disk on the left, MusicBrainz tracks
-on the right, each row with up and down arrows. Below are Accept changes, Reset
-and Cancel buttons.](images/track-assignments.png)
+on the right, each row with up and down arrows. Below are Apply assignments,
+Reset and Cancel buttons.](images/track-assignments.png)
 
 ## Bandcamp
 
@@ -307,7 +307,7 @@ A hidden pregap appears as **track 0** and counts toward the total, as in
 Picard. Its row says *Not in your files* when there is no separate file for it.
 Some rips join that audio to track 1. When the combined lengths fit, **Edit track
 assignments** offers **Track 1 includes the pregap** beside the timing evidence.
-**Accept changes** saves that choice for this album; **Cancel** leaves it alone.
+**Apply assignments** saves that choice for this album; **Cancel** leaves it alone.
 The pregap then counts toward completeness without changing the /total tags.
 Untick it in the same editor to reverse the decision. A changed rip needs a new
 decision. Re-tagging cannot split the audio; **Don't warn me about this** remains

@@ -3766,7 +3766,7 @@ def test_grown_tracklist_routes_every_apply_choice_into_review(
     assert r.status_code == 200
     assert r.headers["HX-Redirect"] == f"/album/{aid}?edit_assignments=true#album-tracks"
     editor = client.get(f"/assignments/{aid}?album_tracks=true&on_album_page=true")
-    assert "Accept changes" in editor.text
+    assert "Apply assignments" in editor.text
     assert calls == ["rel-grown"], "entering the editor reuses the refused update's release"
     assert [f.read_bytes() for f in files] == before
     assert sc.read(d).tagged_at == tagged
@@ -13828,6 +13828,42 @@ def test_confirmation_names_artwork_outcome_and_exact_identity(client, cfg, monk
     assert sc.read(d).mb_release_id != release["id"]
 
 
+def test_confirmation_shows_the_selected_cover_under_its_heading(client, cfg, monkeypatch):
+    """#1005: differing track images are kept, so the folder cover is all the
+    review replaces. Listed after them, it left the selected release's cover at
+    the foot of its column, rows away from the checkbox that takes it. The
+    folder cover leads instead, and does before the archive has answered, so
+    no row moves when it does."""
+    from bs4 import BeautifulSoup
+
+    from harmonist import cover_art
+
+    d, _release, _big, _small, _calls = _confirmation_setup(cfg, monkeypatch, per_track=True)
+    # A folder cover no track carries, so it has a row of its own.
+    (d / "cover.jpg").write_bytes(_png_sized(44, 600))
+    monkeypatch.setattr(
+        cover_art,
+        "fetch_image",
+        lambda mbid, url: cover_art.cache_image(mbid, _png_sized(99, 800), "image/png"),
+    )
+    pending, answered, _fields = _review_with_artwork(client, _id_for(cfg, d))
+
+    def row(element):
+        cell = element.find_parent(style=re.compile("--art-review-row"))
+        return int(re.search(r"--art-review-row: (\d+)", cell["style"]).group(1))
+
+    for response in (pending, answered):
+        page = BeautifulSoup(response.text, "html.parser")
+        current = {row(img): img["alt"] for img in page.select('img[alt^="Current artwork: "]')}
+        assert current == {
+            2: "Current artwork: cover.jpg",
+            3: "Current artwork: Track 1",
+            4: "Current artwork: Track 2",
+        }
+    assert "Will update: folder cover (cover.jpg, renamed cover.png)" in page.text
+    assert row(page.find("img", alt="Artwork for selected release")) == 2
+
+
 @pytest.mark.parametrize("included", [False, True])
 def test_confirmation_checkbox_controls_the_actual_write(client, cfg, monkeypatch, included):
     from harmonist import formats
@@ -13873,7 +13909,7 @@ def test_confirmation_without_a_candidate_still_tags_and_keeps_art(
         "could not be loaded" if archive_status == "failed" else "No front cover"
     ) in artwork.text
     assert fields["release_fingerprint"]
-    assert "Accept changes</button>" in preview.text
+    assert ">Done</button>" in preview.text
     result = client.post(f"/confirm/{aid}", data=fields)
     assert "Matched" in result.text
     assert (d / "cover.jpg").read_bytes() == big

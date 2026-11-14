@@ -47,7 +47,7 @@ def test_suggested_release_link_follows_review_and_confirmation(
     ).to_have_count(1)
     edit = review.get_by_role("button", name="Edit track assignments", exact=True)
     pw.expect(edit).to_be_visible()
-    pw.expect(edit).not_to_have_class(re.compile("bg-amber-50"))
+    plain = edit.evaluate("e => getComputedStyle(e).backgroundColor")
     checked = review.get_by_text("MB checked", exact=True)
     groups = review.locator('th[scope="colgroup"]')
     pw.expect(groups.nth(0)).to_contain_text("On disk · 3 files")
@@ -67,8 +67,8 @@ def test_suggested_release_link_follows_review_and_confirmation(
             return Math.abs(r.getBoundingClientRect().y - e.getBoundingClientRect().y) < 5;
         }""")
     edit.click()
-    pw.expect(review.get_by_role("button", name="Accept changes")).to_be_visible()
-    accept = review.get_by_role("button", name="Accept changes", exact=True)
+    accept = review.get_by_role("button", name="Done", exact=True)
+    pw.expect(accept).to_be_visible()
     confirm = review.get_by_role("button", name="Confirm suggestion", exact=True)
     dismiss = review.get_by_role("button", name="Dismiss suggestion", exact=True)
     artwork = review.locator(".assignment-artwork")
@@ -89,8 +89,8 @@ def test_suggested_release_link_follows_review_and_confirmation(
     )
     assert len(boxes) == 5
     assert all(box["height"] > 0 for box in boxes.values())
-    assert boxes["table"]["bottom"] <= boxes["Accept changes"]["y"]
-    assert boxes["Accept changes"]["y"] < boxes["artwork"]["y"]
+    assert boxes["table"]["bottom"] <= boxes["Done"]["y"]
+    assert boxes["Done"]["y"] < boxes["artwork"]["y"]
     for label in ("Confirm suggestion", "Dismiss suggestion"):
         assert boxes[label]["y"] >= boxes["artwork"]["bottom"]
     pw.expect(link).to_be_visible()
@@ -108,11 +108,15 @@ def test_suggested_release_link_follows_review_and_confirmation(
     page.reload()
     open_review(page, host, "demo-rel-folksmen")
     pw.expect(link).to_have_attribute("href", "https://musicbrainz.org/release/demo-rel-folksmen")
-    pw.expect(edit).to_have_class(re.compile("bg-amber-50"))
-    pw.expect(groups.nth(0)).to_contain_text("1 file unassigned")
+    # A file unassigned is a status, drawn as the album header's badge is
+    # (#1005): sentence case inside an uppercase heading, and beside a button
+    # that looks as it does on any other review.
+    count = groups.nth(0).locator(".album-warning__badge")
+    pw.expect(count).to_have_text("1 file unassigned")
+    pw.expect(count).to_have_css("text-transform", "none")
+    pw.expect(edit).to_have_css("background-color", plain)
     pw.expect(review.locator(".assignment-artwork")).to_contain_text("CAA checked")
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
-    pw.expect(review).to_contain_text("Unassigned files will receive the album's MusicBrainz ID")
     with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url) as applied:
         review.get_by_role("button", name="Confirm suggestion", exact=True).click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
@@ -338,7 +342,7 @@ def test_column_display_toggle_survives_moves_and_reset(browser_factory, reset_d
     filenames.press("Space")
     pw.expect(editor.locator(".assignment-filename").first).to_be_visible()
     editor.get_by_role("button", name="Edit track assignments").click()
-    pw.expect(editor.get_by_role("button", name="Accept changes")).to_be_visible()
+    pw.expect(editor.get_by_role("button", name="Done", exact=True)).to_be_visible()
     pw.expect(filenames).to_be_checked()
     assert columns.evaluate_all(
         "els => els.map(el => el.getBoundingClientRect().x)"
@@ -386,7 +390,7 @@ def test_partial_confirmation_can_be_applied_and_reviewed(browser_factory, reset
     with page.expect_response(
         lambda r: r.url.endswith("/confirm/demo-rel-folksmen/accept")
     ) as applied:
-        dialog.get_by_role("button", name="Accept changes").click()
+        dialog.get_by_role("button", name="Apply assignments").click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
     # Applying it again leaves the same file unassigned, and the page says so
     # from its tracklist rather than by reopening the editor.
@@ -428,7 +432,7 @@ def test_arrow_mapping_survives_refresh_review_and_apply(browser_factory, reset_
         page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
     pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
-    editor.get_by_role("button", name="Accept changes").click()
+    editor.get_by_role("button", name="Done", exact=True).click()
     pw.expect(editor.get_by_role("button", name="Confirm suggestion")).to_be_enabled()
     pw.expect(editor.locator('[name="disk_order"]')).to_have_value("1,0,2")
     # Reopening preserves the accepted mapping; cancel restores it after edits.
@@ -485,7 +489,7 @@ def test_failed_partial_confirmation_preserves_review_during_inbox_refresh(
     review.get_by_role("button", name="Edit track assignments").click()
     editor = review.locator(".assignment-editor")
     before = editor.locator('[name="disk_order"]').input_value()
-    editor.get_by_role("button", name="Accept changes").click()
+    editor.get_by_role("button", name="Done", exact=True).click()
     accept = editor.get_by_role("button", name="Confirm suggestion", exact=True)
     pw.expect(accept).to_be_enabled()
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
@@ -567,7 +571,7 @@ def test_album_assignment_editor_cancels_inline_without_artwork(browser_factory,
     with page.expect_response(
         lambda r: r.url.endswith("/confirm/demo-rel-dingoes/accept")
     ) as applied:
-        editor.get_by_role("button", name="Accept changes").click()
+        editor.get_by_role("button", name="Apply assignments").click()
     assert parse_qs(applied.value.request.post_data)["include_artwork"] == ["false"]
     pw.expect(edit).to_be_visible()
     pw.expect(tracks.locator(".tracklist")).to_be_visible()
@@ -617,7 +621,7 @@ def test_unassigned_files_are_proposed_and_remain_editable_until_acceptance(
     editor.get_by_role("button", name="Cancel", exact=True).click()
     page.get_by_role("button", name="Review assignments", exact=True).click()
     pw.expect(editor.locator("[name=disk_order]")).to_have_value("0,1,2")
-    editor.get_by_role("button", name="Accept changes").click()
+    editor.get_by_role("button", name="Apply assignments").click()
     pw.expect(page.locator("#album-tracks .tracklist")).to_be_visible()
     pw.expect(page.get_by_role("button", name="Review assignments", exact=True)).to_have_count(0)
     page.get_by_role("button", name="Edit track assignments", exact=True).click()

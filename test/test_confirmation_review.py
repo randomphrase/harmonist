@@ -56,7 +56,7 @@ def test_review_uses_its_snapshot_or_stops_without_fetching(client, cfg, monkeyp
         )
 
 
-def test_partial_review_explains_unassigned_files_and_applies_once(client, cfg, monkeypatch):
+def test_partial_review_marks_unassigned_files_and_applies_once(client, cfg, monkeypatch):
     from bs4 import BeautifulSoup
 
     root, release, *_rest, calls = _confirmation_setup(cfg, monkeypatch, old_mbid=None)
@@ -65,7 +65,7 @@ def test_partial_review_explains_unassigned_files_and_applies_once(client, cfg, 
     editor = client.get(f"/assignments/{aid}")
     rows = BeautifulSoup(editor.text, "html.parser").select("[data-assignment-row]")
     assert "Unassigned" in rows[-1].text
-    assert "Unassigned files will receive the album's MusicBrainz ID" in editor.text
+    assert "1 file unassigned" in editor.text
     calls.clear()
     confirmation = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(editor.text))
     assert "confirmation-applied" in confirmation.headers.get("HX-Trigger", "")

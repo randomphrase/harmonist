@@ -57,7 +57,7 @@ def test_re_tagging_a_merged_release_leaves_the_browser_on_the_surviving_one(
     for token, order in [(0, "-,0,-,1"), (0, "0,-,-,1"), (1, "0,-,1,-"), (1, "0,1,-,-")]:
         editor.locator(f"#move-{MERGED_AWAY}-disk-{token}-up").click()
         playwright_sync.expect(editor.locator('[name="disk_order"]')).to_have_value(order)
-    editor.get_by_role("button", name="Accept changes").click()
+    editor.get_by_role("button", name="Apply assignments").click()
 
     # The address the album now lives at, not the one it was opened at.
     #

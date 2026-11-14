@@ -84,7 +84,7 @@ def test_release_only_preview_from_suggestion_requires_confirmation(client, cfg,
     fields = _confirmation_fields(preview.text)
     assert fields["disk_order"] == "0,1,-,-"
     assert fields["mb_order"] == "-,-,0,1"
-    assert "Unassigned files will receive the album's MusicBrainz ID" in preview.text
+    assert "2 files unassigned" in preview.text
     assert [f.read_bytes() for f in files] == before
     assert [call for call in calls if call[0] == "mb"] == [("mb", "rel-new-confirm")]
 
@@ -153,7 +153,7 @@ def test_read_only_confirmation_uses_current_counts_and_displayed_mapping(
         == _confirmation_fields(view.text)["disk_order"]
     )
     if tracks == 1:
-        assert "Unassigned files will receive the album's MusicBrainz ID" in preview.text
+        assert "1 file unassigned" in preview.text
         applied = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(preview.text))
         assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
 
@@ -257,7 +257,7 @@ def test_extra_file_can_move_past_a_gap_but_cannot_be_silently_dropped(client, c
     moved = client.post(f"/assignments/{aid}", data=fields | {"move": "mb:1:up"})
     fields = _confirmation_fields(moved.text)
     assert fields["mb_order"] == "-,0"
-    assert "Accept changes" in moved.text
+    assert ">Done</button>" in moved.text
     attempted = client.post(f"/confirm/{aid}/accept", data=fields)
     assert "unassigned file already has MusicBrainz track IDs" in attempted.text
     assert "confirmation-applied" not in attempted.headers.get("HX-Trigger", "")

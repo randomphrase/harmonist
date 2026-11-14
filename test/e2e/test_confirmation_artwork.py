@@ -325,7 +325,7 @@ def test_review_artwork_inspection_and_refresh_preserve_draft(
     pw.expect(artwork).to_contain_text("CAA checked")
     pw.expect(checkbox).to_be_checked()
     pw.expect(review.locator('[name="disk_order"]')).to_have_value("1,0,2")
-    pw.expect(review.get_by_role("button", name="Accept changes", exact=True)).to_be_visible()
+    pw.expect(review.get_by_role("button", name="Done", exact=True)).to_be_visible()
     page.context.close()
 
 
@@ -485,8 +485,8 @@ def test_changed_confirmation_preserves_review_and_artwork_choice(
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
     review.get_by_role("button", name="Edit track assignments").click()
     editor = review.locator(".assignment-editor")
-    pw.expect(editor.get_by_role("button", name="Accept changes")).to_be_visible()
-    editor.get_by_role("button", name="Accept changes").click()
+    pw.expect(editor.get_by_role("button", name="Done", exact=True)).to_be_visible()
+    editor.get_by_role("button", name="Done", exact=True).click()
     pw.expect(editor.get_by_role("button", name="Edit track assignments")).to_be_visible()
     checkbox = editor.get_by_role("checkbox", name="Use artwork from the selected release")
     checkbox.check()

@@ -18,6 +18,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **The track assignment editor's buttons say whether they write**: **Done**
+  within a release's review, **Apply assignments** on an album (#1005).
 - **A file left unassigned takes the release's album-level tags**, so players
   file it with its album (#1004).
 - **Re-download stays on the album's page**, which shows the replacement when
@@ -27,6 +29,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A release's cover sits under its checkbox when you review it**, not rows
+  below, and the unassigned-files count no longer looks like a button (#1005).
 - **An album confirmed with a file left unassigned no longer waits for a review
   with nothing to assign**, and its tag updates apply again (#1004).
 - **Every filter chip on the Library and Artists pages lines up with the rest of
