@@ -18,6 +18,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **A file left unassigned takes the release's album-level tags**, so players
+  file it with its album (#1004).
 - **Re-download stays on the album's page**, which shows the replacement when
   it lands, and the status bar follows the archive file by file (#1003).
 - **An artist with an NFO is called what the NFO calls them**, and the artist
@@ -25,6 +27,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **An album confirmed with a file left unassigned no longer waits for a review
+  with nothing to assign**, and its tag updates apply again (#1004).
 - **Every filter chip on the Library and Artists pages lines up with the rest of
   its row** (#991).
 - **Filling in an artist NFO no longer rescans the whole library** a few seconds

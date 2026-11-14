@@ -384,9 +384,10 @@ def _write_prepared_tags(
         if event_id is not None:
             _record_changes(event_id, naming, file_path, tagset, changes)
 
-    for path, target in job.items(prep.unassigned.items(), lambda pair: naming.name_of(pair[0])):
-        changes = owned.diff(formats.read_owned(path), target)
-        if not changes:
+    for path in job.items(prep.unassigned, naming.name_of):
+        carried = formats.read_owned(path)
+        target = _unassigned_target(release, prep, carried, tagging)
+        if not owned.diff(carried, target):
             continue
         before = formats.write_owned(path, target)
         wrote_something = True
@@ -470,16 +471,58 @@ def plan_album(
             prep.art_after.get(file_path),
         ):
             changes[file_path] = file_changes
-    for path, target in prep.unassigned.items():
+    # An unassigned file's album fields answer to the same settings a paired
+    # file's do, so they are classified against the same spellings.
+    album_track = _album_track(release)
+    album_wide = {f.value for f in owned.ALBUM_WIDE}
+    album_spellings = (
+        {
+            field: spellings
+            for field, spellings in _supported_spellings(
+                release, *album_track, prep.media_total
+            ).items()
+            if field in album_wide
+        }
+        if prep.unassigned and album_track is not None
+        else {}
+    )
+    for path in prep.unassigned:
+        now = _owned_now(path, prep.read)
+        target = _unassigned_target(release, prep, now, tagging)
         positions[path] = _history_position(target)
-        if file_changes := owned.diff(formats.read_owned(path), target):
+        supported[path] = album_spellings
+        if file_changes := owned.diff(now, target):
             changes[path] = file_changes
     return AlbumPlan(
         changes=changes,
         supported_spellings=supported,
         accepted_countries=prep.accepted_countries,
         positions=positions,
+        unassigned=len(prep.unassigned),
     )
+
+
+def _album_track(release: Release) -> _FlatTrack | None:
+    """A track to read the album's own values from. They are the same on every
+    track's tagset, so the first stands for all; a release with no tracklist
+    has none."""
+    return next(iter(_flatten_tracks(release)), None)
+
+
+def _unassigned_target(
+    release: Release, prep: _Prepared, now: Mapping[str, Any], tagging: TaggingChoices
+) -> dict[str, Any]:
+    """The owned fields a file left unassigned is written to: the album's from
+    the release, and the track's as the file has them (`now`).
+
+    The file belongs to the release, so it is filed with its album; which
+    track it is nobody has said, so no track's title, number or ID arrives.
+    """
+    track = _album_track(release)
+    if track is None:
+        return {**now, owned.Owned.MB_ALBUM_ID: release["id"]}
+    tagset = _build_tagset(release, *track, prep.media_total, tagging)
+    return {**now, **{f.value: getattr(tagset, f.value) for f in owned.ALBUM_WIDE}}
 
 
 #: The owned fields a `TaggingChoices` can change — every field whose value
@@ -570,6 +613,8 @@ class AlbumPlan:
     #: so a waiting update numbers its tracks as the History entry it becomes
     #: will, not by the files' order in the folder.
     positions: Mapping[Path, str | None] = dataclasses.field(default_factory=dict)
+    #: How many of the album's files are paired with no track (#1004).
+    unassigned: int = 0
 
     def is_second_spelling(self, field: str, before: object) -> bool:
         """Whether this entry is a value that was already right, not an update.
@@ -732,7 +777,10 @@ class _Prepared:
 
     files: list[Path]
     pairs: list[tuple[Path, _FlatTrack]]
-    unassigned: dict[Path, dict[str, Any]]
+    #: The files paired with no track: the ones an explicit `assignment` leaves
+    #: out, or the ones an earlier review did (#1004). `_unassigned_target` is
+    #: what each is written to.
+    unassigned: list[Path]
     #: The album's artwork plan, whole. What this tagging writes of it is
     #: `art_targets` and `cover_change`.
     art: artwork.ArtworkPlan
@@ -908,6 +956,11 @@ def _prepare(
     # since corrected that most need the button.
     taggable = _taggable_tracks(release, flat_tracks)
 
+    # The files a reviewed confirmation left unassigned, which their tags
+    # record (#1004). That review already said which files are left over, so
+    # they stay out of the count and out of the ladder: the count would refuse
+    # an album the user confirmed, and the ladder would guess them a track.
+    left: list[Path] = []
     if assignment is None:
         tags = [formats.read_tags(path) for path in files]
         review = assignment_review(release, tags)
@@ -915,15 +968,22 @@ def _prepare(
             raise TrackAssignmentRequired(
                 files=len(files), tracks=len(taggable), unassigned=review.unassigned
             )
+        left = [files[i] for i in sorted(review.left_unassigned)]
+        counted = [
+            pair
+            for i, pair in enumerate(zip(files, tags, strict=True))
+            if i not in review.left_unassigned
+        ]
 
-    if assignment is None and not incomplete and len(files) != len(taggable):
+    # The messages and the error count every file on disk, as the user would.
+    if assignment is None and not incomplete and len(counted) != len(taggable):
         raise TagMismatchError(
             f"album {album_dir.name!r}: {len(files)} audio files but MB release "
             f"has {len(taggable)} tracks",
             files=len(files),
             tracks=len(taggable),
         )
-    if assignment is None and len(files) > len(flat_tracks):
+    if assignment is None and len(counted) > len(flat_tracks):
         raise TagMismatchError(
             f"album {album_dir.name!r}: {len(files)} files exceeds MB release "
             f"track count {len(flat_tracks)} — extra files on disk need an "
@@ -937,7 +997,9 @@ def _prepare(
     # re-pointing it at an audio track would be the invention this ladder
     # exists to avoid.
     if assignment is None:
-        pairs = _assign_files_to_tracks(files, flat_tracks, [compare.identity_of(t) for t in tags])
+        pairs = _assign_files_to_tracks(
+            [f for f, _ in counted], flat_tracks, [compare.identity_of(t) for _, t in counted]
+        )
     else:
         # Only explicitly paired files receive track metadata. Missing keys
         # are intentional gaps, never invitations to the automatic ladder.
@@ -951,19 +1013,15 @@ def _prepare(
         if any(t not in taggable for _, t in pairs):
             raise ValueError("invalid track assignment: video tracks cannot be tagged")
 
-    unassigned = {}
     if assignment is not None:
-        for path in files:
-            if path in assignment:
-                continue
-            target = formats.read_owned(path)
-            if target.get(owned.Owned.MB_RELEASE_TRACK_ID) or target.get(owned.Owned.MB_TRACK_ID):
+        left = [path for path in files if path not in assignment]
+        for path in left:
+            carried = formats.read_owned(path)
+            if carried.get(owned.Owned.MB_RELEASE_TRACK_ID) or carried.get(owned.Owned.MB_TRACK_ID):
                 raise ValueError(
                     f"{path.name}: unassigned file already has MusicBrainz track IDs. "
                     "Pair it with the correct track, or remove conflicting track IDs before confirming."
                 )
-            target[owned.Owned.MB_ALBUM_ID] = release["id"]
-            unassigned[path] = target
 
     if archive is None and artwork_in_scope:
         archive = _archive_candidate(release)
@@ -1020,7 +1078,7 @@ def _prepare(
     return _Prepared(
         files=files,
         pairs=pairs,
-        unassigned=unassigned,
+        unassigned=left,
         art=art,
         # Only now is it settled that the embed is really happening — the
         # per-track-art guard may have cancelled it, and the preview check may

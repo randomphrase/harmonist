@@ -192,8 +192,8 @@ or its update says **Track assignments need review**.
 
 Click the pencil beside **Tracks** on the album's page (**Edit track
 assignments**) and use the arrows to move files into place. **Accept changes**, then apply.
-Files left opposite a gap keep their own tags and get only the album's
-MusicBrainz ID.
+Files left opposite a gap keep their own title and numbering, and take the
+album's tags from the release.
 
 ![The Track assignments editor: files on disk on the left, MusicBrainz tracks
 on the right, each row with up and down arrows. Below are Accept changes, Reset

@@ -208,9 +208,22 @@ tracklist, the user reviews it before anything is written.
   tracks that no longer exist, but recordings usually survive (#602). This
   applies only when the file's own release ID is evidence of the merge; a
   release-track ID that vanishes from the *same* release is a conflict.
-- **Files may be left unassigned.** They get only the album's release ID, and keep
-  all their other tags. A file that already carries a track ID can't be left
-  unassigned, because its tags would then claim a track it isn't paired with.
+- **Files may be left unassigned.** The file belongs to the release, so it takes
+  the release's album-level tags; nobody has said which track it is, so it keeps
+  its own title, numbering and other track-level tags. Taking the release ID
+  alone, as it did until #1004, left a player that groups by album and album
+  artist free to file it apart from its album. The disc total is the exception:
+  tags store it with the disc number, and that is the file's own. A file that
+  already carries a track ID can't be left unassigned, because its tags would
+  then claim a track it isn't paired with.
+- **Leaving a file unassigned is a decision, and it stands.** The file's tags
+  record it (the release's ID and no track's), so nothing else is stored. A
+  later tagging leaves the file out of the count and out of the pairing, and it
+  is a reason to review only while the release has a track no file is paired
+  with, which is the one thing the user could decide differently. Asking
+  whenever a file was unassigned put the album in the Inbox with nothing to do
+  there, for as long as a track added on Bandcamp waited on its MusicBrainz
+  edit (#1004).
 - **A changed tracklist always goes through review.** Additions, removals,
   reordering or changed totals open the editor before an update can be applied,
   because the layout is evidence of the release's identity.
@@ -225,7 +238,7 @@ The user can choose otherwise:
   after MusicBrainz added tracks, writes the release's totals into the files the
   user has, and the album derives Incomplete from them. Nothing else is stored.
 - **More files than tracks** is only possible through an explicit assignment
-  review, which says which files are left over.
+  review, which says which files are left over. Later taggings count the rest.
 
 The count check itself is never skipped, even when the user has already named the
 release. Whether a tagging makes sense isn't something an assertion can make

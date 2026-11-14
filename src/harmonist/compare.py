@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING
 # needs the real values, not just their types. `owned` is pure stdlib itself,
 # and `tag_history` — the sibling that describes itself as "pure functions over
 # values, like `compare`" — already imports it the same way.
-from .formats.owned import ALBUM_FIELDS, LABELS, TRACK_FIELDS, Owned, is_absent
+from .formats.owned import ALBUM_FIELDS, ALBUM_WIDE, LABELS, TRACK_FIELDS, Owned, is_absent
 
 # This only averages already-read stream values; comparison never opens files.
 from .formats.quality import average
@@ -690,6 +690,9 @@ _ALBUM_FIELDS: tuple[tuple[str, str, str | None, Kind], ...] = _rows(
     _in_display_order([f for f in ALBUM_FIELDS if f not in _NOT_COMPARED])
 )
 
+#: The disk keys of the album fields a file left unassigned is written.
+_ALBUM_WIDE: frozenset[str] = frozenset(f.value for f in ALBUM_WIDE)
+
 
 #: The one album field with a second legitimate on-disk spelling the PANEL
 #: accepts — see `album_fields`. Named rather than inlined so the special case
@@ -877,12 +880,22 @@ def album_fields(
     flag answer different questions, which is the whole of #545's design.
     """
     unreadable = all(t.unreadable for _, t in tracks) if tracks else False
+    release_id = mb.mb_album_id if mb is not None else None
     out: list[FieldComparison] = []
     for label, disk_attr, mb_attr, kind in _ALBUM_FIELDS:
         # Unreadable files contribute no value — they'd otherwise vote "absent"
         # and drag a field to ONLY_MB, reporting a tag as missing when the truth
         # is that Harmonist couldn't look (#112).
-        values = [(name, _disk_value(t, disk_attr)) for name, t in tracks if not t.unreadable]
+        #
+        # Nor does a file left unassigned, for a field it is never written
+        # (#1004): its vote would be a "missing on 1 track" no re-tag clears,
+        # which is why a video has none either (#226).
+        values = [
+            (name, _disk_value(t, disk_attr))
+            for name, t in tracks
+            if not t.unreadable
+            and not (disk_attr not in _ALBUM_WIDE and left_unassigned(t, release_id))
+        ]
         mb_value = _as_display(getattr(mb, mb_attr)) if (mb is not None and mb_attr) else None
         # A flag's absence is a value, but only where there is a MusicBrainz
         # answer to hold it against (#383). The disk-only view (#228) makes no
@@ -2911,6 +2924,16 @@ def is_unassigned(release_track_id: str | None, recording_id: str | None) -> boo
     somebody else's tags.
     """
     return not release_track_id and not recording_id
+
+
+def left_unassigned(tags: TrackTags, release_id: str | None) -> bool:
+    """Whether `tags` is a file a confirmation of `release_id` left unassigned:
+    it carries the release's ID and records no track decision."""
+    return (
+        release_id is not None
+        and tags.owned.get("mb_album_id") == release_id
+        and is_unassigned(tags.release_track_id, tags.owned.get("mb_track_id"))
+    )
 
 
 def _by_release_track_id(identity: TrackIdentity) -> Hashable | None:

@@ -121,6 +121,9 @@ def pairs(
 class Review:
     reasons: tuple[str, ...] = ()
     unassigned: int = 0
+    #: The files, by index, that a reviewed confirmation left unassigned: they
+    #: carry this release's ID and no track's. Counted in `unassigned`.
+    left_unassigned: frozenset[int] = frozenset()
 
     @property
     def required(self) -> bool:
@@ -135,26 +138,30 @@ def review(
     File count alone is never evidence: an already-incomplete album stays
     incomplete without being a new structural change. Missing totals are also
     not an old structure we can invent. No previous cache payload is needed.
+
+    A file left unassigned is a decision already made (#1004), so it is a
+    reason to review only while the release has a track no file is paired with:
+    that is the one thing the user could now decide differently. A file whose
+    track IDs name no track of this release is a conflict, and always a reason.
     """
     pairing = pairs(tags, targets, eligible)
     reasons: list[str] = []
-    unassigned = 0
+    left: set[int] = set()
+    conflicting = 0
     for i, tag in enumerate(tags):
         if not tag.owned.get("mb_album_id"):
             continue
         slot = pairing.slots[i]
         if slot is None:
+            if tag.owned.get("mb_release_track_id") or tag.owned.get("mb_track_id"):
+                conflicting += 1
             # Preserve support for legacy payloads without release-track IDs.
-            if (
-                tag.owned.get("mb_release_track_id")
-                or tag.owned.get("mb_track_id")
-                or (
-                    targets
-                    and all(t.mb_release_track_id for t in targets)
-                    and tag.owned.get("mb_album_id") == release_id
-                )
+            elif (
+                targets
+                and all(t.mb_release_track_id for t in targets)
+                and tag.owned.get("mb_album_id") == release_id
             ):
-                unassigned += 1
+                left.add(i)
             continue
         target = targets[slot]
         for key, label in [("track_num", "Track numbering"), ("disc_num", "Disc numbering")]:
@@ -171,8 +178,10 @@ def review(
         before = tag.owned.get("disc_total")
         if len(eligible) == len(targets) and before is not None and before != target.disc_total:
             reasons.append(f"Disc total {before} on disk → {target.disc_total} on MusicBrainz.")
-    if unassigned:
+    unassigned = conflicting + len(left)
+    unpaired_tracks = eligible - {slot for slot in pairing.slots if slot is not None}
+    if conflicting or (left and unpaired_tracks):
         reasons.append(
             f"{unassigned} {'file needs' if unassigned == 1 else 'files need'} track assignments."
         )
-    return Review(tuple(dict.fromkeys(reasons)), unassigned)
+    return Review(tuple(dict.fromkeys(reasons)), unassigned, frozenset(left))

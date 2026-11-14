@@ -184,6 +184,12 @@ SCOPE: dict[Owned, Scope] = {
 ALBUM_FIELDS: tuple[Owned, ...] = tuple(f for f in Owned if SCOPE[f] is Scope.ALBUM)
 TRACK_FIELDS: tuple[Owned, ...] = tuple(f for f in Owned if SCOPE[f] is Scope.TRACK)
 
+#: What a file left unassigned takes from its release (#1004): every field that
+#: is true of the album whichever track the file turns out to be. Not the disc
+#: total, which MP4 and ID3 store packed with the disc number, and the disc
+#: number is the file's own.
+ALBUM_WIDE: tuple[Owned, ...] = tuple(f for f in ALBUM_FIELDS if f is not Owned.DISC_TOTAL)
+
 
 #: Key under which a tagging records an artwork change, alongside the owned
 #: fields but deliberately NOT one of them — see the module docstring. Named

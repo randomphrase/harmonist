@@ -361,7 +361,7 @@ def _assess(album: Album, release: Release) -> Assessment:
         log.exception("could not tell whether %s has a tag update available", album.path)
         return Assessment(plan=None, verdict=None)
     verdict = verdict_for(plan)
-    album.unassigned_track_count = 0
+    album.unassigned_track_count = plan.unassigned
     album.update_available = verdict is not None
     album.update_significance = verdict
     album.update_changes, album.update_lead = (

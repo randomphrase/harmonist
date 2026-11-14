@@ -364,11 +364,17 @@ def test_partial_confirmation_can_be_applied_and_reviewed(browser_factory, reset
     with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url) as applied:
         review.get_by_role("button", name="Confirm suggestion", exact=True).click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
-    page.goto(f"{base}/album/demo-rel-folksmen")
+    with page.expect_response(lambda r: "/library/demo-rel-folksmen/compare" in r.url):
+        page.goto(f"{base}/album/demo-rel-folksmen")
     pw.expect(page.locator("main")).to_contain_text("Tracks unassigned")
-    # Required assignment reviews now open automatically on the album page.
+    # Both tracks are paired, so the confirmation settled it (#1004): once
+    # the comparison has landed and nothing more is loading, the tracklist is
+    # what shows, and the editor opens only when asked for.
+    page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")
     dialog = page.locator("#album-track-editor")
-    pw.expect(dialog).to_be_visible()
+    pw.expect(page.locator("#album-tracks .tracklist")).to_be_visible()
+    pw.expect(dialog.locator(".assignment-content")).to_have_count(0)
+    page.get_by_role("button", name="Edit track assignments", exact=True).click()
     pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("0,1,2")
     dialog.get_by_role("button", name="Move on-disk entry up", exact=True).last.click()
     pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("0,2,1")
@@ -382,9 +388,10 @@ def test_partial_confirmation_can_be_applied_and_reviewed(browser_factory, reset
     ) as applied:
         dialog.get_by_role("button", name="Accept changes").click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
-    pw.expect(dialog).to_be_visible()
-    pw.expect(dialog.locator('[name="disk_order"]')).to_have_value("0,1,2")
-    pw.expect(dialog).to_contain_text("1 file unassigned")
+    # Applying it again leaves the same file unassigned, and the page says so
+    # from its tracklist rather than by reopening the editor.
+    pw.expect(page.locator("#album-tracks .tracklist")).to_be_visible()
+    pw.expect(page.locator("main")).to_contain_text("Tracks unassigned")
     page.context.close()
 
 
