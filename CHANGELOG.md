@@ -30,6 +30,8 @@ versions follow [semantic versioning](https://semver.org).
   page's MusicBrainz link shows MusicBrainz's name for them (#1001).
 - **The artist page is laid out like an album's**, with what the NFO says in
   one **Artist info** section. An NFO's discography is no longer listed (#938).
+- **An identified artist NFO's finder opens from the edit button beside its MB
+  artist**, as an album's does, in place of **Identify again** (#938).
 
 ### Fixed
 

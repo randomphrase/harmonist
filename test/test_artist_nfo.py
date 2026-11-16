@@ -35,13 +35,17 @@ def test_profile_groups_who_the_artist_is_apart_from_what_they_sound_like(tmp_pa
 @pytest.mark.parametrize(
     "elements,dates",
     [
-        ("<born>1947</born><died>2016</died>", (("Born", "1947 – 2016"),)),
+        # Both dates of a pair are a span, named for it: "Born" doesn't cover
+        # the day someone died. One date alone keeps its own label.
+        ("<born>1947</born><died>2016</died>", (("Lived", "1947 – 2016"),)),
+        ("<born>1947</born>", (("Born", "1947"),)),
         ("<died>2016</died>", (("Died", "2016"),)),
-        ("<formed>1999</formed><disbanded>2004</disbanded>", (("Formed", "1999 – 2004"),)),
+        ("<formed>1999</formed><disbanded>2004</disbanded>", (("Active", "1999 – 2004"),)),
+        ("<disbanded>2004</disbanded>", (("Disbanded", "2004"),)),
         # Years active that only repeat the dates aren't listed again.
         (
             "<formed>1999</formed><disbanded>2004</disbanded><yearsactive>1999 - 2004</yearsactive>",
-            (("Formed", "1999 – 2004"),),
+            (("Active", "1999 – 2004"),),
         ),
         ("<formed>2001</formed><yearsactive>2001–present</yearsactive>", (("Formed", "2001"),)),
         # A second spell, or an end the dates don't give, is something more.
@@ -50,7 +54,7 @@ def test_profile_groups_who_the_artist_is_apart_from_what_they_sound_like(tmp_pa
                 "<formed>1999</formed><disbanded>2004</disbanded>"
                 "<yearsactive>1999–2004, 2010–present</yearsactive>"
             ),
-            (("Formed", "1999 – 2004"), ("Years active", "1999–2004, 2010–present")),
+            (("Active", "1999 – 2004"), ("Years active", "1999–2004, 2010–present")),
         ),
         (
             "<formed>1999</formed><yearsactive>1999–2004</yearsactive>",

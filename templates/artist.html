@@ -12,6 +12,19 @@
      hx-disinherit="*">
     <a href="{{ artist_back_url }}" class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">← Back to artists</a>
 
+    {# An identified NFO's edit button, as an album has beside its MB release
+       (#938): it opens the finder below the panel. Opening it writes
+       nothing, so it's a link to this page with the finder open, swapped in
+       place so the page doesn't jump. The container's refresh attributes
+       aren't inherited (`hx-disinherit`), hence a full set here. #}
+    {% macro find_button(file_key) -%}
+    <a href="{{ artist_find_url(file_key) }}" hx-get="{{ artist_find_url(file_key) }}"
+       hx-target="#artist-detail" hx-select="#artist-detail" hx-swap="outerHTML" hx-push-url="true"
+       title="Change the MusicBrainz artist, or fill this NFO in from it again"
+       aria-label="Change the MusicBrainz artist, or fill this NFO in from it again"
+       class="inline-flex items-center justify-center w-5 h-5 rounded-full align-middle text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">{% include 'partials/_pencil.html' %}</a>
+    {%- endmacro %}
+
     {# Laid out as an album's panel (#938): the name in a shaded bar, then the
        picture beside what identifies the artist, with the file's date at the
        top right. Only identity here; what the NFO says about the artist is
@@ -39,7 +52,8 @@
                 <dt>MB artist</dt>
                 <dd><a href="https://musicbrainz.org/artist/{{ artist.mbid }}" target="_blank" rel="noopener noreferrer"
                        title="View this artist on MusicBrainz · {{ artist.mbid }}"
-                       class="font-semibold text-mb-purple hover:underline break-words">{{ release_name(artist_musicbrainz.name, artist_musicbrainz.disambiguation) if artist_musicbrainz else artist.mbid }} <span class="text-xs" aria-hidden="true">↗</span></a></dd>
+                       class="font-semibold text-mb-purple hover:underline break-words">{{ release_name(artist_musicbrainz.name, artist_musicbrainz.disambiguation) if artist_musicbrainz else artist.mbid }} <span class="text-xs" aria-hidden="true">↗</span></a>
+                    {% if nfo.profile and nfo.profile.mbid %}{{ find_button(nfo_files[0][0]) }}{% endif %}</dd>
                 {% endif %}
                 {% if nfo.profile %}
                 <dt>Path</dt><dd class="break-words"><span title="{{ nfo.profile.path }}">{{ rel_path(nfo.profile.path, cfg.paths.music_dir) }}</span></dd>
@@ -55,22 +69,13 @@
                 </dl>
                 {% endif %}
                 </div>
-                {# An identified file keeps its finder folded here, beside what
-                   it would change. One that isn't identified has it open in a
-                   section of its own below, as a new album has its release
-                   search. #}
-                {% if nfo.profile and nfo.profile.mbid %}
-                {% with file_key = nfo_files[0][0], profile = nfo.profile, hints = nfo_hints[nfo.profile.path] %}{% include 'partials/_artist_identify.html' %}{% endwith %}
-                {% endif %}
                 {% if nfo.candidates | length > 1 %}
                 {# Each file is identified on its own: the two can both be right, and
-                   which one a write goes to is the user's choice, never a guess. #}
-                <ul aria-label="Conflicting NFO files" class="space-y-2">
+                   which one a write goes to is the user's choice, never a guess.
+                   So each has its own edit button, not the MB artist row. #}
+                <ul aria-label="Conflicting NFO files" class="space-y-1">
                     {% for file_key, profile in nfo_files %}
-                    <li class="space-y-1">
-                        <span class="block text-xs text-muted break-words" title="{{ profile.path }}">{{ rel_path(profile.path, cfg.paths.music_dir) }}</span>
-                        {% with hints = nfo_hints[profile.path] %}{% include 'partials/_artist_identify.html' %}{% endwith %}
-                    </li>
+                    <li class="text-xs text-muted break-words"><span title="{{ profile.path }}">{{ rel_path(profile.path, cfg.paths.music_dir) }}</span> {{ find_button(file_key) }}</li>
                     {% endfor %}
                 </ul>
                 {% endif %}
@@ -78,11 +83,28 @@
         </div>
     </section>
 
-    {% if nfo.profile and not nfo.profile.mbid %}
+    {# The finder for one NFO, as an album's release search is a section under
+       its panel. A file that isn't identified always has it. An identified
+       one has it once its edit button asks, for an artist that turns out
+       wrong or a file to fill in from MusicBrainz again; Cancel puts it away,
+       and so does a write. #}
+    {% if artist_finding %}
+    {% with file_key = artist_finding[0], profile = artist_finding[1], hints = nfo_hints[artist_finding[1].path] %}
     <section id="artist-find" class="border border-line rounded-lg p-4 space-y-3">
-        <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Find this artist</h2>
-        {% with file_key = nfo_files[0][0], profile = nfo.profile, hints = nfo_hints[nfo.profile.path] %}{% include 'partials/_artist_identify.html' %}{% endwith %}
+        <div class="flex items-center justify-between gap-3">
+            <h2 class="text-sm font-bold text-ink uppercase tracking-widest">Find this artist</h2>
+            {% if profile.mbid %}
+            <a href="{{ artist_find_close_url }}" hx-get="{{ artist_find_close_url }}"
+               hx-target="#artist-detail" hx-select="#artist-detail" hx-swap="outerHTML" hx-push-url="true"
+               class="px-3 py-1.5 bg-white hover:bg-surface text-ink border border-line rounded text-xs font-bold uppercase tracking-widest transition">Cancel</a>
+            {% endif %}
+        </div>
+        {% if nfo_files | length > 1 %}
+        <p class="text-xs text-muted break-words" title="{{ profile.path }}">{{ rel_path(profile.path, cfg.paths.music_dir) }}</p>
+        {% endif %}
+        {% include 'partials/_artist_find.html' %}
     </section>
+    {% endwith %}
     {% endif %}
 
     {# Everything else the NFO says about the artist, as the file gives it:

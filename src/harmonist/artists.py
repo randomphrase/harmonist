@@ -463,7 +463,10 @@ def detail_url(
     artist_albums: str | None = None,
     artist_new: bool = False,
     artist_view: str | None = None,
+    find: str | None = None,
 ) -> str:
+    """An artist's page, in the list it was opened from. `find` names the NFO
+    whose finder is open there (#938)."""
     params = {"page": str(page), "artist_page": str(artist_page), "artist_q": artist_q}
     if artist_nfo:
         params["artist_nfo"] = artist_nfo
@@ -475,6 +478,8 @@ def detail_url(
         params["artist_new"] = "true"
     if artist_view is not None and artist_view in VIEWS:
         params["artist_view"] = artist_view
+    if find:
+        params["find"] = find
     return f"/artist/{key}?{urlencode(params)}"
 
 

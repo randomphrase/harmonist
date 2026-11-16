@@ -99,19 +99,63 @@ def test_the_page_finds_by_name_for_an_unidentified_nfo(identify):
     # An empty file has no name, so the folder's stands in, as on the list.
     name = search.select_one('input[name="name"]')
     assert name is not None and name["value"] == "Carol"
-    assert page.select_one(f"details#artist-identify-{key}") is None
+    # Always open, so there's nothing to cancel: the file has no artist to
+    # go back to.
+    assert one(page, "#artist-find").find("a", string="Cancel") is None
 
 
-def test_an_identified_nfo_folds_its_finder_under_identify_again(identify):
-    """Its own ID is in the MBID field, ready to fill in what the file lacks."""
+EDIT = '#artist-identity a[aria-label^="Change the MusicBrainz artist"]'
+
+
+def one(node, selector):
+    """The element a selector names, which has to be there."""
+    found = node.select_one(selector)
+    assert found is not None, selector
+    return found
+
+
+def test_an_identified_nfos_edit_button_opens_its_finder(identify):
+    """As an album's edit button opens its release search (#938). Its own ID is
+    in the MBID field, ready to fill in what the file lacks."""
     client, _path, _key, _lookup = identify
-    page = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
-    folded = page.select_one("details[id^=artist-identify-]")
-    assert folded is not None
-    checked = folded.select_one('input[type="radio"][checked]')
-    assert checked is not None and checked["value"] == "mbid"
-    pasted = folded.select_one('input[name="artist"]')
-    assert pasted is not None and pasted["value"] == ALICE
+    closed = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
+    assert closed.select_one("#artist-find") is None
+    edit = one(closed, EDIT)
+    assert edit["href"] == edit["hx-get"]
+
+    page = BeautifulSoup(client.get(edit["href"]).text, "html.parser")
+    finder = one(page, "#artist-find")
+    assert finder.h2.get_text(strip=True) == "Find this artist"
+    assert one(finder, 'input[type="radio"][checked]')["value"] == "mbid"
+    assert one(finder, 'input[name="artist"]')["value"] == ALICE
+    # Nothing was written to open it, so the address is what keeps it open
+    # through the page's own redraws, and Cancel is the address without it.
+    assert one(page, "#artist-detail")["hx-get"] == edit["href"]
+    cancel = finder.find("a", string="Cancel")
+    assert cancel is not None
+    assert cancel["href"] == one(closed, "#artist-detail")["hx-get"]
+
+
+def test_a_find_that_names_no_file_here_opens_nothing(identify):
+    client, _path, key, _lookup = identify
+    page = BeautifulSoup(client.get(f"/artist/{ALICE}", params={"find": key}).text, "html.parser")
+    assert page.select_one("#artist-find") is None
+    assert "find=" not in one(page, "#artist-detail")["hx-get"]
+
+
+def test_a_write_from_an_opened_finder_closes_it(identify):
+    """As an album's release search goes once a release is confirmed."""
+    client, _path, _key, _lookup = identify
+    edit = one(BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser"), EDIT)
+    file_key = edit["href"].split("find=")[1]
+    response = client.post(
+        f"/artist/{ALICE}/identify",
+        data={"file": file_key, "artist": CAROL},
+        headers={"HX-Current-URL": f"http://testserver{edit['href']}"},
+    )
+    assert response.headers["HX-Redirect"].startswith(f"/artist/{CAROL}?")
+    assert "artist_page=1" in response.headers["HX-Redirect"]
+    assert "find=" not in response.headers["HX-Redirect"]
 
 
 def test_a_name_search_lists_artists_each_with_identify(identify, monkeypatch):

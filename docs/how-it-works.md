@@ -112,9 +112,10 @@ release. Each artist found is listed with a link to
 MusicBrainz for everything not shown. **Identify** writes the artist ID, name, sort
 name, type, gender, disambiguation and dates (`born` and `died` for a person,
 `formed` and `disbanded` for a group), and nothing else in the file. A field
-MusicBrainz has no value for is removed. An identified NFO has the same under
-**Identify again**, with its own ID already filled in, which fills in what the
-file lacks. Where an artist has two NFOs, each is identified on its own.
+MusicBrainz has no value for is removed. An identified NFO has the same finder
+behind the edit button beside its MusicBrainz artist, with its own ID already
+filled in: for an artist that turns out to be the wrong one, or to fill in what
+the file lacks. Where an artist has two NFOs, each is identified on its own.
 Harmonist only fills in files that exist: an empty `artist.nfo` is how to ask
 for an artist to be filled in. Each write is listed in the artist's
 **History**, field by field, with **Undo NFO changes**.

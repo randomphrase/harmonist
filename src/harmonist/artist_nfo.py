@@ -36,21 +36,23 @@ _BOMS = (
     codecs.BOM_UTF16_BE,
 )
 _IMAGES = {".jpg", ".jpeg", ".png", ".webp"}
-# The dates a file gives, as the pair each begins and ends: a person's, then a
-# group's. Kodi's scraper writes one pair or the other by the artist's type.
-_SPANS = (("Born", "Died"), ("Formed", "Disbanded"))
+# The dates a file gives, as the pair each begins and ends and what the two
+# together are called: a person's, then a group's. Kodi's scraper writes one
+# pair or the other by the artist's type.
+_SPANS = (("Born", "Died", "Lived"), ("Formed", "Disbanded", "Active"))
 
 
 class NfoError(ValueError):
     """Metadata exists but could not be read safely; distinct from absence."""
 
 
-def _span(said: dict[str, str], begin: str, end: str) -> tuple[str, str]:
-    """A pair of dates as one row: "1999 – 2004" under the first's label, or
-    whichever one the file gives under its own."""
+def _span(said: dict[str, str], begin: str, end: str, both: str) -> tuple[str, str]:
+    """A pair of dates as one row: "1999 – 2004" under the name for the span,
+    since neither date's own label covers the other, or whichever one the
+    file gives under its own."""
     began, ended = said.get(begin, ""), said.get(end, "")
     if began and ended:
-        return begin, f"{began} – {ended}"
+        return both, f"{began} – {ended}"
     return (begin, began) if began else (end, ended)
 
 
@@ -104,7 +106,7 @@ class Profile:
         and the years active are listed only where they say more than those
         dates do: a second spell, or an end the file gives no date for."""
         said = dict(self.facts)
-        spans = [_span(said, begin, end) for begin, end in _SPANS]
+        spans = [_span(said, begin, end, both) for begin, end, both in _SPANS]
         rows = [
             ("Sort name", self.sort_name),
             *((label, said.get(label, "")) for label in ("Disambiguation", "Type", "Gender")),

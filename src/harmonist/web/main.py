@@ -4958,6 +4958,7 @@ def _register_routes(app: FastAPI) -> None:
         artist_albums: str | None = None,
         artist_new: bool = False,
         artist_view: str | None = None,
+        find: str | None = None,
     ) -> Response:
         inventory = _nfo_inventory(request)
         listed = _artist_index(request, inventory)
@@ -4979,6 +4980,19 @@ def _register_routes(app: FastAPI) -> None:
         result = inventory.for_artist(artist.key)
         image = inventory.image_for(artist.key)
         artist = replace(artist, nfo_paths=result.candidates, artwork_path=image)
+        # Each readable NFO on the page, by the handle a request names it with.
+        files = [
+            (id_registry.get_or_mint(profile.path), profile)
+            for profile in inventory.by_key.get(artist.key, ())
+        ]
+        # The NFO whose finder is open (#938). One that isn't identified always
+        # has it, as a new album has its release search. An identified one has
+        # it once its edit button asks, in `find`. An album's edit button
+        # un-matches the album; doing that to an NFO would write the file just
+        # to look, so the address keeps "open" instead, through a reload and
+        # the page's own redraws. A `find` naming no file here opens nothing.
+        finding = next(((k, p) for k, p in files if p.mbid is None or k == find), None)
+        opened = finding[0] if finding and finding[1].mbid else None
         grid = _library_page_vars(list(artist.albums), page, _library_limit(request, None))
         layout = _artists_layout(request, artist_view)
         # The same tiles retain the return context for this artist and album page.
@@ -4998,7 +5012,7 @@ def _register_routes(app: FastAPI) -> None:
         if artist_new:
             query["artist_new"] = "true"
 
-        def location(number: int) -> str:
+        def location(number: int, finder: str | None = opened) -> str:
             return artists.detail_url(
                 artist.key,
                 page=number,
@@ -5009,6 +5023,7 @@ def _register_routes(app: FastAPI) -> None:
                 artist_albums=artist_albums,
                 artist_new=artist_new,
                 artist_view=layout,
+                find=finder,
             )
 
         # What Harmonist wrote into this artist's NFOs, and the Undo for each
@@ -5034,13 +5049,13 @@ def _register_routes(app: FastAPI) -> None:
                 artist_musicbrainz=artists.musicbrainz_name(artist, mb_cache.stored_release),
                 artist_badges=artists.badges(artist),
                 nfo=result,
-                # Each readable NFO on the page, by the handle a request names
-                # it with, for its own Identify control.
-                nfo_files=[
-                    (id_registry.get_or_mint(profile.path), profile)
-                    for profile in inventory.by_key.get(artist.key, ())
-                ],
-                # And what its folder's albums offer, as on its Inbox card (#996).
+                nfo_files=files,
+                # The file being found, where an identified file's edit button
+                # leads, and where Cancel goes back to.
+                artist_finding=finding,
+                artist_find_url=lambda file_key: location(grid["page"], file_key),
+                artist_find_close_url=location(grid["page"], None),
+                # What each file's folder's albums offer, as on its Inbox card (#996).
                 nfo_hints=artists.folder_hints(
                     inventory.by_key.get(artist.key, ()),
                     [a for a in _albums(request) if a.state in _TERMINAL_STATES],
@@ -9643,9 +9658,12 @@ def _artist_written(
     response = _flash_response(verb, details, artist=(written.key, written.label))
     current = urlsplit(request.headers.get("HX-Current-URL", ""))
     if current.path != "/":
-        response.headers["HX-Redirect"] = f"/artist/{written.key}" + (
-            f"?{current.query}" if current.query else ""
+        # Without `find`: the finder that made the write closes, as an album's
+        # goes once its release is confirmed (#938).
+        query = urlencode(
+            [(k, v) for k, v in parse_qsl(current.query, keep_blank_values=True) if k != "find"]
         )
+        response.headers["HX-Redirect"] = f"/artist/{written.key}" + (f"?{query}" if query else "")
     return response
 
 

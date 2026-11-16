@@ -225,7 +225,7 @@ def test_the_panel_holds_identity_and_artist_info_holds_what_the_nfo_says(artist
     info = soup.select_one("#artist-info")
     assert _fields(info) == {
         "Sort name": "Local sort",
-        "Born": "1980 – 2016",
+        "Lived": "1980 – 2016",
         "Genres": "Rock",
         "Style": "Indie",
         "Mood": "Calm",
