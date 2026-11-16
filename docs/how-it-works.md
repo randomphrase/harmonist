@@ -202,8 +202,7 @@ marked "New".](images/library.png)
 |---|---|
 | **Origin** | came from Bandcamp, Qobuz, Amazon, Beatport or CD, or have an Unknown origin, using the same detection or explicit choice as the album page. |
 | **New** | were added to Harmonist within the last seven days, regardless of source, matching the New badge. |
-| **Incomplete** | are missing tracks or discs, based on the totals in their tags. Albums accepted with **Don't warn me about this** are left out. |
-| **Partially tagged** | have the matched release's MusicBrainz ID in some files but not others. |
+| **Structural gaps** | have files that don't line up with the release's tracklist. Gaps can be narrowed to **Incomplete** (missing tracks or discs, based on the totals in their tags; albums accepted with **Don't warn me about this** are left out), **Tracks unassigned** (a file not assigned to a track) or **Partially tagged** (a file without the release's MusicBrainz ID). |
 | **Artwork** | have no local artwork, tracks without embedded artwork, or different images across tracks. These are observations; different track images may be intentional. |
 | **Format** | contain a file of the selected codec, including mixed albums. **Mixed formats only** independently narrows to albums mixing codecs, such as one MP3 among FLACs; differing bitrates or sample rates alone do not make an album mixed. |
 | **Tag updates** | have tag changes waiting for review, including missing metadata and differences from MusicBrainz or the current tagging settings. Updates can be narrowed to **Structure**, **Identity**, **Enrichment**, **Cosmetic** or **Settings**; [keeping tags up to date](#keeping-tags-up-to-date) explains each. |

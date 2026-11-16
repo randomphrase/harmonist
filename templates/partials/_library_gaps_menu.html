@@ -1,0 +1,28 @@
+{# Structural gaps (#1009): the album's files and its release's tracklist don't
+   line up. The roll-up is the filter; the kinds beneath it, each worded as its
+   tile badge is, are mostly there to say what a structural gap is. Inert as a
+   whole when there are none, as the update menus are. #}
+{% from 'partials/_library_filter_controls.html' import choice, unrestricted, chevron %}
+{% set selected = gap_filters | selectattr('active') | first %}
+{% set rollup = gap_filters | first %}
+<button type="button" id="library-gaps-button" popovertarget="library-gaps-menu"
+        class="library-update-button {{ chip_on if selected else chip_off }}"
+        {% if not rollup.count and not selected %}disabled{% endif %}>
+    <span>Structural gaps{% if selected and selected.slug != rollup.slug %}: {{ selected.label }}{% endif %}</span>
+    <span class="font-normal tabular-nums">{{ selected.count if selected else rollup.count }}</span>
+    {{ chevron() }}
+</button>
+<nav id="library-gaps-menu" popover aria-label="Structural gap filters" class="library-update-menu"
+     onbeforetoggle="if (event.newState === 'open') {
+         const box = document.getElementById('library-gaps-button').getBoundingClientRect();
+         this.style.left = Math.max(8, Math.min(box.left, innerWidth - 232)) + 'px';
+         this.style.top = (box.bottom + 4) + 'px';
+         this.style.maxHeight = Math.max(80, innerHeight - box.bottom - 12) + 'px';
+     }">
+    {{ unrestricted('Any structure status', selected, clear_facets.gaps, limit, q) }}
+    <hr class="library-update-divider">
+    {% for option in gap_filters %}
+    {{ choice(option, limit, q, 'All gaps' if loop.first else none) }}
+    {% if loop.first %}<hr class="library-update-divider">{% endif %}
+    {% endfor %}
+</nav>

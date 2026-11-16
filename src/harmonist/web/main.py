@@ -214,13 +214,13 @@ _INDEX_TABS = ("inbox", "library", "activity")
 #
 # The control includes maintenance filters and browsing by Origin.
 #
-# *What is broken?* — the first four, which pick out albums that are terminal but
-# wrong. That is the Library's original problem: it is where a defect goes to be
-# forgotten. INCOMPLETE at least has a tile badge; a partially tagged album derives
-# COMPLETE (`_files_tagged_with` is an `any()`) and shows nothing but a 10-pixel
-# "8/10 tagged" line, and a coverless album shows nothing at all. Neither is
-# findable at library scale, and a mixed-codec album (#316) shows nothing either —
-# its one MP3 among the M4As is named on the album's own page and nowhere else.
+# *What is broken?* — the defect filters, which pick out albums that are terminal
+# but wrong. That is the Library's original problem: it is where a defect goes to
+# be forgotten. An album with a structural gap may derive COMPLETE and show only a
+# small tile badge, a coverless album shows nothing at all, and a mixed-codec album
+# (#316) shows nothing either — its one MP3 among the M4As is named on the album's
+# own page and nowhere else. None of them is findable at library scale without a
+# filter.
 #
 # The mixed-format filter asks about the *codec disagreement*, not about the codec.
 # Which formats a library holds is a separate question from this defect filter.
@@ -247,12 +247,49 @@ def _is_actionable_incomplete(a: Album) -> bool:
     The filter answers "what is wrong that I could fix?", so an album whose
     missing tracks are known to be unobtainable does not belong in it — the
     Pink Floyd Blu-ray where only the stereo mixes were ever ripped is not a
-    defect, it is a decision. The album is still INCOMPLETE and still says so on
-    its tile; it simply stops presenting itself as work.
+    defect, it is a decision. The album is still INCOMPLETE and its page still
+    says so; it simply stops presenting itself as work. Only completeness can be
+    muted (#720), so the same album with an unassigned file stays a gap.
     """
     return a.state == AlbumState.INCOMPLETE and not (
         a.sidecar is not None and a.sidecar.tracks_unavailable
     )
+
+
+def _has_unassigned_file(a: Album) -> bool:
+    return a.unassigned_track_count > 0
+
+
+def _is_partially_tagged(a: Album) -> bool:
+    return a.partial_tag_count is not None
+
+
+# Structural gaps (#1009), slug → (label, predicate). Three findings under one
+# menu, because they are one concern seen from either side — the album's files
+# and its release's tracklist don't line up: a track with no file (INCOMPLETE), a
+# file carrying the release's ID but no track's (unassigned), and a file without
+# the release's ID at all (partially tagged). The last two derive COMPLETE
+# (`_files_tagged_with` is an `any()`), so nothing else finds them.
+#
+# The roll-up is the filter; the kinds beneath it are mostly there to say what a
+# structural gap is. Each is labelled as the tile's badge for it is, and together
+# they are the albums the tile's lower-left warning badges mark.
+_STRUCTURAL_GAPS: dict[str, tuple[str, Callable[[Album], bool]]] = {
+    "incomplete": ("Incomplete", _is_actionable_incomplete),
+    "unassigned": ("Tracks unassigned", _has_unassigned_file),
+    "partial": ("Partially tagged", _is_partially_tagged),
+}
+
+
+def _has_structural_gap(a: Album) -> bool:
+    return any(found(a) for _, found in _STRUCTURAL_GAPS.values())
+
+
+# The menu's options, the roll-up first.
+_LIBRARY_GAPS = {
+    "structural-gaps": ("Structural gaps", _has_structural_gap),
+    **_STRUCTURAL_GAPS,
+}
 
 
 # URL slugs are explicit; the order puts the widest-reaching updates first, by
@@ -311,6 +348,8 @@ def _library_facet(slug: str) -> str:
         return "artwork"
     if slug in _LIBRARY_ARTWORK_UPDATES:
         return "artwork_updates"
+    if slug in _LIBRARY_GAPS:
+        return "gaps"
     return slug
 
 
@@ -356,8 +395,7 @@ def _library_filters(
     return {
         **{slug: (origin.value, from_origin(origin)) for slug, origin in _LIBRARY_ORIGINS.items()},
         "new": ("New", is_new),
-        "incomplete": ("Incomplete", _is_actionable_incomplete),
-        "partial": ("Partially tagged", lambda a: a.partial_tag_count is not None),
+        **_LIBRARY_GAPS,
         "no-artwork": (
             "No artwork",
             lambda a: a.artwork_local is not None and a.artwork_local.missing,
@@ -1967,7 +2005,7 @@ def _library_page_vars(
         )
     clear_facets = {
         facet: encode(without(facet))
-        for facet in ("origin", "codec", "updates", "artwork", "artwork_updates")
+        for facet in ("origin", "codec", "updates", "artwork", "artwork_updates", "gaps")
     }
     shown = matching(selected)
     done = [album for i, album in enumerate(done) if i in shown]
@@ -2030,10 +2068,12 @@ def _library_page_vars(
             and f["slug"] not in _LIBRARY_ORIGINS
             and f["slug"] not in _LIBRARY_CODECS
             and f["slug"] not in _LIBRARY_ARTWORK_UPDATES
-            # The artwork menu stands where No artwork would; its other options
-            # live only inside it.
+            # The artwork menu stands where No artwork would, and the gaps menu
+            # where its roll-up would; their other options live only inside them.
             and (f["slug"] not in _LIBRARY_ARTWORK or f["slug"] == "no-artwork")
+            and (f["slug"] not in _LIBRARY_GAPS or f["slug"] == "structural-gaps")
         ],
+        "gap_filters": [f for f in filters if f["slug"] in _LIBRARY_GAPS],
         "origin_filters": [f for f in filters if f["slug"] in _LIBRARY_ORIGINS],
         "codec_filters": [f for f in filters if f["slug"] in _LIBRARY_CODECS],
         "update_filters": [

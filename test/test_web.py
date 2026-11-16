@@ -2490,6 +2490,26 @@ def _make_partially_tagged_album(cfg, name, *, mbid, tagged_at) -> Path:
     return d
 
 
+def _make_unassigned_album(cfg, name, *, mbid, tagged_at) -> Path:
+    """A one-track release, paired, and a second file left unassigned.
+
+    The leftover carries the release's ID and no track's, which is what a
+    reviewed confirmation leaves when the user has a track MusicBrainz doesn't
+    (#1004). Every track is paired, so this derives **COMPLETE**, and only the
+    tile's "Tracks unassigned" badge says otherwise.
+    """
+    from test.helpers import write_track_totals
+
+    d = _make_tagged_album(cfg, name, mbid=mbid, tagged_at=tagged_at)
+    leftover = d / "02 Track.m4a"
+    shutil.copy(SINE_M4A, leftover)
+    audio = MP4(leftover)
+    audio[ATOM_MB_ALBUM_ID] = [mbid.encode()]
+    audio.save()
+    write_track_totals(d, track_total=1)
+    return d
+
+
 def _make_mixed_format_album(cfg, name, *, mbid, tagged_at) -> Path:
     """A tagged M4A album with one MP3 track mixed in (#316).
 
@@ -2523,33 +2543,87 @@ def _give_cover(album_dir: Path) -> Path:
     return album_dir
 
 
-def test_library_filter_narrows_the_grid_to_incomplete_albums(client, cfg):
-    from datetime import datetime
+def _one_of_each_gap(cfg) -> dict[str, Path]:
+    """A finished album, and one album for each kind of structural gap (#1009).
 
-    base = datetime.now(UTC)
-    _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=base)
-    _make_incomplete_album(cfg, "Short", mbid="rel-short", tagged_at=base)
-    body = client.get("/library?filter=incomplete").text
-    assert "Short" in body
-    assert "Whole" not in body
-
-
-def test_library_filter_finds_partially_tagged_albums(client, cfg):
-    """The filter that earns its place: these albums are COMPLETE, so nothing but
-    a 10-pixel "1/2 tagged" line distinguishes them from a finished one."""
+    A track with no file, a file with no track, and a file with no release. The
+    last two derive COMPLETE, so nothing but a small tile badge distinguishes
+    them from the finished one.
+    """
     from datetime import datetime
 
     from harmonist import scanner
 
     base = datetime.now(UTC)
-    _make_tagged_album(cfg, "Clean", mbid="rel-clean", tagged_at=base)
-    d = _make_partially_tagged_album(cfg, "Half", mbid="rel-half", tagged_at=base)
-    # Precondition: the album really is terminal, or the filter is picking over
-    # the inbox's population rather than the Library's.
-    assert next(a.state for a in scanner.scan(cfg.paths.music_dir) if a.path == d) == "complete"
-    body = client.get("/library?filter=partial").text
-    assert "Half" in body
-    assert "Clean" not in body
+    albums = {
+        "Whole": _make_tagged_album(cfg, "Whole", mbid="rel-whole", tagged_at=base),
+        "Short": _make_incomplete_album(cfg, "Short", mbid="rel-short", tagged_at=base),
+        "Leftover": _make_unassigned_album(cfg, "Leftover", mbid="rel-left", tagged_at=base),
+        "Half": _make_partially_tagged_album(cfg, "Half", mbid="rel-half", tagged_at=base),
+    }
+    # Preconditions: both are terminal, and complete, or completeness alone
+    # would be finding them.
+    scanned = {a.path: a for a in scanner.scan(cfg.paths.music_dir)}
+    leftover, half = scanned[albums["Leftover"]], scanned[albums["Half"]]
+    assert (leftover.state, leftover.unassigned_track_count) == ("complete", 1)
+    assert (half.state, half.partial_tag_count) == ("complete", (1, 2))
+    return albums
+
+
+@pytest.mark.parametrize(
+    ("slug", "listed"),
+    [
+        ("structural-gaps", {"Short", "Leftover", "Half"}),
+        ("incomplete", {"Short"}),
+        ("unassigned", {"Leftover"}),
+        ("partial", {"Half"}),
+    ],
+)
+def test_structural_gaps_lists_every_kind_and_each_alone(client, cfg, slug, listed):
+    albums = _one_of_each_gap(cfg)
+
+    body = client.get(f"/library?filter={slug}").text
+
+    assert {name for name in albums if name in body} == listed
+
+
+def test_structural_gaps_menu_names_each_kind_with_its_count(client, cfg):
+    """The menu is what says what a structural gap is: the three kinds, beside
+    the badge words each album carries, under the roll-up of all of them."""
+    from bs4 import BeautifulSoup
+
+    _one_of_each_gap(cfg)
+
+    page = BeautifulSoup(client.get("/library").text, "html.parser")
+
+    button = page.select_one("#library-gaps-button")
+    assert button is not None
+    assert button.get_text(" ", strip=True) == "Structural gaps 3"
+    menu = page.select_one("#library-gaps-menu")
+    assert menu is not None
+    options = [
+        (o.select_one(".library-update-label").get_text(strip=True), o.get_text(" ", strip=True))
+        for o in menu.select(".library-update-option")
+    ]
+    assert options == [
+        ("Any structure status", "Any structure status ✓"),
+        ("All gaps", "All gaps 3"),
+        ("Incomplete", "Incomplete 1"),
+        ("Tracks unassigned", "Tracks unassigned 1"),
+        ("Partially tagged", "Partially tagged 1"),
+    ]
+
+
+def test_structural_gaps_button_names_the_kind_chosen(client, cfg):
+    from bs4 import BeautifulSoup
+
+    _one_of_each_gap(cfg)
+
+    page = BeautifulSoup(client.get("/library?filter=unassigned").text, "html.parser")
+
+    button = page.select_one("#library-gaps-button")
+    assert button is not None
+    assert button.get_text(" ", strip=True) == "Structural gaps: Tracks unassigned 1"
 
 
 def test_library_filter_finds_albums_with_no_artwork(client, cfg):
@@ -2596,7 +2670,7 @@ def test_library_filter_counts_come_from_the_whole_library_not_the_page(client, 
         )
     body = client.get("/library?limit=2").text
     assert body.count('id="lib-') == 2  # page 1 holds two albums
-    assert re.search(r"Incomplete\s*<span[^>]*>5</span>", body)  # all five, not the two shown
+    assert re.search(r"Structural gaps</span>\s*<span[^>]*>5</span>", body)  # all five, not two
 
 
 def test_library_total_done_ignores_the_filter(client, cfg):
@@ -2677,7 +2751,12 @@ def test_library_filter_offering_nothing_is_inert_rather_than_a_link(client, cfg
     body = client.get("/library").text
     assert "filter=incomplete" not in body  # nothing incomplete → no link to it
     assert 'aria-disabled="true"' in body
-    assert "Incomplete" in body  # still named, still counted
+    # A menu with nothing in it is inert as a whole, still named and counted.
+    from bs4 import BeautifulSoup
+
+    gaps = BeautifulSoup(body, "html.parser").select_one("#library-gaps-button")
+    assert gaps is not None and gaps.has_attr("disabled")
+    assert gaps.get_text(" ", strip=True) == "Structural gaps 0"
 
 
 def test_library_filter_matching_nothing_says_so_and_offers_the_way_back(client, cfg):
@@ -9187,6 +9266,22 @@ def test_accepting_an_incomplete_album_takes_it_out_of_the_filter(client, cfg):
     assert r.status_code == 200
     assert sc.read(d).tracks_unavailable is True
     assert "Blu" not in client.get("/library?filter=incomplete").text
+
+
+def test_accepting_an_incomplete_album_leaves_its_unassigned_files_listed(client, cfg):
+    """Only completeness can be muted (#720). The album's unassigned file is a
+    different finding, still badged on its tile, so Structural gaps keeps it."""
+    from test.helpers import write_track_totals
+
+    d = _make_unassigned_album(cfg, "Blu", mbid="rel-blu", tagged_at=datetime.now(UTC))
+    write_track_totals(d, track_total=3)  # short of a third track, as well
+
+    _accept(client, _id_for(cfg, d))
+
+    assert sc.read(d).tracks_unavailable is True
+    assert "Blu" not in client.get("/library?filter=incomplete").text
+    assert "Blu" in client.get("/library?filter=unassigned").text
+    assert "Blu" in client.get("/library?filter=structural-gaps").text
 
 
 def test_an_accepted_album_stays_incomplete_and_still_says_so(client, cfg):

@@ -18,6 +18,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **The Library's Structural gaps menu** gathers Incomplete and Partially tagged,
+  and adds **Tracks unassigned** (#1009).
 - **The track assignment editor's buttons say whether they write**: **Done**
   within a release's review, **Apply assignments** on an album (#1005).
 - **A file left unassigned takes the release's album-level tags**, so players

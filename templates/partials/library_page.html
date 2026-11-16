@@ -141,6 +141,8 @@
     {% with update_title='Artwork', update_key='artwork-update', update_choices=artwork_update_filters, update_active=artwork_update_filter_active, update_clear=clear_facets.artwork_updates %}
     {% include 'partials/_library_update_menu.html' %}
     {% endwith %}
+    {% elif f.slug == 'structural-gaps' %}
+    {% include 'partials/_library_gaps_menu.html' %}
     {% elif f.slug == 'no-artwork' %}
     {% include 'partials/_library_artwork_menu.html' %}
     {% elif f.slug == 'mixed-format' %}

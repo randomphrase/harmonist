@@ -43,8 +43,9 @@ There are still worthwhile fixture gaps, none required for the three main clips:
   demonstrate **Title + release disambiguation if needed** changing real tags.
   A release available in search or the artwork picker is not an owned copy.
 - **Artwork breadth and library hygiene:** archive listings currently offer one
-  front per source, not a front/back/booklet set. No artwork, Mixed formats and
-  Partially tagged have no positive examples in the public starting library.
+  front per source, not a front/back/booklet set. No artwork, Mixed formats,
+  Tracks unassigned and Partially tagged have no positive examples in the public
+  starting library.
   Dingoes has one missing embedded cover, not an album with no artwork at all.
 - **Presentation realism:** one-second tracks and repeated Demo Records metadata
   make the sandbox obvious. Avoid dwelling on durations in a promotional clip.
@@ -101,7 +102,7 @@ Before each clip:
 | Max downloads per sync | 5 |
 
 An untouched established demo starts with **Inbox 3**, **Library 9** and
-**Incomplete 1**. Update and mismatch filters fill as albums are checked;
+**Structural gaps 1**. Update and mismatch filters fill as albums are checked;
 zero immediately after a reset does not mean the demo has no examples. Don't
 script fixed update counts after rehearsal. Wyld Stallion remains in Needs
 Linking until sync, so it isn't a Library Settings-filter example before then.
@@ -221,7 +222,8 @@ cover from this confirmation. Reset before using the original pressing again.
 
 ### Resolve a structural change (about 45 seconds)
 
-Reset and choose **Incomplete → Fever Dog**. Show “3 of 4 tracks on disk”, then
+Reset, open **Structural gaps**, choose **Incomplete** and open **Fever Dog**.
+Show “3 of 4 tracks on disk”, then
 the **Structure** finding. The track-assignment editor opens automatically once
 the comparison loads; **Review assignments** returns to it if needed. Keep the
 three known pairings, expand **Tag changes**, then press **Apply assignments**
