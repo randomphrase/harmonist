@@ -122,10 +122,10 @@ def test_artist_page_shows_nfo_facts_and_title(artist_client):
     assert soup.title is not None and "Alice" in soup.title.get_text()
     panel = soup.select_one("#artist-identity")
     assert panel is not None
-    additional = soup.select_one('[aria-labelledby="artist-additional-heading"]')
-    assert "singer" in additional.get_text()
-    assert "Rock" in panel.get_text()
-    assert "Alice NFO" in panel.get_text()
+    info = soup.select_one("#artist-info").get_text()
+    assert "singer" in info
+    assert "Rock" in info
+    assert "Alice NFO" in info
     assert "artist.nfo" in panel.get_text()
     assert panel.select_one(f'a[href="https://musicbrainz.org/artist/{ALICE}"]') is not None
     network.assert_not_called()
@@ -173,13 +173,20 @@ def test_artist_identity_names_the_nfo_and_musicbrainz_separately_without_networ
     assert mb_disambiguation is not None
     assert "text-muted" in mb_disambiguation["class"]
     assert "wrong artist" not in panel.get_text()
-    additional = soup.select_one('[aria-labelledby="artist-additional-heading"]')
-    assert "local singer" in additional.get_text()
+    assert "local singer" in soup.select_one("#artist-info").get_text()
     assert (nfo.read_bytes(), nfo.stat().st_mtime_ns) == before
     network.assert_not_called()
 
 
-def test_artist_nfo_facts_dates_and_sections_stay_grouped(artist_client):
+def _fields(section):
+    """A section's label/value rows, keyed in the order the page lists them."""
+    return {
+        dt.get_text(): dt.find_next_sibling("dd").get_text(" ", strip=True)
+        for dt in section.select(".album-identity__fields dt")
+    }
+
+
+def test_the_panel_holds_identity_and_artist_info_holds_what_the_nfo_says(artist_client):
     client, cfg, network = artist_client
     tagged = make_album(
         cfg.paths.music_dir,
@@ -196,8 +203,7 @@ def test_artist_nfo_facts_dates_and_sections_stay_grouped(artist_client):
         nfo.read_text().replace(
             "</artist>",
             "<sortname>Local sort</sortname><genre>Rock</genre><style>Indie</style>"
-            "<mood>Calm</mood><instruments>Voice</instruments><album><title>Other album</title>"
-            "</album></artist>",
+            "<mood>Calm</mood><instruments>Voice</instruments><died>2016</died></artist>",
         )
     )
     stamp = datetime(2020, 1, 2, 3, 4, 5, tzinfo=UTC)
@@ -205,12 +211,10 @@ def test_artist_nfo_facts_dates_and_sections_stay_grouped(artist_client):
     response = client.get(f"/artist/{ALICE}")
     soup = BeautifulSoup(response.text, "html.parser")
     panel = soup.select_one("#artist-identity")
-    fields = {dt.get_text(): dt.find_next_sibling("dd") for dt in panel.select("dt")}
-    assert fields["Path"].get_text(strip=True) == "ArtistInfo/Different directory name/artist.nfo"
-    assert fields["Sort name"].get_text(strip=True) == "Local sort"
-    assert [dt.get_text() for dt in panel.select("dt")].count("Sort name") == 1
-    assert fields["Style"].get_text(strip=True) == "Indie"
-    assert fields["Mood"].get_text(strip=True) == "Calm"
+    assert _fields(panel) == {
+        "MB artist": f"{ALICE} ↗",
+        "Path": "ArtistInfo/Different directory name/artist.nfo",
+    }
     dates = panel.select_one(".album-identity__dates")
     assert dates.dt.get_text() == "Modified"
     modified = dates.dd
@@ -218,21 +222,23 @@ def test_artist_nfo_facts_dates_and_sections_stay_grouped(artist_client):
     assert modified["title"] == _local_stamp(stamp)
     assert modified.get_text() != modified["title"]
     assert response.context["nfo_modified"] == stamp
+    info = soup.select_one("#artist-info")
+    assert _fields(info) == {
+        "Sort name": "Local sort",
+        "Born": "1980 – 2016",
+        "Genres": "Rock",
+        "Style": "Indie",
+        "Mood": "Calm",
+        "Instruments": "Voice",
+    }
+    assert info.select_one("details#artist-biography summary").get_text(strip=True) == "Biography"
     names = [
         s.find(["h1", "h2"]).get_text(" ", strip=True)
-        for s in soup.select("#artist-detail > section, #artist-detail > details")
+        for s in soup.select("#artist-detail > section")
     ]
-    assert names[:-1] == [
-        "Alice",
-        "Biography",
-        "Additional information",
-        "Discography from NFO 1",
-        "Albums 3",
-    ]
+    assert names[:-1] == ["Alice", "Artist info", "Albums 3"]
     assert names[-1].startswith("History")
-    additional = soup.select_one('[aria-labelledby="artist-additional-heading"]')
-    assert additional.get_text(" ", strip=True) == "Additional information Instruments Voice"
-    for section in soup.select("#artist-detail > section, #artist-detail > details"):
+    for section in soup.select("#artist-detail > section"):
         assert "border" in section["class"]
     picture = nfo.with_name("artist.png")
     picture.write_bytes(b"local image")
@@ -249,6 +255,18 @@ def test_artist_identity_without_a_unique_nfo_name_keeps_tag_identity(artist_cli
         nfo.write_text(nfo.read_text().replace("<name>Alice</name>", ""))
     elif profile_state == "absent":
         nfo.unlink()
+        # A sort name in the tags of the album that names the artist: it is
+        # that album's credit, shown on the album, and no fact about the artist.
+        first = make_album(
+            cfg.paths.music_dir,
+            "Earlier credit",
+            "00000000-0000-4000-8000-000000000001",
+            ["Alice"],
+            [ALICE],
+        )
+        tags = MP4(first / "01.m4a")
+        tags["soaa"] = ["Tagged sort"]
+        tags.save()
     else:
         other = cfg.paths.music_dir / "Duplicate with áccents" / "artist.nfo"
         other.parent.mkdir()
@@ -265,8 +283,15 @@ def test_artist_identity_without_a_unique_nfo_name_keeps_tag_identity(artist_cli
             "Duplicate with áccents/artist.nfo",
         }
         assert panel.select_one('[role="alert"]') is not None
-    if profile_state != "nameless":
+    if profile_state == "nameless":
+        assert list(_fields(panel)) == ["MB artist", "Path"]
+        assert _fields(soup.select_one("#artist-info")) == {"Born": "1980"}
+    else:
+        # Nothing to read the artist's details from: one file, or none, has to
+        # be chosen first. What the tags hold is on each album's own page.
+        assert list(_fields(panel)) == ["MB artist"]
         assert panel.select_one(".album-identity__dates") is None
+        assert soup.select_one("#artist-info") is None
     network.assert_not_called()
 
 

@@ -36,18 +36,30 @@ _BOMS = (
     codecs.BOM_UTF16_BE,
 )
 _IMAGES = {".jpg", ".jpeg", ".png", ".webp"}
-_ADDITIONAL = {"Disambiguation", "Years active", "Style", "Mood", "Instruments"}
+# The dates a file gives, as the pair each begins and ends: a person's, then a
+# group's. Kodi's scraper writes one pair or the other by the artist's type.
+_SPANS = (("Born", "Died"), ("Formed", "Disbanded"))
 
 
 class NfoError(ValueError):
     """Metadata exists but could not be read safely; distinct from absence."""
 
 
-@dataclass(frozen=True)
-class DiscographyAlbum:
-    title: str
-    year: str
-    release_group_id: str | None
+def _span(said: dict[str, str], begin: str, end: str) -> tuple[str, str]:
+    """A pair of dates as one row: "1999 – 2004" under the first's label, or
+    whichever one the file gives under its own."""
+    began, ended = said.get(begin, ""), said.get(end, "")
+    if began and ended:
+        return begin, f"{began} – {ended}"
+    return (begin, began) if began else (end, ended)
+
+
+def _period(text: str) -> str:
+    """A span of years with its spacing, dashes and open end folded away, so
+    "2001–present" reads as the "2001" of a group formed then and not
+    disbanded, and "1999 - 2004" as "1999 – 2004"."""
+    folded = "".join(text.casefold().split()).replace("–", "-").replace("—", "-")
+    return folded.removesuffix("present").rstrip("-")
 
 
 @dataclass(frozen=True)
@@ -65,7 +77,6 @@ class Profile:
     image_path: Path | None = None
     image_stamp: tuple[int, ...] = ()
     genres: tuple[str, ...] = ()
-    discography: tuple[DiscographyAlbum, ...] = ()
     image_error: str = ""
     # Include missing preferred files and symlink entries. Canonical strings
     # keep the invalidation index compact even with many missing pictures.
@@ -80,12 +91,36 @@ class Profile:
         return self.mbid or id_registry.get_or_mint(self.path)
 
     @property
-    def main_facts(self) -> tuple[tuple[str, str], ...]:
-        return tuple((k, v) for k, v in self.facts if k not in _ADDITIONAL | {"Genre"})
+    def disambiguation(self) -> str:
+        return dict(self.facts).get("Disambiguation", "")
+
+    # The two columns of an artist page's Artist info (#938): who the artist
+    # is, then what they sound like, which `genres` leads. Grouped here, beside
+    # the reading of the fields, so no caller picks them out by their labels.
 
     @property
-    def additional_facts(self) -> tuple[tuple[str, str], ...]:
-        return tuple((k, v) for k, v in self.facts if k in _ADDITIONAL)
+    def about(self) -> tuple[tuple[str, str], ...]:
+        """Who the file says the artist is. Each pair of dates shares a row,
+        and the years active are listed only where they say more than those
+        dates do: a second spell, or an end the file gives no date for."""
+        said = dict(self.facts)
+        spans = [_span(said, begin, end) for begin, end in _SPANS]
+        rows = [
+            ("Sort name", self.sort_name),
+            *((label, said.get(label, "")) for label in ("Disambiguation", "Type", "Gender")),
+            *spans,
+        ]
+        active = said.get("Years active", "")
+        if _period(active) not in {_period(value) for _label, value in spans}:
+            rows.append(("Years active", active))
+        return tuple((label, value) for label, value in rows if value)
+
+    @property
+    def sound(self) -> tuple[tuple[str, str], ...]:
+        said = dict(self.facts)
+        return tuple(
+            (label, said[label]) for label in ("Style", "Mood", "Instruments") if label in said
+        )
 
 
 @dataclass(frozen=True)
@@ -241,17 +276,6 @@ def _read(path: Path, modified_ns: int, size: int, _ctime_ns: int, _inode: int) 
         next(iter(values("thumb")), ""),
         modified_ns,
         genres=values("genre"),
-        discography=tuple(
-            dict.fromkeys(
-                DiscographyAlbum(
-                    title,
-                    album.findtext("year", "").strip(),
-                    mbid(album.findtext("musicbrainzreleasegroupid", "")),
-                )
-                for album in root.findall("album")
-                if (title := album.findtext("title", "").strip())
-            )
-        ),
     )
 
 

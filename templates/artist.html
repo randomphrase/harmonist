@@ -13,7 +13,9 @@
     <a href="{{ artist_back_url }}" class="inline-block text-2xs text-muted hover:text-accent uppercase tracking-widest font-bold">← Back to artists</a>
 
     {# Laid out as an album's panel (#938): the name in a shaded bar, then the
-       picture beside the facts, with the file's date at the top right. #}
+       picture beside what identifies the artist, with the file's date at the
+       top right. Only identity here; what the NFO says about the artist is
+       the Artist info section below. #}
     <section id="artist-identity" class="overflow-hidden bg-surface border border-line rounded-lg" aria-label="Artist metadata">
         <div class="flex items-center justify-between gap-3 px-4 py-2.5 bg-line/50 border-b border-line">
             <h1 class="text-lg font-bold text-ink break-words min-w-0">{{ release_name(artist.name, artist.disambiguation) }}</h1>
@@ -41,20 +43,6 @@
                 {% endif %}
                 {% if nfo.profile %}
                 <dt>Path</dt><dd class="break-words"><span title="{{ nfo.profile.path }}">{{ rel_path(nfo.profile.path, cfg.paths.music_dir) }}</span></dd>
-                {% if nfo.profile.sort_name %}
-                <dt>Sort name</dt><dd class="break-words">{{ nfo.profile.sort_name }}</dd>
-                {% endif %}
-                {% for label, value in nfo.profile.main_facts %}
-                <dt>{{ label }}</dt><dd class="break-words">{{ value }}</dd>
-                {% endfor %}
-                {% if nfo.profile.genres %}
-                <dt>Genres</dt><dd><ul aria-label="Artist genres" class="flex flex-wrap gap-2">{% for genre in nfo.profile.genres %}<li class="px-2 py-1 rounded-full border border-line bg-surface text-xs font-semibold text-ink">{{ genre }}</li>{% endfor %}</ul></dd>
-                {% endif %}
-                {% for label, value in artist_grouped_facts %}
-                <dt>{{ label }}</dt><dd class="break-words">{{ value }}</dd>
-                {% endfor %}
-                {% elif artist.sort_name %}
-                <dt>Sort name</dt><dd class="break-words">{{ artist.sort_name }}</dd>
                 {% endif %}
                 </dl>
                 {% for error in nfo.errors %}
@@ -97,39 +85,47 @@
     </section>
     {% endif %}
 
-    {% if nfo.profile and nfo.profile.biography %}
-    <details id="artist-biography" class="hmt-group border border-line rounded-lg p-4">
-        <summary class="cursor-pointer text-sm font-bold text-ink uppercase tracking-widest"><h2 class="inline">Biography</h2></summary>
-        <p class="mt-3 text-sm text-ink whitespace-pre-line break-words">{{ nfo.profile.biography }}</p>
-    </details>
-    {% endif %}
+    {# Everything else the NFO says about the artist, as the file gives it:
+       who they are on the left, what they sound like on the right, and the
+       biography folded at the foot. Nothing here is compared with
+       MusicBrainz; the MB artist row above is where a difference shows.
 
-    {% if artist_additional_facts %}
-    <section aria-labelledby="artist-additional-heading" class="border border-line rounded-lg p-4 space-y-3">
-        <h2 id="artist-additional-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Additional information</h2>
-        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            {% for label, value in artist_additional_facts %}
-            <div><dt class="text-xs text-muted">{{ label }}</dt><dd class="text-ink break-words">{{ value }}</dd></div>
-            {% endfor %}
-        </dl>
+       The biography keeps its id and `hmt-group`: the page redraws itself,
+       and an open disclosure has to stay open. #}
+    {% with profile = nfo.profile %}
+    {% if profile and (profile.about or profile.genres or profile.sound or profile.biography) %}
+    <section id="artist-info" aria-labelledby="artist-info-heading" class="border border-line rounded-lg p-4 space-y-3">
+        <h2 id="artist-info-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Artist info</h2>
+        {% if profile.about or profile.genres or profile.sound %}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 items-start">
+            {% if profile.about %}
+            <dl class="album-identity__fields artist-info__fields">
+                {% for label, value in profile.about %}
+                <dt>{{ label }}</dt><dd class="break-words">{{ value }}</dd>
+                {% endfor %}
+            </dl>
+            {% endif %}
+            {% if profile.genres or profile.sound %}
+            <dl class="album-identity__fields artist-info__fields">
+                {% if profile.genres %}
+                <dt>Genres</dt><dd><ul aria-label="Artist genres" class="flex flex-wrap gap-2">{% for genre in profile.genres %}<li class="px-2 py-1 rounded-full border border-line bg-surface text-xs font-semibold text-ink">{{ genre }}</li>{% endfor %}</ul></dd>
+                {% endif %}
+                {% for label, value in profile.sound %}
+                <dt>{{ label }}</dt><dd class="break-words">{{ value }}</dd>
+                {% endfor %}
+            </dl>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if profile.biography %}
+        <details id="artist-biography" class="hmt-group">
+            <summary class="cursor-pointer text-2xs font-bold text-muted hover:text-ink uppercase tracking-widest">Biography</summary>
+            <p class="mt-2 text-sm text-ink whitespace-pre-line break-words">{{ profile.biography }}</p>
+        </details>
+        {% endif %}
     </section>
     {% endif %}
-
-    {% if nfo.profile and nfo.profile.discography %}
-    <details id="artist-discography" class="hmt-group border border-line rounded-lg p-4">
-        <summary class="cursor-pointer text-sm font-bold text-ink uppercase tracking-widest"><h2 class="inline">Discography from NFO <span class="font-normal text-muted normal-case tracking-normal">{{ nfo.profile.discography | length }}</span></h2></summary>
-        <ul aria-label="NFO discography" class="mt-3 divide-y divide-line text-sm">
-            {% for release in nfo.profile.discography %}
-            <li class="flex items-baseline justify-between gap-4 py-2">
-                {% if release.release_group_id %}
-                <a href="https://musicbrainz.org/release-group/{{ release.release_group_id }}" target="_blank" rel="noopener noreferrer" class="min-w-0 break-words text-mb-purple hover:underline">{{ release.title }} ↗</a>
-                {% else %}<span class="min-w-0 break-words text-ink">{{ release.title }}</span>{% endif %}
-                {% if release.year %}<span class="shrink-0 text-xs text-muted">{{ release.year }}</span>{% endif %}
-            </li>
-            {% endfor %}
-        </ul>
-    </details>
-    {% endif %}
+    {% endwith %}
 
     {% if artist.albums %}
     <section aria-labelledby="artist-albums-heading" class="border border-line rounded-lg p-4 space-y-3">

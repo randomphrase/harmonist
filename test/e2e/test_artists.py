@@ -168,30 +168,19 @@ def test_artist_nfo_sections_and_disclosures_survive_background_refresh(
 ):
     page = browser_factory(engine).new_page(viewport={"width": width, "height": 900})
     page.goto(artists_server + f"/artist/{ALICE}")
-    biography = page.locator("#artist-biography")
-    discography = page.locator("#artist-discography")
+    info = page.get_by_role("region", name="Artist info")
+    biography = info.locator("#artist-biography")
     pw.expect(biography.locator("summary")).to_have_text("Biography")
     pw.expect(biography).to_have_js_property("open", False)
     pw.expect(biography.locator("p")).not_to_be_visible()
     biography.locator("summary").focus()
     biography.locator("summary").press("Enter")
     pw.expect(biography.locator("p")).to_be_visible()
-    pw.expect(discography).to_have_js_property("open", False)
-    discography.locator("summary").click()
-    releases = page.get_by_role("list", name="NFO discography").locator("li")
-    pw.expect(releases).to_have_count(2)
-    pw.expect(
-        releases.first.get_by_role("link", name="Unowned studio album", exact=False)
-    ).to_have_attribute("href", f"https://musicbrainz.org/release-group/{BOB}")
-    pw.expect(releases.last).to_contain_text("<script>Other album</script>")
-    pw.expect(releases.last.get_by_role("link")).to_have_count(0)
-    pw.expect(page.get_by_role("list", name="Artist genres").locator("li")).to_have_text(
+    pw.expect(info.get_by_role("list", name="Artist genres").locator("li")).to_have_text(
         ["Rock", "Alternative"]
     )
-    pw.expect(page.locator("#artist-identity")).to_contain_text("Indie")
-    pw.expect(page.get_by_role("region", name="Additional information")).to_contain_text(
-        "2001–present"
-    )
+    pw.expect(info.locator("dt", has_text="Style").locator("+ dd")).to_have_text("Indie")
+    pw.expect(info.locator("dt", has_text="Formed").locator("+ dd")).to_have_text("2001")
     pw.expect(page.get_by_role("region", name="Albums 2").locator(".lib-tile")).to_have_count(2)
     detail = page.locator("#artist-detail")
     detail.evaluate("e => e.dataset.beforeRefresh = 'yes'")
@@ -199,14 +188,12 @@ def test_artist_nfo_sections_and_disclosures_survive_background_refresh(
         page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
     pw.expect(detail).not_to_have_attribute("data-before-refresh", "yes")
     pw.expect(biography).to_have_js_property("open", True)
-    pw.expect(discography).to_have_js_property("open", True)
     biography.locator("summary").click()
     detail.evaluate("e => e.dataset.beforeRefresh = 'yes'")
     with page.expect_response(lambda r: f"/artist/{ALICE}" in r.url and r.ok):
         page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
     pw.expect(detail).not_to_have_attribute("data-before-refresh", "yes")
     pw.expect(biography).to_have_js_property("open", False)
-    pw.expect(discography).to_have_js_property("open", True)
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.context.close()
 
@@ -543,11 +530,13 @@ def test_artist_identity_panel_and_title(browser_factory, artist_identity_server
         pw.expect(dates.locator("dd")).to_have_attribute(
             "title", _local_stamp(datetime(2020, 1, 2, 3, 4, 5, tzinfo=UTC))
         )
-        pw.expect(panel).to_contain_text("Indie")
-        pw.expect(panel).to_contain_text("Calm")
-        pw.expect(panel.get_by_role("list", name="Artist genres")).to_contain_text("Rock")
         pw.expect(panel.locator("img")).to_be_visible()
-        biography = page.locator("#artist-biography")
+        info = page.get_by_role("region", name="Artist info")
+        pw.expect(info.locator("dt", has_text="Disambiguation").locator("+ dd")).to_have_text(
+            "local project"
+        )
+        pw.expect(info.locator("dt", has_text="Mood").locator("+ dd")).to_have_text("Calm")
+        biography = info.locator("#artist-biography")
         biography.locator("summary").focus()
         biography.locator("summary").press("Enter")
         pw.expect(biography.locator("p")).to_be_visible()
@@ -557,21 +546,19 @@ def test_artist_identity_panel_and_title(browser_factory, artist_identity_server
             page.evaluate("htmx.trigger(document.body, 'tasks-changed')")
         pw.expect(detail).not_to_have_attribute("data-before-refresh", "yes")
         pw.expect(biography).to_have_js_property("open", True)
-        headings = page.locator("#artist-detail > section h2, #artist-detail > details h2")
-        pw.expect(headings).to_have_text(
-            [
-                "Biography",
-                "Additional information",
-                "Discography from NFO 2",
-                "Albums 2",
-                re.compile(r"History"),
-            ]
-        )
+        headings = page.locator("#artist-detail > section h2")
+        pw.expect(headings).to_have_text(["Artist info", "Albums 2", re.compile(r"History")])
+        columns = info.locator(".album-identity__fields")
         if width >= 768:
             assert (
                 dates.bounding_box()["x"]
                 > panel.locator(".album-identity__fields").bounding_box()["x"]
             )
+            # Who the artist is beside what they sound like, on one line.
+            assert columns.last.bounding_box()["x"] > columns.first.bounding_box()["x"]
+            assert columns.last.bounding_box()["y"] == columns.first.bounding_box()["y"]
+        else:
+            assert columns.last.bounding_box()["y"] > columns.first.bounding_box()["y"]
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     finally:
         page.context.close()

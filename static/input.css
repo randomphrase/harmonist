@@ -685,6 +685,9 @@ button.library-update-option:focus-visible { background: var(--color-surface); c
 .album-identity__fields dd button { vertical-align: middle; }
 .album-identity__dates { flex-shrink: 0; grid-template-columns: auto auto; text-align: right; }
 .album-identity__dates dd { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* An artist's info is the same list with longer labels: "Disambiguation"
+   doesn't fit the panel's column (#938). */
+.artist-info__fields { grid-template-columns: 7.5rem minmax(0, 1fr); }
 .album-warning { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem .75rem; margin-top: .75rem; }
 .album-warning__badge {
   display: inline-flex;

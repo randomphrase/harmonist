@@ -147,8 +147,9 @@ Artist browsing reads local tags, NFOs and local raster artwork. It makes no
 MusicBrainz or image-provider requests, doesn't create NFOs and never changes
 tags based on them; only finding or identifying an artist asks MusicBrainz, and only **Identify** writes. Remote image URLs in an NFO are not downloaded. With local
 NFOs and image files, the artist pages remain available offline. The MusicBrainz
-link opens the artist's page separately. NFO discographies do not count as owned
-albums. The file watcher updates the inventory after local changes settle;
+link opens the artist's page separately. An NFO's `<album>` entries stay in the
+file and aren't shown: an artist's albums are the Library's. The file watcher
+updates the inventory after local changes settle;
 the hourly rescan covers missed notifications, including on network mounts.
 Open artist pages and the artist list follow those updates automatically.
 

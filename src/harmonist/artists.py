@@ -380,7 +380,7 @@ def _comment(artist: Artist, stored: StoredRelease | None, inventory: Inventory 
     override. One without has MusicBrainz's."""
     profiles = inventory.by_key.get(artist.key, ()) if inventory is not None else ()
     if profiles:
-        return _nfo_says(profiles, lambda p: dict(p.facts).get("Disambiguation", ""))
+        return _nfo_says(profiles, lambda p: p.disambiguation)
     found = musicbrainz_name(artist, stored) if stored is not None else None
     return found.disambiguation if found else ""
 

@@ -10,29 +10,59 @@ ALICE = "11111111-1111-4111-8111-111111111111"
 BOB = "22222222-2222-4222-8222-222222222222"
 
 
-def test_profile_keeps_genres_and_nfo_discography_separate(tmp_path):
+def test_profile_groups_who_the_artist_is_apart_from_what_they_sound_like(tmp_path):
     path = tmp_path / "artist.nfo"
     path.write_text(
         f"<artist><musicbrainzartistid>{ALICE}</musicbrainzartistid>"
-        "<type>Group</type><formed>2001</formed><style>Alternative</style>"
-        "<yearsactive>2001–present</yearsactive>"
-        "<genre>Rock</genre><genre>Alternative</genre><genre>Rock</genre>"
-        "<album><title>Unowned album</title><year>1999</year>"
-        f"<musicbrainzreleasegroupid>{BOB.upper()}</musicbrainzreleasegroupid></album>"
-        "<album><title>Unowned album</title><year>1999</year>"
-        f"<musicbrainzreleasegroupid>{BOB.upper()}</musicbrainzreleasegroupid></album>"
-        "<album><title>&lt;script&gt;title&lt;/script&gt;</title><year>2002</year>"
-        "<musicbrainzreleasegroupid>not-an-id</musicbrainzreleasegroupid></album>"
-        "<album><year>2000</year></album></artist>"
+        "<mood>Calm</mood><instruments>Guitar</instruments><style>Alternative</style>"
+        "<gender>Female</gender><type>Person</type><sortname>Cooper, Alice</sortname>"
+        "<disambiguation>the singer</disambiguation><born>1948</born>"
+        "<genre>Rock</genre><genre>Alternative</genre><genre>Rock</genre></artist>"
     )
     profile = artist_nfo.read(path)
+    assert profile.disambiguation == "the singer"
+    assert profile.about == (
+        ("Sort name", "Cooper, Alice"),
+        ("Disambiguation", "the singer"),
+        ("Type", "Person"),
+        ("Gender", "Female"),
+        ("Born", "1948"),
+    )
     assert profile.genres == ("Rock", "Alternative")
-    assert profile.main_facts == (("Type", "Group"), ("Formed", "2001"))
-    assert profile.additional_facts == (("Years active", "2001–present"), ("Style", "Alternative"))
-    assert [(a.title, a.year, a.release_group_id) for a in profile.discography] == [
-        ("Unowned album", "1999", BOB),
-        ("<script>title</script>", "2002", None),
-    ]
+    assert profile.sound == (("Style", "Alternative"), ("Mood", "Calm"), ("Instruments", "Guitar"))
+
+
+@pytest.mark.parametrize(
+    "elements,dates",
+    [
+        ("<born>1947</born><died>2016</died>", (("Born", "1947 – 2016"),)),
+        ("<died>2016</died>", (("Died", "2016"),)),
+        ("<formed>1999</formed><disbanded>2004</disbanded>", (("Formed", "1999 – 2004"),)),
+        # Years active that only repeat the dates aren't listed again.
+        (
+            "<formed>1999</formed><disbanded>2004</disbanded><yearsactive>1999 - 2004</yearsactive>",
+            (("Formed", "1999 – 2004"),),
+        ),
+        ("<formed>2001</formed><yearsactive>2001–present</yearsactive>", (("Formed", "2001"),)),
+        # A second spell, or an end the dates don't give, is something more.
+        (
+            (
+                "<formed>1999</formed><disbanded>2004</disbanded>"
+                "<yearsactive>1999–2004, 2010–present</yearsactive>"
+            ),
+            (("Formed", "1999 – 2004"), ("Years active", "1999–2004, 2010–present")),
+        ),
+        (
+            "<formed>1999</formed><yearsactive>1999–2004</yearsactive>",
+            (("Formed", "1999"), ("Years active", "1999–2004")),
+        ),
+        ("<yearsactive>1980–1990</yearsactive>", (("Years active", "1980–1990"),)),
+    ],
+)
+def test_each_pair_of_dates_shares_a_row_and_years_active_adds_to_them(tmp_path, elements, dates):
+    path = tmp_path / "artist.nfo"
+    path.write_text(f"<artist>{elements}</artist>")
+    assert artist_nfo.read(path).about == dates
 
 
 @pytest.mark.parametrize("filename", ["artist.jpg", "artist.png"])
