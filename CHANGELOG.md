@@ -6,47 +6,46 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.34.0] - 2026-11-17
+
 ### Added
 
-- **Find a CD rip's release by its disc ID**, computed from the table of contents
-  XLD leaves in the tags (#984).
+- **Find a CD rip's release by its disc ID**, from the table of contents XLD
+  leaves in the tags (#984).
 - **Artist NFOs without an ID wait in the Inbox**, offering the artists their
   folder's albums credit (#996).
 - **A library scan counts the artists it finds**, as it does albums (#997).
-- **Artists who share a name are told apart** by their disambiguation, on the
-  Artists page and on each one's own page (#982).
-- **The artwork picker offers the album's own images**, ahead of the archive's,
-  so a larger `cover.jpg` can be put into tracks that already have art (#1012).
+- **Artists who share a name are told apart** by their disambiguation (#982).
+- **The artwork picker offers the album's own images**, so a larger `cover.jpg`
+  can be put into tracks that already have art (#1012).
 
 ### Changed
 
-- **The Library's Structural gaps menu** gathers Incomplete and Partially tagged,
-  and adds **Tracks unassigned** (#1009).
+- **The artist page is laid out like an album's**, with the NFO's facts under
+  **Artist info**; its discography is no longer listed (#938).
+- **An identified artist NFO's finder opens from the edit button beside its MB
+  artist**, in place of **Identify again** (#938).
+- **An artist with an NFO is called what the NFO calls them** (#1001).
+- **A file left unassigned takes the release's album-level tags**, so players
+  file it with its album. Albums confirmed that way before will show one tag
+  update (#1004).
+- **The Library's Incomplete and Partially tagged filters move into a
+  Structural gaps menu**, which adds **Tracks unassigned** (#1009).
 - **The track assignment editor's buttons say whether they write**: **Done**
   within a release's review, **Apply assignments** on an album (#1005).
-- **A file left unassigned takes the release's album-level tags**, so players
-  file it with its album (#1004).
-- **Re-download stays on the album's page**, which shows the replacement when
-  it lands, and the status bar follows the archive file by file (#1003).
-- **An artist with an NFO is called what the NFO calls them**, and the artist
-  page's MusicBrainz link shows MusicBrainz's name for them (#1001).
-- **The artist page is laid out like an album's**, with what the NFO says in
-  one **Artist info** section. An NFO's discography is no longer listed (#938).
-- **An identified artist NFO's finder opens from the edit button beside its MB
-  artist**, as an album's does, in place of **Identify again** (#938).
+- **Re-download stays on the album's page**, and the status bar follows its
+  archiving file by file (#1003).
 
 ### Fixed
 
 - **A page opened just as a library scan or artwork check finishes shows what it
-  found**, rather than what was there before (#1013).
-- **A release's cover sits under its checkbox when you review it**, not rows
-  below, and the unassigned-files count no longer looks like a button (#1005).
+  found** (#1013).
+- **A release's cover sits under its checkbox when you review it** (#1005).
 - **An album confirmed with a file left unassigned no longer waits for a review
-  with nothing to assign**, and its tag updates apply again (#1004).
+  with nothing to assign**, or refuses its tag updates (#1004).
 - **Every filter chip on the Library and Artists pages lines up with the rest of
   its row** (#991).
-- **Filling in an artist NFO no longer rescans the whole library** a few seconds
-  later (#995).
+- **Filling in an artist NFO no longer rescans the whole library** (#995).
 
 ## [1.33.0] - 2026-11-09
 
