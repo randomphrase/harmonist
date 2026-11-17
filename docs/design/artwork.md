@@ -41,7 +41,8 @@ megabytes, while the same image embedded in twenty tracks costs twenty times
 that, so a library using lossy formats sensibly keeps modest embedded art beside
 a high-resolution cover. A bigger folder cover therefore proposes nothing for the
 tracks (#479). Tracks with *no* art are still filled, and from the album's own
-image where it has one, so the filled track matches its neighbours.
+image where it has one, so the filled track matches its neighbours. Putting the
+cover into tracks that carry art is a choice, made in the picker (#1012).
 
 **Except where neither reason holds: an album with no folder cover, where
 embedding costs little** (#872). With no `cover.*` there is no high-resolution
@@ -69,7 +70,8 @@ user can hold in their head.
 **Different images on different tracks are never replaced by the size rule.**
 That's what a compilation correctly looks like.
 
-**The user can choose any image, row by row,** regardless of size (#472, #659).
+**The user can choose any image, row by row,** regardless of size (#472, #659),
+whether the archive's or the album's own (#1012).
 A larger scan can be softer, badly cropped, or another pressing's sleeve, and
 only a person looking at both can tell. The choice is made on a row, because the
 row is the thing looked at, and reaches that row's carriers only: every other row
@@ -94,6 +96,27 @@ Picard's equivalent is a setting that applies to every album, and a setting
 would hide the one back cover a user came looking for. Matrix/runout,
 raw/unedited and watermarked images are never offered, even when also marked
 Front, because none of them is artwork anyone puts on a sleeve.
+
+**The album's own images are candidates too** (#1012). The size rule leaves a
+larger folder cover out of tracks that carry art (#479), and leaves per-track
+artwork alone, so choosing is the only way the cover reaches them. Before this,
+nothing could: the picker offered only the archive's images, and the override
+#479 relied on had no control left. So the carousel offers each distinct image
+the album carries, ahead of the archive's, in the rows' order: the folder cover
+comes last, nearest the archive's images, which start where the picker opens. A
+row's own image is offered to it too, and says **Unchanged**, as the archive's
+does when the row already has it; leaving it out for the checked row alone would
+make the carousel change as the check moves.
+
+They are offered once the archive has answered, with images or with none. Until
+then the picker is waiting on that answer, and an answer of none is a slide of
+its own where the archive's images would be, so the picker still opens on the
+archive's place and still says what it found (#946). An album with no release
+match has no picker, and offering its images wouldn't give it one. The album's
+own images can't be turned down with **Don't suggest this image**, which names
+an archive upload, and one chosen isn't a stand-in, since nothing was borrowed.
+The writer reads it back from where the album carries it, as the size rule's
+writes already did.
 
 **Past the album's own images, the carousel goes on to the group's other
 releases**, one at a time. The sleeve a user wants is often another pressing's,

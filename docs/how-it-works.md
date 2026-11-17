@@ -352,10 +352,12 @@ the Inbox are announced in the Activity feed.
 
 Album art lives in two places: **embedded** in each track, and as a
 **`cover.jpg`** (or `cover.png`) in the folder. Players differ in which they
-read (Plex and Navidrome prefer an image file in the folder, and fall back to
-the embedded image), so an album can look right
-in one and blank in another. The **Artwork** section on an album's page shows
-both.
+read, so an album can look right in one and blank in another. Plex, Navidrome
+and Jellyfin show an image file in the folder as the album's cover, and fall
+back to the embedded image. Navidrome, by default, shows a track's own embedded
+image wherever that track's art is shown, such as while it plays, so a small
+embedded copy beside a large `cover.jpg` is what's seen then. The **Artwork**
+section on an album's page shows both.
 
 Harmonist's rules:
 
@@ -373,6 +375,9 @@ Harmonist's rules:
   Settings, though you can choose an image for it either way.
 - Albums where tracks have different images, such as compilations, keep them
   unless you choose an image for one of them.
+- A larger `cover.jpg` isn't offered for tracks that already have an image,
+  since one large file beside small embedded copies is a common layout. Any of
+  the album's own images can be chosen for a row, `cover.jpg` included.
 - A folder cover is named for the image it holds: `cover.jpg` for a JPEG,
   `cover.png` for a PNG. One under the other name, such as a `cover.jpg` that's
   really a PNG, is offered a rename, as an addition.

@@ -215,8 +215,10 @@ def test_the_maximized_picker_steps_and_use_puts_it_back(
     assert page.evaluate(_MAXIMIZED)  # the look ahead's re-render kept it so
     assert _shown(page) == ["103"]
     pw.expect(_pane(panel, "cand")).to_have_attribute("data-cand", "103")
-    # …of the album's two fronts and the other release's, now listed.
-    pw.expect(panel.locator(".art-pick__slide[data-front='true']")).to_have_count(3)
+    # …of the release's two fronts and the other release's, now listed.
+    pw.expect(
+        panel.locator(".art-pick__slide[data-front='true']:not([data-origin='album'])")
+    ).to_have_count(3)
 
     # Put back, the picker on the page is where it was moved to embiggened:
     # the same row, the same image — it is the same picker.
@@ -727,8 +729,18 @@ def test_the_carousel_offers_no_step_past_either_end(
     back = section.locator(".art-pick__picker .art-pick__turn--back")
     on = section.locator(".art-pick__picker .art-pick__turn--on")
 
+    # 101, the archive's first, with the album's own images before it (#1012).
     pw.expect(back).to_be_visible()
-    pw.expect(back).to_be_disabled()  # 101, the first
+    own = section.locator(".art-pick__picker .art-pick__slide[data-origin='album'] input")
+    first = own.first.get_attribute("value")
+    for _ in range(own.count()):
+        pw.expect(back).to_be_enabled()
+        back.click()
+    assert _shown(page) == [first]
+    pw.expect(back).to_be_disabled()  # the first image of all
+    for _ in range(own.count()):
+        on.click()
+    assert _shown(page) == ["101"]
     pw.expect(on).to_be_enabled()
     with page.expect_response(lambda r: "more=ahead" in r.url):
         on.click()

@@ -57,12 +57,14 @@ def test_archive_loading_failure_and_retry(browser_factory, reset_demo_server, e
     pending.pop().continue_()
     pw.expect(section.locator('dd[title^="Cover Art Archive last asked"]')).to_be_visible()
     pw.expect(progress).to_be_hidden()
-    pw.expect(section.locator(".art-pick__image").first).to_be_visible()
+    # The image the picker shows: the album's own come first, unshown (#1012).
+    shown = section.locator(".art-pick__image:visible")
+    pw.expect(shown).to_have_count(1)
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     # With an image already available, a refresh preserves it while checking.
     refresh.click()
     pw.expect(progress).to_be_visible()
-    pw.expect(section.locator(".art-pick__image").first).to_be_visible()
+    pw.expect(shown).to_have_count(1)
     pending.pop().fulfill(status=503, body="Unavailable")
     pw.expect(progress).to_be_hidden()
     pw.expect(section.locator('dd[title^="Cover Art Archive last asked"]')).to_be_visible()

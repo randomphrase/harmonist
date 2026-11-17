@@ -7648,10 +7648,11 @@ def _register_routes(app: FastAPI) -> None:
         `selected` is which row the picker was on, for a response that has no
         `row` to find it by (the out-of-band archive check).
 
-        `candidate` is the archive image the picker is showing (#659), and a
-        press of Use (`pick=1`) chooses it for the row — fetching its original
-        first, because a choice is previewed as the plan it makes and a plan is
-        made of the image's exact bytes. `pick=archive` still names the
+        `candidate` is the image the picker is showing: the archive's, by id
+        (#659), or one of the album's own, by digest (#1012). A press of Use
+        (`pick=1`) chooses it for the row — fetching an archive image's
+        original first, because a choice is previewed as the plan it makes and
+        a plan is made of the image's exact bytes. `pick=archive` still names the
         release's own front. `front_only` is the picker's checkbox, posted as a
         hidden `0` ahead of a checkbox `1` so its last value is the answer, and
         absent on a render nobody's form asked for.
@@ -7745,7 +7746,9 @@ def _register_routes(app: FastAPI) -> None:
         # What a press of Use names: the image the picker shows, by archive id,
         # or — as the section spelled it before #659 — the release's own front.
         picked = "archive" if pick == "archive" else candidate if pick else ""
-        if picked and picked != "archive":
+        # The album's own images are on disk already: the plan finds them there,
+        # or leaves the choice out if the album no longer carries one.
+        if picked and picked != "archive" and not artwork.names_own_image(picked):
             listed = _listed_candidate(mbid, picked)
             if listed is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "no such image for this album")

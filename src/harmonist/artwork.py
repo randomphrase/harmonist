@@ -259,15 +259,16 @@ COVER = "cover"
 #: already tells its rows apart, and which no user can mistake for another row.
 GAP = "none"
 
-#: The user's choices, by carrier. A carrier with no entry takes the size
-#: rule's suggestion, so choosing for one row never drops another's.
-#: The user's choices, by carrier: a `Choice`, or a particular archive image
+#: The user's choices, by carrier: a `Choice`, a particular archive image
 #: named by its id (#659) — any of the release's or its group's, not only the
-#: one front the size rule weighs. A carrier with no entry takes the size
-#: rule's suggestion, so choosing for one row never drops another's.
+#: one front the size rule weighs — or one of the album's own images, named by
+#: its digest (#1012). A carrier with no entry takes the size rule's
+#: suggestion, so choosing for one row never drops another's.
 Choices = Mapping[str, str]
 
-_CARRIER = re.compile(rf"{COVER}|{GAP}|[0-9a-f]{{64}}")
+#: An image's digest, which names the album's own images as it names its rows.
+_DIGEST = re.compile(r"[0-9a-f]{64}")
+_CARRIER = re.compile(rf"{COVER}|{GAP}|{_DIGEST.pattern}")
 #: An archive image id. The archive's are numbers, and nothing else may stand
 #: in that place.
 _IMAGE_ID = re.compile(r"[0-9]{1,20}")
@@ -288,9 +289,15 @@ def parse_choices(text: str) -> dict[str, str]:
             continue
         if value in {c.value for c in Choice}:
             found[carrier] = Choice(value)
-        elif _IMAGE_ID.fullmatch(value):
+        elif _IMAGE_ID.fullmatch(value) or _DIGEST.fullmatch(value):
             found[carrier] = value
     return found
+
+
+def names_own_image(choice: str) -> bool:
+    """Whether `choice` names one of the album's own images (#1012), as
+    opposed to an archive image or a `Choice`."""
+    return _DIGEST.fullmatch(choice) is not None
 
 
 def format_choices(choices: Choices) -> str:
@@ -553,7 +560,9 @@ def plan(
     the stand-in included — still has the last word.
 
     `picks` are the archive images a choice may name by id, each with its
-    original in hand.
+    original in hand. A choice may also name any image the album carries, by
+    digest (#1012): the folder cover for tracks that carry art, which the size
+    rule leaves alone (#479), or one row's image for another's.
 
     A carrier the choices do not name keeps its suggestion, so choosing for one
     row never quietly drops what the section proposed for another.
@@ -594,8 +603,13 @@ def plan(
         choices = {**given, **(choices or {})}
     if not choices:
         return _renamed(suggested, cover)
+    # The album's own images, where the writer reads each one back from: the
+    # folder cover from its file, a track's image from a track carrying it.
+    own = {art.digest: Incoming(art, Source.ALBUM) for _, art in tracks if art is not None}
+    if cover is not None:
+        own[cover.image.digest] = Incoming(cover.image, Source.FOLDER)
     return _renamed(
-        _with_choices(suggested, cover, archive, choices, picks or {}, originals), cover
+        _with_choices(suggested, cover, archive, choices, picks or {}, own, originals), cover
     )
 
 
@@ -642,15 +656,17 @@ def _with_choices(
     archive: EmbeddedArt | None,
     choices: Choices,
     picks: Mapping[str, EmbeddedArt],
+    own: Mapping[str, Incoming],
     originals: Mapping[str, str] | None = None,
 ) -> ArtworkPlan:
     """`suggested`, with every carrier `choices` names taken over by the choice.
 
     Only the choices that can be honoured are: a carrier the album has, and an
-    image in hand for it — the release's own front for `Choice.ARCHIVE`, or the
-    original of the archive image a pick names (`picks`, by archive id). The
-    plan records which, so the page never claims a choice it could not act on
-    (#472's rule, per carrier now).
+    image in hand for it — the release's own front for `Choice.ARCHIVE`, the
+    original of the archive image a pick names (`picks`, by archive id), or
+    an image the album carries (`own`, by digest, #1012). The plan records
+    which, so the page never claims a choice it could not act on (#472's rule,
+    per carrier now).
     """
     album_dir = suggested.album_dir
     before = suggested.before
@@ -660,15 +676,18 @@ def _with_choices(
     # three hundred albums being told they have an update (#659).
     carriers = {digest or GAP for digest in before.values()} | {COVER}
 
-    def image_of(choice: str) -> EmbeddedArt | None:
+    def incoming_of(choice: str) -> Incoming | None:
         if choice == Choice.ARCHIVE:
-            return archive
-        return picks.get(choice)
+            return Incoming(archive, Source.ARCHIVE) if archive is not None else None
+        if (mine := own.get(choice)) is not None:
+            return mine
+        pick = picks.get(choice)
+        return Incoming(pick, Source.ARCHIVE) if pick is not None else None
 
     honoured = {
         carrier: choice
         for carrier, choice in choices.items()
-        if carrier in carriers and (choice == Choice.KEEP or image_of(choice) is not None)
+        if carrier in carriers and (choice == Choice.KEEP or incoming_of(choice) is not None)
     }
     if not honoured:
         return suggested
@@ -685,10 +704,11 @@ def _with_choices(
     def take(carrier: str) -> EmbeddedArt | None:
         """The image `carrier` was chosen to take, or None (none, or keep)."""
         choice = honoured.get(carrier)
-        image = image_of(choice) if choice is not None and choice != Choice.KEEP else None
-        if image is not None:
-            images[image.digest] = Incoming(image, Source.ARCHIVE)
-        return image
+        incoming = incoming_of(choice) if choice is not None and choice != Choice.KEEP else None
+        if incoming is None:
+            return None
+        images[incoming.image.digest] = incoming
+        return incoming.image
 
     # Written only where the bytes differ: choosing the image a carrier
     # already holds is a no-op, not a rewrite (*Far & Off*, #659). Nor is
@@ -1052,16 +1072,19 @@ class FolderCover:
 @dataclass(frozen=True)
 class Candidate:
     """One image the picker offers (#659): listed by the Cover Art Archive for
-    the release, its release group, or another release in that group.
+    the release, its release group, or another release in that group — or one
+    the album carries itself (#1012), named by its digest.
 
     `image` is its original once it is in hand — fetched when it was chosen,
     or the release's own front the archive check downloaded — and None while
     it is only listed. Only an image in hand can be compared with what a row
-    has, so only then can the picker know a Use would change nothing.
+    has, so only then can the picker know a Use would change nothing. The
+    album's own are always in hand.
     """
 
     image_id: str
-    #: Which listing offered it: `RELEASE`, `RELEASE_GROUP` or `OTHER_RELEASE`.
+    #: Which listing offered it: `RELEASE`, `RELEASE_GROUP` or `OTHER_RELEASE`,
+    #: or `ALBUM` for the album's own.
     origin: str
     front: bool
     types: tuple[str, ...]
@@ -1078,11 +1101,15 @@ class Candidate:
     #: The archive's comment on it, when an editor wrote one: which track a
     #: Track image is for, which page of a booklet (#973).
     comment: str | None = None
+    #: For one of the album's own: the rows carrying it, as they are labelled.
+    label: str | None = None
 
     #: The listings a candidate can come from.
     RELEASE: ClassVar[str] = "release"
     RELEASE_GROUP: ClassVar[str] = "release-group"
     OTHER_RELEASE: ClassVar[str] = "other-release"
+    #: …and the album itself (#1012).
+    ALBUM: ClassVar[str] = "album"
 
     @property
     def meta(self) -> str | None:
@@ -1426,8 +1453,42 @@ class ArtworkView:
     @property
     def front_only(self) -> bool:
         """Whether the picker opens showing fronts only — Picard's default —
-        which it does unless there are none, when it would open on nothing."""
+        which it does unless the archive lists none, when it would open on
+        nothing of the archive's."""
         return any(c.front for c in self.candidates)
+
+    @property
+    def own(self) -> tuple[Candidate, ...]:
+        """The album's own images, as the picker offers them ahead of the
+        archive's (#1012): one per distinct image, in the rows' order, so the
+        folder cover is the last and nearest the archive's.
+
+        Only once the archive has answered, with images or with none (#946).
+        The picker is waiting on that answer until then, and an album nobody
+        has matched to a release has no picker to offer them in.
+
+        Each is a front: the image a track or a folder cover carries is the
+        album's cover, whatever else the file holds.
+        """
+        if not (self.candidates or self.archive_has_none):
+            return ()
+        labels: dict[str, list[str]] = {}
+        found: dict[str, EmbeddedArt] = {}
+        for row in self.images:
+            assert row.image is not None  # `images` filters them out
+            found.setdefault(row.image.digest, row.image)
+            labels.setdefault(row.image.digest, []).append(row.label)
+        return tuple(
+            Candidate(
+                image_id=digest,
+                origin=Candidate.ALBUM,
+                front=True,
+                types=(),
+                image=image,
+                label=" and ".join(labels[digest]),
+            )
+            for digest, image in found.items()
+        )
 
     def unchanged(self, row: ArtRow, candidate: Candidate) -> bool:
         """Whether using `candidate` on `row` would change nothing: the row
@@ -1798,6 +1859,21 @@ def summarise(
     # or two discs' track 1 read as one repeated row (#400).
     multi_disc = len({t.disc_num for _, t in readable} - {None}) > 1
 
+    def named(incoming: Incoming) -> str | None:
+        """What a row's incoming image is called: where it comes from, and for
+        a track's image on an album whose tracks carry several, the row that
+        carries it (#1012). "The album's own artwork" is no answer then."""
+        digest = incoming.image.digest
+        if incoming.source is Source.ALBUM and len(by_digest) > 1 and digest in by_digest:
+            return ArtRow(
+                image=incoming.image,
+                tracks=tuple(ref for _, ref in by_digest[digest]),
+                outcome=Outcome.KEPT,
+                total_tracks=len(tracks),
+                multi_disc=multi_disc,
+            ).label
+        return _source_label(incoming.source, cover)
+
     def row(
         image: EmbeddedArt | None,
         carriers: Sequence[tuple[Path, TrackRef]],
@@ -1833,7 +1909,7 @@ def summarise(
             # A rename's incoming image is the cover itself, named as it will be.
             written_from=renamed_to
             if outcome is Outcome.RENAMED
-            else _source_label(incoming.source, cover)
+            else named(incoming)
             if incoming
             else None,
             written_image=incoming.image if incoming else None,

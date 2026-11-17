@@ -125,8 +125,15 @@
    Without a candidate there is nothing to pick, and the section is the plain
    two columns it always was: no radios, no picker, nothing in the form that
    submits it — except a way to look at the group's other releases, while one
-   might have images (#659). #}
-{% set picker = artwork.candidates %}
+   might have images (#659).
+
+   The album's own images come first (#1012), so ‹ from the archive's first
+   image reaches them, nearest first. Once the archive has said it has nothing
+   (#946), that answer is a slide of its own where the archive's images would
+   be, and the picker opens on it as it would on them. #}
+{% set own = artwork.own %}
+{% set picker = own + artwork.candidates %}
+{% set archive_none = own and not artwork.candidates %}
 {#- Somewhere to step to: images, or another release that might have some
     (#659). An album whose own release lists nothing is where looking at the
     others matters most — and where, once they have nothing either, the
@@ -135,12 +142,13 @@
 {% set selected = artwork_selected|default(0) %}
 {% set front_only = artwork_front_only if artwork_front_only is defined else artwork.front_only %}
 {#- The image the picker shows: the one it showed before this render, or the
-    first the front-only box lets it show. -#}
+    archive's first that the front-only box lets it show — or, with nothing of
+    the archive's, the slide that says so. -#}
 {% set shown = namespace(id=none) %}
 {% for c in picker %}
 {% if shown.id is none and (c.image_id == artwork_candidate|default('') or false) %}{% set shown.id = c.image_id %}{% endif %}
 {% endfor %}
-{% for c in picker %}
+{% for c in artwork.candidates %}
 {% if shown.id is none and (c.front or not front_only) %}{% set shown.id = c.image_id %}{% endif %}
 {% endfor %}
 {# `queue last`: a step's look ahead at the next release (#659) is in flight
@@ -183,6 +191,11 @@
 {% for c in picker %}
 {{ form }}:has(#art-cand-{{ album.id }}-{{ c.image_id }}:checked) .art-max [data-cand="{{ c.image_id }}"] { display: block; }
 {% endfor %}
+{#- Nothing to Use on the archive's answer that it has none, and nowhere for
+    it to land. -#}
+{% if archive_none %}
+{{ form }}:has(#art-cand-{{ album.id }}-none:checked) :is(.art-pick__use, .art-row__slot) { display: none; }
+{% endif %}
 </style>
 {% endif %}
 {% if artwork.rows %}
@@ -328,8 +341,9 @@
     accessible name: whose, which release, its kind when not the front, and
     the archive's comment on it. -#}
 {% macro candidate_caption(c) -%}
-{%- if c.origin == 'release' %}This release{% elif c.origin == 'release-group' %}Release group{% else %}Another release{% endif -%}
+{%- if c.origin == 'release' %}This release{% elif c.origin == 'release-group' %}Release group{% elif c.origin == 'album' %}This album{% else %}Another release{% endif -%}
 {%- if c.release %} ({{ c.release }}){% endif -%}
+{%- if c.label %} ({{ c.label }}){% endif -%}
 {%- set kinds = c.types|reject('equalto', 'front')|list %}{% if kinds or not c.front %}, {{ (kinds|join(', ') or 'untyped')|lower }}{% endif -%}
 {%- if c.comment %} “{{ c.comment }}”{% endif -%}
 {%- endmacro %}
@@ -342,6 +356,10 @@
     <span class="art-row__who">This release</span>
     {% elif candidate.origin == 'release-group' %}
     <span class="art-row__who">Release group</span>
+    {% elif candidate.origin == 'album' %}
+    {# One of the album's own (#1012), named as its rows are. #}
+    <span class="art-row__who">This album</span>
+    <span class="art-row__meta-plain">{{ candidate.label }}</span>
     {% else %}
     <span class="art-row__who">Another release</span>
     {% if candidate.release %}<span class="art-row__meta-plain">{{ candidate.release }}</span>{% endif %}
@@ -379,6 +397,21 @@
         class="art-pick__others text-2xs uppercase tracking-widest font-bold px-3 py-1.5 rounded
                border border-line text-muted hover:text-ink hover:border-mb-purple/40 transition"
         title="Look for images on the other releases of this album">Check other releases ›</button>
+{% endmacro %}
+{#- The archive's answer that it has nothing (#946), drawn as an image would
+    be: a frame where the image would be, as the rows draw a missing one, and
+    a caption beside it. `frame` is the frame's place in a carousel slide. -#}
+{% macro no_images(frame='') %}
+<span class="art-row__art art-row__art--none {{ frame }}" aria-hidden="true"><svg
+    viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6"
+    stroke-linecap="round" stroke-linejoin="round"
+    ><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path
+    d="M21 16l-5-5-9 9"/><path d="M3 3l18 18" stroke-width="1.8"/></svg></span>
+<div class="art-row__facts">
+    <span class="art-row__who">No images</span>
+    <span class="art-row__meta-plain">for {{ 'any release of this album' if artwork_browsed|default(false) and not artwork.other_releases else 'this release or its release group' }}</span>
+    {% if artwork.other_releases %}{{ others_button() }}{% endif %}
+</div>
 {% endmacro %}
 {% if steppable %}
 {# Maximized (#918), the panel is a popover: the same element, so the same
@@ -455,9 +488,15 @@
     <div class="art-max art-max__stage art-max__stage--cand" role="region" aria-label="Available artwork" tabindex="0">
         <div class="art-max__canvas">
             {% for c in picker %}
+            {% if c.origin == 'album' %}
+            {# The album's own, at full size already: nothing to fetch. #}
+            <img data-cand="{{ c.image_id }}" src="/artwork/image/{{ album.id }}/{{ c.image_id }}"
+                 alt="{{ candidate_caption(c) }}" loading="lazy"{% if c.image.size %} width="{{ c.image.size.width }}" height="{{ c.image.size.height }}"{% endif %}>
+            {% else %}
             <img data-cand="{{ c.image_id }}" src="/artwork/candidate/{{ album.id }}/{{ c.image_id }}"
                  data-original="/artwork/candidate/{{ album.id }}/{{ c.image_id }}/original"
                  alt="{{ candidate_caption(c) }}" loading="lazy">
+            {% endif %}
             {% endfor %}
         </div>
     </div>
@@ -476,7 +515,7 @@
        Harmonist; the original is fetched only when it is used. #}
     <div class="art-pick__carousel">
         {% for c in picker %}
-        <div class="art-pick__slide" data-front="{{ 'true' if c.front else 'false' }}">
+        <div class="art-pick__slide" data-front="{{ 'true' if c.front else 'false' }}" data-origin="{{ c.origin }}">
             <input type="radio" name="candidate" value="{{ c.image_id }}"
                    id="art-cand-{{ album.id }}-{{ c.image_id }}" class="art-row__radio"
                    {% if c.image_id == shown.id %}checked{% endif %}>
@@ -485,10 +524,11 @@
             <button type="button" class="art-row__art art-pick__image"
                     popovertarget="art-pick-panel-{{ album.id }}" popovertargetaction="show"
                     aria-label="View {{ candidate_caption(c) }} full size">
-                <img src="/artwork/candidate/{{ album.id }}/{{ c.image_id }}" alt="" loading="lazy">
+                <img src="/artwork/{{ 'image' if c.origin == 'album' else 'candidate' }}/{{ album.id }}/{{ c.image_id }}" alt="" loading="lazy">
             </button>
             {{ candidate_facts(c) }}
-            {% if album.sidecar and album.sidecar.mb_release_id %}
+            {#- Not on the album's own: it names an upload to the archive. -#}
+            {% if album.sidecar and album.sidecar.mb_release_id and c.origin != 'album' %}
             <label class="art-pick__check art-pick__dismiss">
                 <input type="checkbox" name="rejected" value="true"
                        {% if c.image_id in album.sidecar.artwork_rejected %}checked{% endif %}
@@ -501,20 +541,30 @@
             {% endif %}
         </div>
         {% endfor %}
+        {# Where the archive's images would be, the answer that it has none
+           (#946): stepped to and shown as they would be, with nothing to Use. #}
+        {% if archive_none %}
+        <div class="art-pick__slide" data-front="true">
+            <input type="radio" name="candidate" value=""
+                   id="art-cand-{{ album.id }}-none" class="art-row__radio"
+                   {% if shown.id is none %}checked{% endif %}>
+            {{ no_images('art-pick__image') }}
+        </div>
+        {% endif %}
         {# ‹ and ›, at either end of the shown image's title line at either
            size (#918): ‹ before the title, so it never moves as the title
            changes, and › at the end of the line. #}
         <div class="art-pick__nav">
-            {% if picker|length > 1 or artwork.other_releases %}
+            {% if picker|length + (1 if archive_none else 0) > 1 or artwork.other_releases %}
             <button type="button" class="art-arrow art-pick__turn art-pick__turn--back" data-art-step="-1"
                     data-art-group="candidate" aria-label="Previous image">{{ arrow('left') }}</button>
             <button type="button" class="art-arrow art-pick__turn art-pick__turn--on" data-art-step="1"
                     data-art-group="candidate" aria-label="Next image">{{ arrow('right') }}</button>
             {% endif %}
         </div>
-        {# Front covers only, offered where there are fronts and something
-           else. "Front" as the captions name the archive's types. #}
-        {% if picker|selectattr('front')|list and picker|rejectattr('front')|list %}
+        {# Front covers only, offered where the archive lists fronts and
+           something else. "Front" as the captions name the archive's types. #}
+        {% if artwork.candidates|selectattr('front')|list and artwork.candidates|rejectattr('front')|list %}
         <label class="art-pick__check art-pick__front-only">
             <input type="hidden" name="front_only" value="0">
             <input type="checkbox" name="front_only" value="1" {% if front_only %}checked{% endif %}>
@@ -550,18 +600,7 @@
        after the other releases turn out to have nothing either — that is
        the answer to the look, and a panel that vanished would give none. #}
     {% if artwork.archive_has_none %}
-    <div class="art-pick__none">
-        <span class="art-row__art art-row__art--none" aria-hidden="true"><svg
-            viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6"
-            stroke-linecap="round" stroke-linejoin="round"
-            ><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path
-            d="M21 16l-5-5-9 9"/><path d="M3 3l18 18" stroke-width="1.8"/></svg></span>
-        <div class="art-row__facts">
-            <span class="art-row__who">No images</span>
-            <span class="art-row__meta-plain">for {{ 'any release of this album' if artwork_browsed|default(false) and not artwork.other_releases else 'this release or its release group' }}</span>
-            {% if artwork.other_releases %}{{ others_button() }}{% endif %}
-        </div>
-    </div>
+    <div class="art-pick__none">{{ no_images() }}</div>
     {% elif artwork.other_releases %}
     {{ others_button() }}
     {% endif %}
@@ -581,10 +620,10 @@
         </div>
         {# With their boxes, which take room beside them; nameless, so the form
            sends nothing for them. #}
-        {% if album.sidecar and album.sidecar.mb_release_id %}
+        {% if album.sidecar and album.sidecar.mb_release_id and artwork.candidates %}
         <span class="art-pick__check art-pick__dismiss"><input type="checkbox" disabled> Don't suggest this image</span>
         {% endif %}
-        {% if picker|selectattr('front')|list and picker|rejectattr('front')|list %}
+        {% if artwork.candidates|selectattr('front')|list and artwork.candidates|rejectattr('front')|list %}
         <span class="art-pick__check art-pick__front-only"><input type="checkbox" disabled> Show Front covers only</span>
         {% endif %}
     </div>

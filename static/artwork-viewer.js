@@ -600,10 +600,13 @@
     });
     document.querySelectorAll('form.art-compare').forEach(turns);
     // Ticking Front only while a back cover is shown would leave nothing
-    // shown: move to the first image that can be.
+    // shown: move to the first of the archive's images that can be, where the
+    // picker opens, rather than back past them to the album's own (#1012).
     document.addEventListener('change', event => {
         if (!event.target.matches('.art-pick__front-only input[type="checkbox"]')) return;
         const radios = shownImages(event.target.form);
-        if (radios.length && !radios.some(radio => radio.checked)) radios[0].click();
+        if (!radios.length || radios.some(radio => radio.checked)) return;
+        const archive = radios.find(radio => radio.closest('.art-pick__slide').dataset.origin !== 'album');
+        (archive || radios[0]).click();
     });
 })();

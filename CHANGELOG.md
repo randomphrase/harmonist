@@ -15,6 +15,8 @@ versions follow [semantic versioning](https://semver.org).
 - **A library scan counts the artists it finds**, as it does albums (#997).
 - **Artists who share a name are told apart** by their disambiguation, on the
   Artists page and on each one's own page (#982).
+- **The artwork picker offers the album's own images**, ahead of the archive's,
+  so a larger `cover.jpg` can be put into tracks that already have art (#1012).
 
 ### Changed
 

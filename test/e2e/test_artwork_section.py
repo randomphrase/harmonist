@@ -87,12 +87,13 @@ def test_every_row_reaches_its_own_image(browser_factory, demo_server: str) -> N
     # stale the moment an image could appear twice.
     assert len(set(targets)) == 2, "expected the tracks' image and the folder cover"
 
-    # …and every image the picker offers reaches a view of its own (#659).
+    # …and every image the picker offers, the album's own among them (#1012),
+    # reaches a view: the picker itself, maximized (#918).
     offered = [
         b.get_attribute("popovertarget")
         for b in page.locator("#album-artwork button.art-pick__image").all()
     ]
-    assert offered and all(offered) and len(set(offered)) == len(offered)
+    assert len(offered) > 1 and set(offered) == {f"art-pick-panel-{ALBUM_ID}"}
 
     for target in {*targets, *offered}:
         assert page.locator(f"#{target}").count() == 1, f"{target} is not a single element"

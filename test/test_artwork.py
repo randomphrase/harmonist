@@ -1348,6 +1348,150 @@ class TestRowChoices:
         choice at all."""
         assert artwork.parse_choices("cover=12345,none=12a,") == {artwork.COVER: "12345"}
 
+    def test_a_pick_of_the_albums_own_image_is_read_as_one(self) -> None:
+        """The album's own images are named by digest (#1012), as its rows'
+        carriers are; nothing short of a whole one is a choice."""
+        digest = art_of(1).digest
+
+        assert artwork.parse_choices(
+            f"cover={digest},none={digest[:-1]},{digest}={digest.upper()}"
+        ) == {artwork.COVER: digest}
+
+
+class TestTheAlbumsOwnImages:
+    """The album's own images, offered row by row as the archive's are
+    (#1012): the one way to put a larger `cover.*` into tracks that carry art,
+    which the size rule leaves alone (#479) and per-track artwork protects."""
+
+    def test_the_tracks_can_take_the_folder_cover(self) -> None:
+        """*Silent Alarm*: two sizes of one cover on the tracks, and a larger
+        `cover.png` beside them. The size rule offers nothing; choosing the
+        cover for each row puts it on every track, read from the folder."""
+        small = art_of(1, width=300, height=300)
+        medium = art_of(2, width=500, height=500)
+        big = art_of(3, width=1000, height=1000)
+        choices = {small.digest: big.digest, medium.digest: big.digest}
+
+        ordinary = summarise(album(small, small, medium), cover_of(big))
+        view = summarise(album(small, small, medium), cover_of(big), choices=choices)
+
+        assert ordinary.writes is False
+        plan = view.plan
+        assert plan is not None
+        assert [c.target.name for c in plan.changes] == [
+            "01 Track.m4a",
+            "02 Track.m4a",
+            "03 Track.m4a",
+        ]
+        assert {plan.image_for(c) for c in plan.changes} == {
+            artwork.Incoming(big, artwork.Source.FOLDER)
+        }
+        assert view.choices == choices
+        assert [r.written_from for r in view.rows] == ["cover.png", "cover.png", None]
+
+    def test_a_row_can_take_another_rows_image(self) -> None:
+        """Read from a track that carries it, and named by the row it comes
+        from: "the album's own artwork" is no answer when the album has two."""
+        small = art_of(1, width=300, height=300)
+        medium = art_of(2, width=500, height=500)
+
+        view = summarise(
+            album(small, small, medium),
+            None,
+            choices={small.digest: medium.digest},
+            folder_cover=artwork.FolderCoverPolicy.NEVER,
+        )
+
+        plan = view.plan
+        assert plan is not None
+        assert [(c.target.name, plan.image_for(c)) for c in plan.changes] == [
+            ("01 Track.m4a", artwork.Incoming(medium, artwork.Source.ALBUM)),
+            ("02 Track.m4a", artwork.Incoming(medium, artwork.Source.ALBUM)),
+        ]
+        assert view.rows[0].written_from == "Track 3"
+
+    def test_the_folder_cover_can_take_the_tracks_image(self) -> None:
+        """The other way round, smaller or not: a choice is not the size rule."""
+        mine = art_of(1, width=300, height=300)
+        cover = art_of(2, width=1000, height=1000)
+
+        view = summarise(album(mine, mine), cover_of(cover), choices={artwork.COVER: mine.digest})
+
+        plan = view.plan
+        assert plan is not None
+        (change,) = plan.changes
+        assert change.folder_cover and plan.image_for(change) == artwork.Incoming(
+            mine, artwork.Source.ALBUM
+        )
+
+    def test_an_image_the_album_does_not_carry_is_not_honoured(self) -> None:
+        """Nothing to read it from, so nothing claimed: the page says the
+        image isn't here any more, as it does for an archive image."""
+        mine = art_of(1)
+
+        view = summarise(album(mine, mine), None, choices={mine.digest: art_of(9).digest})
+
+        assert view.choices == {}
+        assert not any(r.writes for r in view.rows if r.tracks)
+
+    def test_choosing_the_image_a_row_has_writes_nothing(self) -> None:
+        mine = art_of(1)
+
+        view = summarise(album(mine, mine), cover_of(mine), choices={mine.digest: mine.digest})
+
+        assert view.writes is False
+
+    def test_the_picker_offers_each_image_the_album_carries(self) -> None:
+        """One per distinct image, in the rows' order, so the folder cover is
+        the last of them: the nearest to the archive's images, which follow."""
+        small = art_of(1, width=300, height=300)
+        medium = art_of(2, width=500, height=500)
+        big = art_of(3, width=1000, height=1000)
+        listed = artwork.Candidate(image_id="1", origin="release", front=True, types=("front",))
+
+        view = summarise(album(small, small, medium), cover_of(big), candidates=(listed,))
+
+        assert [(c.image_id, c.label, c.image) for c in view.own] == [
+            (small.digest, "Tracks 1–2", small),
+            (medium.digest, "Track 3", medium),
+            (big.digest, "cover.png", big),
+        ]
+        assert {(c.origin, c.front) for c in view.own} == {(artwork.Candidate.ALBUM, True)}
+        assert view.candidates == (listed,)
+
+    def test_an_image_on_the_tracks_and_in_the_folder_is_offered_once(self) -> None:
+        mine = art_of(1)
+        listed = artwork.Candidate(image_id="1", origin="release", front=True, types=("front",))
+
+        view = summarise(album(mine, mine), cover_of(mine), candidates=(listed,))
+
+        assert [(c.image_id, c.label) for c in view.own] == [
+            (mine.digest, "All 2 tracks and cover.png")
+        ]
+
+    def test_the_albums_images_wait_for_the_archives_answer(self) -> None:
+        """Offered beside what the archive lists, or once it has said it lists
+        nothing (#946); until then the picker is loading, as it was."""
+        mine, other = art_of(1), art_of(2)
+
+        view = summarise(album(mine, other), None)
+
+        assert view.own == ()
+        assert [c.image_id for c in replace(view, archive_has_none=True).own] == [
+            mine.digest,
+            other.digest,
+        ]
+
+    def test_a_row_is_unchanged_by_its_own_image(self) -> None:
+        """The checked row's own image shows ✓, as the archive's would."""
+        mine, other = art_of(1), art_of(2)
+
+        view = replace(summarise(album(mine, other), None), archive_has_none=True)
+
+        first, second = view.own
+        assert view.unchanged(view.rows[0], first) is True
+        assert view.unchanged(view.rows[0], second) is False
+
 
 class TestCandidates:
     """What the picker offers (#659): every image the archive lists for the

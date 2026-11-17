@@ -1550,7 +1550,8 @@ dialog::backdrop {
 }
 .art-pick__picker:has(.art-pick__loading.htmx-request) :is(.art-pick__others, .art-pick__none) { display: none; }
 /* Nothing in the archive (#946), drawn as a slide is: a frame where the image
-   would be, its caption beside it. */
+   would be, its caption beside it — and, beside the album's own images
+   (#1012), a slide in the carousel. */
 .art-pick__none {
   display: grid;
   grid-template-columns: 6.5rem minmax(0, 1fr);
@@ -1558,7 +1559,7 @@ dialog::backdrop {
   align-items: start;
 }
 .art-pick__none > .art-row__art { width: 6.5rem; height: 6.5rem; }
-.art-pick__none .art-pick__others { align-self: flex-start; margin-top: .4rem; }
+.art-row__facts > .art-pick__others { align-self: flex-start; margin-top: .4rem; }
 
 /* The carousel (#659): one image at a time — the one whose radio is checked —
    and, while Front only is ticked, never one that is not a front. A thumbnail

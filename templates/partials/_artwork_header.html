@@ -11,7 +11,7 @@
         <span class="text-muted font-normal normal-case tracking-normal ml-1">· {{ artwork.count }}</span>
         {% endif %}
     </h2>
-    {% if artwork and artwork.candidates %}
+    {% if artwork and (artwork.candidates or artwork.own) %}
     <button type="button" class="art-embiggen" popovertarget="art-pick-panel-{{ album.id }}"
             popovertargetaction="show">Embiggen {{ size_icon('out') }}</button>
     {% else %}

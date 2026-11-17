@@ -11641,6 +11641,57 @@ def test_the_archive_image_can_be_chosen_whatever_its_size(client, cfg):
         assert art is not None and art[0] == theirs
 
 
+def test_the_folder_cover_can_be_chosen_for_tracks_that_carry_art(client, cfg):
+    """*Silent Alarm* (#1012): two sizes of one cover on the tracks, a larger
+    `cover.png` beside them, and the archive's front the smaller of the two.
+    The size rule touches nothing. The picker opens on the archive's image and
+    offers the album's own beside it, and choosing `cover.png` for each row
+    then applying puts it on every track."""
+    import re
+
+    from harmonist import formats, images
+    from test.test_artwork import png_bytes
+
+    small = png_bytes(300, 300) + b"\x01"
+    medium = png_bytes(500, 500) + b"\x02"
+    big = png_bytes(1000, 1000) + b"\x03"
+    d = _archive_candidate(
+        cfg,
+        "SilentAlarm",
+        "rel-silent",
+        image=small,
+        covers=[small, small, medium],
+        folder=big,
+        folder_name="cover.png",
+    )
+    aid = _id_for(cfg, d)
+    cover = images.digest(big)
+
+    ordinary = client.get(f"/album/{aid}/artwork").text
+    assert "Apply artwork" not in ordinary
+    offered = re.findall(r'name="candidate" value="([^"]*)"', ordinary)
+    assert offered == [images.digest(small), images.digest(medium), cover, "1"]
+    assert re.search(r'name="candidate" value="1"\s+id="[^"]*"\s+class="[^"]*"\s+checked', ordinary)
+    assert f'src="/artwork/image/{aid}/{cover}"' in ordinary
+    # Named as the rows are, and with no "Don't suggest": that names an upload.
+    *_, folder_slide = _slides(ordinary, own=True)
+    assert "This album" in folder_slide and "cover.png" in folder_slide
+    assert "Don't suggest" not in folder_slide and "Don't suggest" in _slides(ordinary)[0]
+
+    chosen = _pick(client, aid, _pick(client, aid, ordinary, row=0, candidate=cover), row=1)
+
+    assert "Apply artwork" in chosen
+    client.post(
+        f"/album/{aid}/artwork/update",
+        data={"plan": _form_value(chosen, "plan"), "use": _carried_use(chosen)},
+    )
+
+    for track in ("01 Track.m4a", "02 Track.m4a", "03 Track.m4a"):
+        art = formats.read_cover(d / track)
+        assert art is not None and art[0] == big
+    assert (d / "cover.png").read_bytes() == big
+
+
 def test_the_picker_says_when_a_row_already_has_the_archives_image(client, cfg):
     """*Far & Off* (#659): the archive's front was already on every track and in
     `cover.jpg`. Choosing it could only ever be a no-op, and the old section
@@ -11931,14 +11982,15 @@ def _step(client, aid: str, html: str, more: str) -> str:
     return client.get(f"/album/{aid}/artwork", params=fields).text
 
 
-def _slides(html: str) -> list[str]:
-    """The carousel's images, each as its markup — not the ghost's stand-in."""
+def _slides(html: str, *, own: bool = False) -> list[str]:
+    """The carousel's archive images, each as its markup — not the ghost's
+    stand-in, nor the slide saying there are none. With `own`, the album's own
+    images instead (#1012), which the archive's ids, all numbers, never are."""
     from bs4 import BeautifulSoup
 
-    return [
-        str(slide)
-        for slide in BeautifulSoup(html, "html.parser").select(".art-pick__slide[data-front]")
-    ]
+    slides = BeautifulSoup(html, "html.parser").select(".art-pick__slide[data-front]")
+    values = [str(slide.select_one('input[name="candidate"]').get("value")) for slide in slides]
+    return [str(slide) for slide, value in zip(slides, values) if value and value.isdigit() != own]
 
 
 def test_stepping_past_the_last_image_lists_the_groups_next_release(client, cfg, monkeypatch):
@@ -12090,11 +12142,43 @@ def _look_ahead(client, html: str) -> str | None:
 
 
 def _said(html: str) -> str:
-    """The empty picker's caption, as one line."""
+    """The empty picker's caption, as one line: the panel's, or the slide's
+    where the album's own images are offered beside it (#1012)."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    found = soup.select_one(".art-pick__none") or next(
+        (
+            slide
+            for slide in soup.select(".art-pick__slide[data-front]")
+            if slide.select_one('input[name="candidate"][value=""]')
+        ),
+        None,
+    )
+    return " ".join(found.get_text(" ").split()) if found else ""
+
+
+def test_with_nothing_from_the_archive_the_album_offers_its_own_images(client, cfg, monkeypatch):
+    """Where the archive has nothing (#946), the album's own images are still
+    there to choose (#1012). The answer is a slide where the archive's images
+    would be, and the picker opens on it as it would on them, with nothing to
+    Use; ‹ reaches the album's own."""
     import re
 
-    found = re.search(r'<div class="art-pick__none"[\s\S]*?</div>\s*</div>', html)
-    return " ".join(re.sub(r"<[^>]+>", " ", found.group(0)).split()) if found else ""
+    from harmonist import images
+
+    d, _ = _album_in_a_group(cfg, monkeypatch, own=False, covers=(_png(1), _png(2)))
+    aid = _id_for(cfg, d)
+
+    page = client.get(f"/album/{aid}/artwork").text
+
+    assert _said(page).startswith("No images for this release or its release group")
+    assert len(_slides(page, own=True)) == 2
+    assert re.search(r'name="candidate" value=""\s+id="[^"]*"\s+class="[^"]*"\s+checked', page)
+    assert "-none:checked) :is(.art-pick__use, .art-row__slot) { display: none; }" in page
+
+    chosen = _pick(client, aid, page, row=0, candidate=images.digest(_png(2)))
+    assert "Apply artwork" in chosen
 
 
 def test_an_empty_picker_says_the_archive_has_nothing_once_it_has_asked(client, cfg, monkeypatch):
