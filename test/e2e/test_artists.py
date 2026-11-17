@@ -3,6 +3,8 @@
 import os
 import re
 import shutil
+import time
+import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -357,6 +359,44 @@ def test_artist_count_refreshes_when_the_watcher_discovers_an_artist(
     )
     pw.expect(count).to_have_text(str(total + 1), timeout=20000)
     pw.expect(page.get_by_role("list", name="Artists").locator("li")).to_have_count(1)
+    page.context.close()
+
+
+def test_a_scan_that_lands_before_the_first_poll_still_refreshes_the_page(
+    browser_factory, artists_server, artists_root
+):
+    """A scan can publish between the page being drawn and the page first asking
+    for the status (#1013). The page's first poll is held here until the
+    watcher's scan is serving the new artist, which is that order made certain."""
+    identity = "bbbbbbbb-bbbb-4bbb-8bbb-333333333333"
+    address = artists_server + "/artists?artist_q=First+poll"
+    page = browser_factory("chromium").new_page()
+    held = []
+    page.route("**/status", lambda route: held.append(route), times=1)
+    with page.expect_request("**/status"):
+        page.goto(address)
+    link = page.locator(f'a[href^="/artist/{identity}?"]')
+    pw.expect(link).to_have_count(0)
+    assert held, "the page's first status poll was not held"
+
+    make_album(
+        artists_root / "harmonist-demo",
+        "First poll artist/Album",
+        "aaaaaaaa-aaaa-4aaa-8aaa-333333333333",
+        ["First poll artist"],
+        [identity],
+    )
+    # Asked of the server, not through the page: its poll is still held.
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        with urllib.request.urlopen(address, timeout=10) as response:
+            if f"/artist/{identity}?" in response.read().decode():
+                break
+    else:
+        pytest.fail("the watcher's scan did not find the new artist")
+
+    held.pop().continue_()
+    pw.expect(link).to_be_visible(timeout=10000)
     page.context.close()
 
 

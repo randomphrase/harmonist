@@ -531,6 +531,11 @@ class ScanRunner:
     def status(self) -> dict[str, Any]:
         return self._status.to_dict()
 
+    @property
+    def seq(self) -> int:
+        """The completed-scan counter `status()` reports."""
+        return self._status.seq
+
     # ----- triggers -----
 
     def request_scan(self) -> None:

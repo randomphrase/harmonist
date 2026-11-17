@@ -12,6 +12,7 @@
      hx-get="/status"
      hx-trigger="load, every 1500ms"
      hx-swap="innerHTML"
+     {% if request.state.scan_seq is defined %}data-scan-seq="{{ request.state.scan_seq }}" data-artwork-revision="{{ request.state.artwork_revision }}"{% endif %}
      class="hidden hx-poll"></div>
 <script>
 // Single consolidated status bar (#harmonist-status). Three input sources:
@@ -40,9 +41,16 @@
     let lastSyncState = 'idle';
     let lastReconcileState = 'idle';
     let lastScanState = 'idle';
-    let lastScanSeq;  // last completed-scan counter we've seen (undefined until first poll)
+    // The last completed-scan counter and artwork revision seen, starting from
+    // the ones the page was drawn from (#1013). Starting from the first poll's
+    // instead missed a change that landed between the page being drawn and
+    // that poll, which left the page showing what was there before it until
+    // the next change.
+    const drawn = document.getElementById('app-status').dataset;
+    let lastScanSeq = drawn.scanSeq === undefined ? undefined : Number(drawn.scanSeq);
     let lastInboxCount;  // last Inbox badge number (undefined until first poll)
-    let lastArtworkRevision;
+    let lastArtworkRevision = drawn.artworkRevision === undefined
+        ? undefined : Number(drawn.artworkRevision);
     let syncDisplay = null;       // current running-sync HTML, or null
     let reconcileDisplay = null;  // current running-reconcile HTML, or null
     let scanDisplay = null;       // current library-scan HTML, or null
@@ -336,7 +344,7 @@
         // ----- Background jobs (#757) -----
         // The oldest running job, with a count of any others. A closing line is
         // shown only when it lands while the page is open: the first poll just
-        // records where things stand, as the scan counter above does.
+        // records where things stand.
         //
         // A job's step is the job running inside it (#815), the tracks of the
         // album it names: "1/5 · Rawhide · track 3/12". The job counts what it

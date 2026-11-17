@@ -1,12 +1,45 @@
-"""A background refresh keeps an open Library filter menu open (#823)."""
+"""The Library's background refreshes: one keeps an open filter menu open (#823),
+and one owed before the page's first status poll still happens (#1013)."""
 
 import os
 import re
+import urllib.request
 
 import pytest
 
 pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e disabled")
 pw = pytest.importorskip("playwright.sync_api")
+
+ARTLESS = "demo-rel-rural-juror"
+
+
+def test_an_artwork_change_before_the_first_poll_still_refreshes_the_library(
+    browser_factory, library_filters_server
+):
+    """An artwork check can change what the Library shows between the page being
+    drawn and its first status poll. The first poll is held here until a check
+    asked of the server directly has found the artless album an Addition, which
+    is that order made certain."""
+    server = library_filters_server
+    page = browser_factory("chromium").new_page()
+    held = []
+    page.route("**/status", lambda route: held.append(route), times=1)
+    with page.expect_request("**/status"):
+        page.goto(f"{server}/?tab=library")
+    badge = page.locator(f"#lib-{ARTLESS} .sev--artwork")
+    pw.expect(page.locator(f"#lib-{ARTLESS}")).to_be_visible()
+    pw.expect(badge).to_have_count(0)
+    assert held, "the page's first status poll was not held"
+
+    # The check an album page sends, asked of the server: the page's poll is held.
+    with urllib.request.urlopen(f"{server}/album/{ARTLESS}/artwork?check=1", timeout=30):
+        pass
+    with urllib.request.urlopen(f"{server}/library?filter=artwork-addition", timeout=10) as r:
+        assert f'id="lib-{ARTLESS}"' in r.read().decode(), "the check found no Addition"
+
+    held.pop().continue_()
+    pw.expect(badge).to_contain_text("Addition", timeout=10000)
+    page.context.close()
 
 
 @pytest.mark.parametrize(("engine", "width"), [("chromium", 1280), ("webkit", 390)])

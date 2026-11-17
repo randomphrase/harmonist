@@ -1099,6 +1099,14 @@ def create_app(
 
     @app.middleware("http")
     async def _rescan_after_mutation(request: Request, call_next: Any) -> Response:
+        # The counters the status poll redraws on, as they stand before the
+        # handler reads anything, for the page to carry to its first poll
+        # (#1013). They have to be read first: a scan publishes its snapshot,
+        # and an artwork check its observation, before advancing its counter,
+        # so a counter read first is never newer than what is drawn after it.
+        # At worst the page redraws once for nothing; it never misses a change.
+        request.state.scan_seq = request.app.state.scan_runner.seq
+        request.state.artwork_revision = artwork_updates.revision()
         # One action scope per state-changing request, so the activity entry the
         # handler writes and every audit record beneath it share an action_id
         # (#84). Opened HERE, before call_next, because the id must be in scope

@@ -25,7 +25,15 @@ import pytest
 from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
-from harmonist import activity, activity_store, artwork, mb_lookup, mb_search
+from harmonist import (
+    activity,
+    activity_store,
+    artwork,
+    artwork_updates,
+    mb_lookup,
+    mb_search,
+    scanner,
+)
 from harmonist import sidecar as sc
 from harmonist.activity_store import Level, Source
 from harmonist.config import (
@@ -293,6 +301,31 @@ def test_consolidated_status_endpoint(client):
     # Single source of truth for the inbox/library numbers.
     for key in ("inbox", "library", "new", "needs_sync"):
         assert key in body["counts"]
+
+
+def test_a_page_carries_the_counters_from_before_it_read_the_library(client, monkeypatch):
+    """The status bar's first poll compares with the counters the page was drawn
+    from (#1013). They are read before the handler reads anything, so they are
+    never newer than what is on the page: a counter read afterwards could belong
+    to a change the page doesn't show, and the poll would see nothing new. Here
+    a scan and an artwork check land while the handler reads the library."""
+    from bs4 import BeautifulSoup
+
+    runner = client.app.state.scan_runner
+    runner._status.seq = 4
+    monkeypatch.setattr(artwork_updates, "_revision", 7)
+    scan = scanner.scan
+
+    def changes_land(music_dir):
+        runner._status.seq = 5
+        artwork_updates._revision = 8
+        return scan(music_dir)
+
+    monkeypatch.setattr(scanner, "scan", changes_land)
+    status = BeautifulSoup(client.get("/artists").text, "html.parser").find(id="app-status")
+    assert status is not None
+    assert (status["data-scan-seq"], status["data-artwork-revision"]) == ("4", "7")
+    assert (runner.seq, artwork_updates.revision()) == (5, 8)
 
 
 def test_tasks_renders_inbox_count(client, cfg):

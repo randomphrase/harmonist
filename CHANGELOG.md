@@ -37,6 +37,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- **A page opened just as a library scan or artwork check finishes shows what it
+  found**, rather than what was there before (#1013).
 - **A release's cover sits under its checkbox when you review it**, not rows
   below, and the unassigned-files count no longer looks like a button (#1005).
 - **An album confirmed with a file left unassigned no longer waits for a review
