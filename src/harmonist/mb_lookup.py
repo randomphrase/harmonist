@@ -175,13 +175,15 @@ def fetch_release(mbid: str) -> Release:
 
 
 def fetch_artist(mbid: str) -> dict[str, Any]:
-    """Fetch one MusicBrainz artist, without includes: the ID, names,
-    disambiguation, type, gender and life span an artist NFO maps (#981).
+    """Fetch one MusicBrainz artist: the ID, names, disambiguation, type,
+    gender and life span an artist NFO maps (#981), and its links, among them
+    the Wikidata item its biography is found through (#1018). The links come in
+    the same request, so they cost no budget of their own.
 
     Raises `ArtistNotFoundError` when MusicBrainz has no artist with this ID.
     """
     try:
-        result = musicbrainzngs.get_artist_by_id(mbid)
+        result = musicbrainzngs.get_artist_by_id(mbid, includes=["url-rels"])
     except musicbrainzngs.ResponseError as e:
         if _is_not_found(e):
             raise ArtistNotFoundError(f"MusicBrainz has no artist {mbid}") from e

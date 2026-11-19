@@ -3,12 +3,14 @@ and Undo (#981, #917)."""
 
 from __future__ import annotations
 
+import json
 from unittest.mock import Mock
 
 import pytest
 from bs4 import BeautifulSoup
 
-from harmonist import activity_store, id_registry, mb_lookup, mb_search, nfo_history
+from harmonist import activity_store, id_registry, mb_lookup, mb_search, nfo_history, wikimedia
+from harmonist.activity_store import Level, Source
 from test.test_artist_web import ALICE, artist_client
 
 __all__ = ["artist_client"]
@@ -389,3 +391,173 @@ def test_a_history_that_cannot_be_read_says_so(identify, monkeypatch):
     page = client.get(f"/artist/{key}")
     assert page.status_code == 200
     assert "History unavailable." in page.text
+
+
+# A biography from Wikipedia, through MusicBrainz's link to Wikidata (#1018).
+
+WIKIDATA = {
+    "type": "wikidata",
+    "target": "https://www.wikidata.org/wiki/Q123",
+    "direction": "forward",
+}
+BIOGRAPHY = wikimedia.Biography(
+    text="Carol are a band from Pawnee.\nThey formed in 1999.",
+    language="en",
+    url="https://en.wikipedia.org/wiki/Carol_(band)",
+    revision="42",
+)
+
+
+@pytest.fixture
+def wikipedia(identify, monkeypatch):
+    """Carol, linked to a Wikidata item on MusicBrainz, and Wikipedia's article
+    for it."""
+    client, path, key, lookup = identify
+    lookup.side_effect = lambda mbid: {**CAROL_MB, "url-relation-list": [dict(WIKIDATA)]}
+    found = Mock(return_value=BIOGRAPHY)
+    monkeypatch.setattr(wikimedia, "biography", found)
+    return client, path, key, found
+
+
+def flash(response):
+    return json.loads(response.headers["HX-Trigger"])["harmonist-status"]
+
+
+def biography_link(client, key):
+    page = BeautifulSoup(client.get(f"/artist/{key}").text, "html.parser")
+    return page.select_one("#artist-biography a")
+
+
+def test_identify_fills_in_a_biography_from_the_linked_wikipedia_article(wikipedia):
+    client, path, key, found = wikipedia
+    response = identify_as(client, key, key)
+    assert response.headers["HX-Redirect"] == f"/artist/{CAROL}"
+    found.assert_called_once_with("Q123", languages=["en"], user_agent=mb_lookup_agent(client))
+    written = path.read_text()
+    assert (
+        "<formed>1999</formed>\n    <biography>Carol are a band from Pawnee.\n"
+        "They formed in 1999.</biography>\n</artist>"
+    ) in written
+
+    _page, events, writes = history(client, CAROL)
+    write = writes[next(e.id for e in events if e.message.startswith("Identified"))]
+    (change,) = [c for c in write.changes if c.field == "biography"]
+    assert (change.before, change.after) == (None, BIOGRAPHY.text)
+    assert change.credit == nfo_history.Credit(BIOGRAPHY.url, BIOGRAPHY.revision)
+    link = biography_link(client, CAROL)
+    assert link is not None and link["href"] == BIOGRAPHY.url
+    assert link.get_text(" ", strip=True) == "From Wikipedia ↗"
+    # Drawing the page asked nobody anything.
+    assert found.call_count == 1
+
+
+def mb_lookup_agent(client):
+    return client.app.state.cfg.musicbrainz.user_agent
+
+
+def test_identifying_twice_fills_the_biography_in_once(wikipedia):
+    """The second time, the file has the biography, so Wikipedia isn't asked
+    and nothing is written or recorded."""
+    client, path, key, found = wikipedia
+    identify_as(client, key, key)
+    written, recorded = path.read_bytes(), activity_store.artist_history(CAROL)
+    again = identify_as(client, CAROL, key)
+    assert flash(again)["verb"] == "Nothing to change"
+    assert path.read_bytes() == written
+    assert activity_store.artist_history(CAROL) == recorded
+    assert found.call_count == 1
+
+
+def test_the_biography_comes_from_the_languages_asked_for_in_order(wikipedia):
+    client, _path, key, found = wikipedia
+    client.app.state.cfg.artists.biography_languages = ["pt", "en"]
+    identify_as(client, key, key)
+    assert found.call_args.kwargs["languages"] == ["pt", "en"]
+
+
+def test_a_biography_already_there_is_kept_and_wikipedia_is_not_asked(wikipedia):
+    client, path, key, found = wikipedia
+    path.write_text("<artist>\n    <biography>Mine</biography>\n</artist>")
+    identify_as(client, key, key)
+    assert "<biography>Mine</biography>" in path.read_text()
+    assert "Carol are a band" not in path.read_text()
+    found.assert_not_called()
+
+
+def test_a_biography_edited_since_is_no_longer_credited_to_wikipedia(wikipedia):
+    client, path, key, _found = wikipedia
+    identify_as(client, key, key)
+    path.write_text(path.read_text().replace("from Pawnee", "from Eagleton"))
+    assert biography_link(client, CAROL) is None
+
+
+def test_undo_takes_away_the_biography_it_filled_in(wikipedia):
+    client, path, key, _found = wikipedia
+    identify_as(client, key, key)
+    _page, events, writes = history(client, CAROL)
+    write = writes[next(e.id for e in events if e.message.startswith("Identified"))]
+    client.post(f"/artist/{CAROL}/undo", data={"event_id": write.event_id})
+    assert "<biography>" not in path.read_text()
+
+
+def test_identifying_again_fills_in_a_biography_that_is_missing(wikipedia):
+    """How an artist identified before biographies came, or before MusicBrainz
+    linked a Wikidata item, gets one."""
+    client, path, key, found = wikipedia
+    found.return_value = None
+    identify_as(client, key, key)
+    assert "<biography>" not in path.read_text()
+
+    found.return_value = BIOGRAPHY
+    again = identify_as(client, CAROL, key)
+    assert flash(again)["verb"] == "Filled in"
+    assert "<biography>Carol are a band" in path.read_text()
+
+
+def test_wikipedia_unreachable_still_identifies_and_says_the_biography_is_missing(wikipedia):
+    client, path, key, found = wikipedia
+    found.side_effect = wikimedia.WikimediaError("503")
+    response = identify_as(client, key, key)
+    assert response.headers["HX-Redirect"] == f"/artist/{CAROL}"
+    assert f"<musicbrainzartistid>{CAROL}</musicbrainzartistid>" in path.read_text()
+    assert "<biography>" not in path.read_text()
+    status = flash(response)
+    assert status["level"] == Level.WARNING
+    assert "couldn't fetch a biography from Wikipedia" in status["details"]
+    (entry,) = [
+        e
+        for e in activity_store.artist_history(CAROL)
+        if e.source is Source.ACTIVITY and e.message.startswith("Identified")
+    ]
+    assert entry.level is Level.WARNING
+
+
+def test_wikipedia_unreachable_says_so_even_when_nothing_else_changes(wikipedia):
+    client, _path, key, found = wikipedia
+    found.return_value = None
+    identify_as(client, key, key)
+    found.return_value, found.side_effect = None, wikimedia.WikimediaError("503")
+    again = identify_as(client, CAROL, key)
+    status = flash(again)
+    assert status["verb"] == "Nothing to change"
+    assert status["level"] == Level.WARNING
+    assert "couldn't fetch a biography from Wikipedia" in status["details"]
+
+
+def test_no_article_identifies_and_says_there_is_none(wikipedia):
+    client, path, key, found = wikipedia
+    found.return_value = None
+    response = identify_as(client, key, key)
+    assert "<biography>" not in path.read_text()
+    status = flash(response)
+    assert status["level"] == Level.INFO
+    assert "no Wikipedia article" in status["details"]
+
+
+def test_no_wikidata_link_on_musicbrainz_asks_wikipedia_nothing(identify, monkeypatch):
+    client, path, key, _lookup = identify
+    found = Mock(side_effect=AssertionError("Wikipedia was asked"))
+    monkeypatch.setattr(wikimedia, "biography", found)
+    response = identify_as(client, key, key)
+    assert "<biography>" not in path.read_text()
+    assert "MusicBrainz links no Wikidata item" in flash(response)["details"]

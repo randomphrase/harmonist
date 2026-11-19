@@ -27,7 +27,7 @@ import os
 import shutil
 import time
 import zlib
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextvars import ContextVar
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -51,6 +51,7 @@ from . import (
     mb_lookup,
     pending_downloads,
     redownloads,
+    wikimedia,
 )
 from . import sidecar as sidecar_mod
 from .formats.m4a import (
@@ -142,13 +143,39 @@ ARTIST_DETAILS: dict[str, dict[str, Any]] = {
         "type": "Group",
         "disambiguation": "San Dimas rock duo",
         "life-span": {"begin": "1988"},
+        "url-relation-list": [
+            {"type": "wikidata", "target": "https://www.wikidata.org/wiki/Q900000001"}
+        ],
     },
     "Barry Jive and the Uptown Five": {
         "type": "Group",
         "life-span": {"begin": "1997", "end": "2000", "ended": "true"},
     },
     "Mouse Rat": {"type": "Group", "life-span": {"begin": "2009"}},
-    "The Unplayed Satellites": {"type": "Group"},
+    "The Unplayed Satellites": {
+        "type": "Group",
+        "url-relation-list": [
+            {"type": "wikidata", "target": "https://www.wikidata.org/wiki/Q900000002"}
+        ],
+    },
+}
+
+#: What the demo's Wikipedia says about the Wikidata items its MusicBrainz
+#: links artists to (#1018): identifying Wyld Stallion's empty NFO fills in a
+#: biography, and so does identifying The Unplayed Satellites again.
+WIKIPEDIA: dict[str, tuple[str, str]] = {
+    "Q900000001": (
+        "Wyld_Stallion",
+        (
+            "Wyld Stallion are a rock duo from San Dimas, California, formed in 1988 by two "
+            "high-school friends.\nThey rehearsed in a garage for years before learning to "
+            "play their instruments."
+        ),
+    ),
+    "Q900000002": (
+        "The_Unplayed_Satellites",
+        "The Unplayed Satellites are a band known chiefly for the albums they have yet to release.",
+    ),
 }
 
 
@@ -1146,6 +1173,19 @@ def fetch_artist(mbid: str) -> dict[str, Any]:
     return {"id": mbid, "name": name, "sort-name": sort_name, **ARTIST_DETAILS.get(name, {})}
 
 
+def wikipedia_biography(
+    item: str, *, languages: Sequence[str], user_agent: str, client: object = None
+) -> wikimedia.Biography | None:
+    """Demo counterpart of fetching a biography from Wikipedia (#1018): the
+    demo's Wikipedia is in English only, and knows the items in `WIKIPEDIA`."""
+    if item not in WIKIPEDIA or "en" not in languages:
+        return None
+    title, text = WIKIPEDIA[item]
+    return wikimedia.Biography(
+        text=text, language="en", url=f"https://en.wikipedia.org/wiki/{title}", revision="1"
+    )
+
+
 def search_artists(name: str, limit: int = 10) -> tuple[list[dict[str, Any]], int]:
     """Demo counterpart of the artist search (#981): the artists the demo knows
     whose names contain `name`, ignoring case, by name."""
@@ -1421,8 +1461,10 @@ def install() -> None:
     cover_art.fetch_listing = fetch_listing
     cover_art.fetch_bytes = fetch_bytes
     cover_art.fetch_head = fetch_head
+    # Wikipedia is only ever asked for a biography, so this is the whole of it.
+    wikimedia.biography = wikipedia_biography
     formats.write_tags = _paced_write_tags
-    log.info("demo mode: monkey-patched mb_lookup, mb_search, cover_art")
+    log.info("demo mode: monkey-patched mb_lookup, mb_search, cover_art, wikimedia")
 
 
 # ---------------------------------------------------------------------------

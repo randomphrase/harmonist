@@ -111,8 +111,13 @@ name, or by MBID from the artist's MusicBrainz address, as an album finds its
 release. Each artist found is listed with a link to
 MusicBrainz for everything not shown. **Identify** writes the artist ID, name, sort
 name, type, gender, disambiguation and dates (`born` and `died` for a person,
-`formed` and `disbanded` for a group), and nothing else in the file. A field
-MusicBrainz has no value for is removed. An identified NFO has the same finder
+`formed` and `disbanded` for a group). A field MusicBrainz has no value for is
+removed. Where the file has no biography, Identify also fills one in from
+Wikipedia: the introduction of the article that the artist's Wikidata item,
+linked from MusicBrainz, leads to, in the first of the
+[biography languages](configuration.md#artists) that has one. A biography the file already has is left as it is, and nothing else
+in the file is touched. The artist page credits Wikipedia beside the biography
+while it is still the text that was written. An identified NFO has the same finder
 behind the edit button beside its MusicBrainz artist, with its own ID already
 filled in: for an artist that turns out to be the wrong one, or to fill in what
 the file lacks. Where an artist has two NFOs, each is identified on its own.

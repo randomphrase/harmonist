@@ -94,7 +94,8 @@ belongs in a music folder.
 - **Tag changes**: per-file before-and-after values for every tagging, which is
   what makes undo possible.
 - **NFO changes**: the same for every write into an artist NFO, with the artist
-  page each write moved the file away from (see
+  page each write moved the file away from, and the article a biography it
+  filled in came from (see
   [history](history.md#what-an-artist-nfo-write-records)).
 - **Album aliases**: old ID to new ID, recorded when an album is re-identified
   (see [the model](model.md#identity)).

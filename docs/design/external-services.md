@@ -1,7 +1,9 @@
 # MusicBrainz and the Cover Art Archive
 
 Harmonist asks two services about a release. Their costs are different in kind,
-and the caching in front of each follows from that difference.
+and the caching in front of each follows from that difference. For an artist's
+biography it also asks [Wikidata and Wikipedia](#wikidata-and-wikipedia), and
+only when the user identifies the artist.
 
 ## MusicBrainz
 
@@ -30,7 +32,9 @@ while everything above it still works.
 Artists aren't stored (#981). Each lookup is the user asking now, and the one
 that writes needs the current answer, so a stored answer would have nothing to
 serve but a row that can't say how old it is. Searching artists by name isn't
-cached either, as searching releases isn't.
+cached either, as searching releases isn't. A lookup asks for the artist's links
+too, in the same request: one of them is the Wikidata item a biography is found
+through (#1018).
 
 **A row is served for its TTL but kept forever.** Expiry means "ask again", not
 "forget". An expired row is still the last thing MusicBrainz said, which is what
@@ -134,3 +138,29 @@ are copies the archive still has, so the cache makes no promises and needs no
 protected set. A newer answer from the archive discards the older image rather
 than risk showing it as the new one, and an evicted image is fetched again the
 next time its album is opened.
+
+## Wikidata and Wikipedia
+
+An artist NFO's biography is an article's introduction (#1018). The article is
+reached by links alone: MusicBrainz's from the artist to its Wikidata item, then
+the item's to each Wikipedia. That is the same route MusicBrainz's own artist
+page takes to the extract it shows, and an endpoint there serves that extract,
+but it is part of MusicBrainz's website rather than its API and sits behind a
+browser check, so Harmonist asks Wikimedia itself.
+
+- **Two requests, only when the user identifies an artist** whose file has no
+  biography: the item's sitelinks, then the article. Drawing a page asks
+  nothing, so neither service is in the way of browsing, and no background work
+  asks either.
+- **Nothing is cached.** The answer is written into the file, which is then
+  where it lives, and it is never asked for again unless the user identifies the
+  artist again with the biography gone.
+- **A failure doesn't stop the identification.** The MusicBrainz fields are
+  written and the answer says the biography is missing, since the identity is
+  the part the user asked for and the biography can be filled in on another try.
+- **Only a Wikipedia is asked for the article.** Its address comes from
+  Wikidata's answer, so a host that isn't one is refused rather than sent a
+  request.
+- **Wikimedia asks every client to identify itself** with a way to reach its
+  operator, which the MusicBrainz user agent already does, so the same one is
+  sent.

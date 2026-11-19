@@ -113,7 +113,8 @@
        MusicBrainz; the MB artist row above is where a difference shows.
 
        The biography keeps its id and `hmt-group`: the page redraws itself,
-       and an open disclosure has to stay open. #}
+       and an open disclosure has to stay open. Wikipedia is credited beside
+       it while it is still the text Harmonist took from there (#1018). #}
     {% with profile = nfo.profile %}
     {% if profile and (profile.about or profile.genres or profile.sound or profile.biography) %}
     <section id="artist-info" aria-labelledby="artist-info-heading" class="border border-line rounded-lg p-4 space-y-3">
@@ -143,6 +144,7 @@
         <details id="artist-biography" class="hmt-group">
             <summary class="cursor-pointer text-2xs font-bold text-muted hover:text-ink uppercase tracking-widest">Biography</summary>
             <p class="mt-2 text-sm text-ink whitespace-pre-line break-words">{{ profile.biography }}</p>
+            {% if biography_credit %}{% with credit = biography_credit %}{% include 'partials/_wikipedia_credit.html' %}{% endwith %}{% endif %}
         </details>
         {% endif %}
     </section>

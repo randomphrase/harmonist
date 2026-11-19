@@ -2,7 +2,7 @@
 
 import pytest
 
-from harmonist import artist_nfo, artists, demo, mb_lookup, nfo_writer, scanner
+from harmonist import artist_nfo, artists, demo, mb_lookup, nfo_writer, scanner, wikimedia
 from harmonist.models import AlbumState
 
 VARIOUS = "89ad4ac3-39f7-470e-963a-56509c546377"
@@ -98,3 +98,16 @@ def test_the_demos_musicbrainz_knows_each_credited_artist_and_no_other():
     }
     with pytest.raises(mb_lookup.ArtistNotFoundError):
         demo.fetch_artist("00000000-0000-4000-8000-000000000000")
+
+
+def test_the_demos_wikipedia_has_a_biography_for_wyld_stallion_and_is_never_asked_for_real():
+    """So identifying the empty NFO fills in a biography too (#1018), without
+    the demo ever contacting Wikimedia."""
+    demo.install()
+    assert wikimedia.biography.__module__ == demo.__name__
+    wyld = demo.MB_RELEASES["demo-rel-wyld"]["artist-credit"][0]["artist"]["id"]
+    item = wikimedia.wikidata_item(demo.fetch_artist(wyld))
+    assert item is not None
+    found = wikimedia.biography(item, languages=["en"], user_agent="demo")
+    assert found is not None and found.text.startswith("Wyld Stallion are a rock duo")
+    assert wikimedia.biography(item, languages=["pt"], user_agent="demo") is None

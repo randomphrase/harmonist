@@ -27,7 +27,7 @@ import threading
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -405,6 +405,14 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         )""",
         "CREATE INDEX idx_nfo_changes_key_before ON nfo_changes (key_before)",
     ),
+    # 13 -> 14: where a field an NFO write filled in came from (#1018), as
+    # {field: {"url": ..., "revision": ...}}. A biography is Wikipedia's text,
+    # so the artist page credits the article beside it while the file still
+    # holds what was written. Kept with the write rather than per artist: it
+    # names where this text came from, which MusicBrainz's link may have moved
+    # on from since. NULL for a write that took nothing from elsewhere, and for
+    # every write before this.
+    ("ALTER TABLE nfo_changes ADD COLUMN sources TEXT",),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
@@ -760,18 +768,25 @@ def tag_changes_for(event_ids: Sequence[int]) -> dict[int, TagChanges]:
 class NfoChanges:
     """One NFO write's per-field before/after, the file it went into, relative
     to the library root, and the page key the write moved the file away from
-    (see the 12->13 migration)."""
+    (see the 12->13 migration), and where any field it filled in came from (see
+    the 13->14 migration)."""
 
     file: str
     key_before: str
     changes: dict[str, list[str | None]]
+    sources: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 def record_nfo_changes(
-    event_id: int, *, file: str, key_before: str, changes: Mapping[str, Sequence[str | None]]
+    event_id: int,
+    *,
+    file: str,
+    key_before: str,
+    changes: Mapping[str, Sequence[str | None]],
+    sources: Mapping[str, Mapping[str, str]] | None = None,
 ) -> None:
     """Attach one NFO write's per-field before/after to its `nfo.write` audit
-    row `event_id` (#981).
+    row `event_id` (#981), with where any field came from (#1018).
 
     Best-effort, like `record_tag_changes`: the write has happened and its audit
     line is committed, so losing this row costs the History detail and the
@@ -783,16 +798,24 @@ def record_nfo_changes(
         with _LOCK:
             conn = _ensure()
             conn.execute(
-                "INSERT INTO nfo_changes (event_id, file, key_before, changes) VALUES (?, ?, ?, ?)",
+                "INSERT INTO nfo_changes (event_id, file, key_before, changes, sources) "
+                "VALUES (?, ?, ?, ?, ?)",
                 (
                     event_id,
                     file,
                     key_before,
                     json.dumps(
-                        {field: list(pair) for field, pair in changes.items()},
+                        {name: list(pair) for name, pair in changes.items()},
                         ensure_ascii=False,
                         sort_keys=True,
                     ),
+                    json.dumps(
+                        {name: dict(source) for name, source in sources.items()},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                    if sources
+                    else None,
                 ),
             )
             conn.commit()
@@ -815,7 +838,7 @@ def nfo_changes_for(event_ids: Sequence[int]) -> dict[int, NfoChanges]:
         with _LOCK:
             conn = _ensure()
             rows = conn.execute(
-                "SELECT event_id, file, key_before, changes "
+                "SELECT event_id, file, key_before, changes, sources "
                 f"FROM nfo_changes WHERE event_id IN ({placeholders})",
                 list(event_ids),
             ).fetchall()
@@ -823,7 +846,7 @@ def nfo_changes_for(event_ids: Sequence[int]) -> dict[int, NfoChanges]:
         log.exception("activity_store nfo_changes_for failed", extra=_QUIET_MIRROR)
         raise StoreUnavailableError("could not read the artist NFO changes") from exc
     out: dict[int, NfoChanges] = {}
-    for event_id, file, key_before, payload in rows:
+    for event_id, file, key_before, payload, sourced in rows:
         try:
             parsed = json.loads(payload)
         except TypeError, ValueError:
@@ -834,8 +857,28 @@ def nfo_changes_for(event_ids: Sequence[int]) -> dict[int, NfoChanges]:
                 file=str(file),
                 key_before=str(key_before),
                 changes={str(k): list(v) for k, v in parsed.items() if isinstance(v, list)},
+                sources=_nfo_sources(event_id, sourced),
             )
     return out
+
+
+def _nfo_sources(event_id: int, sourced: str | None) -> dict[str, dict[str, str]]:
+    """A write's sources as stored. One that won't parse costs the credit on the
+    page, not the write's History or its Undo, so it is skipped and said."""
+    if sourced is None:
+        return {}
+    try:
+        parsed = json.loads(sourced)
+    except ValueError:
+        log.warning("nfo_changes row %s has unreadable sources — skipping them", event_id)
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {
+        str(name): {str(k): str(v) for k, v in source.items()}
+        for name, source in parsed.items()
+        if isinstance(source, dict)
+    }
 
 
 def artist_history(key: str, limit: int = 200) -> list[StoredEvent]:

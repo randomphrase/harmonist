@@ -1,0 +1,7 @@
+{# Where a biography's text came from (#1018): Wikipedia's text is CC BY-SA, so
+   it is credited wherever Harmonist shows it as Wikipedia's, styled as the
+   footer credits the other services. The revision is the one whose text was
+   written.
+
+   Expects `credit` (nfo_history.Credit). #}
+<p class="mt-1 text-xs text-muted"><a href="{{ credit.url }}" target="_blank" rel="noopener" title="Revision {{ credit.revision }}" class="text-accent hover:underline">From Wikipedia <span aria-hidden="true">↗</span></a></p>

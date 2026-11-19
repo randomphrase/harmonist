@@ -167,6 +167,15 @@ away, so both pages show an identification and its undo. An old link to a
 path-hash page leads, through the newest write away from it, to wherever the
 file went.
 
+**A biography's source is the write's, not the artist's** (#1018). The write
+that fills one in records the Wikipedia article and the revision its text came
+from. MusicBrainz's link already says which article is the artist's, but only
+as it is now; once the link moves on, it no longer says where the file's text
+came from, and crediting it would name the wrong article. The artist page
+credits Wikipedia only while the file holds exactly the text that write put
+there. An edit since, by hand or by a media server, makes the text no longer
+Wikipedia's as written, and the credit goes with it.
+
 ## Undoing an NFO write
 
 The same rules as a tagging's undo, for the same reasons. **The write is the

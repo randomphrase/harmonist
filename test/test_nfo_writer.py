@@ -52,8 +52,9 @@ KODI = """\
 def test_a_write_changes_only_the_mapped_elements():
     """The file's own spelling survives: the declaration, both comments, the
     single-quoted attribute, the entity and the character reference, the
-    nested album, and the indentation. New elements follow the nearest mapped
-    element before them, and one MusicBrainz has no value for goes with its line."""
+    nested album, and the indentation. New elements follow the nearest element
+    before them in Kodi's order, the biography among them, and one MusicBrainz
+    has no value for goes with its line."""
     data = KODI.encode()
     result = nfo_writer.apply(data, nfo_writer.mapped(PERSON))
     assert result.decode() == KODI.replace(
@@ -63,9 +64,8 @@ def test_a_write_changes_only_the_mapped_elements():
         "    <sortname>Lovelace, Ada</sortname>\n"
         "    <type>Person</type>\n"
         "    <gender>Female</gender>\n"
-        "    <born>1815-12-10</born>\n"
-        "    <died>1852-11-27</died>\n",
-    ).replace("    <disambiguation>wrong one</disambiguation>\n", "")
+        "    <born>1815-12-10</born>\n",
+    ).replace("    <disambiguation>wrong one</disambiguation>\n", "    <died>1852-11-27</died>\n")
 
 
 def test_the_plan_lists_each_change_before_and_after():
@@ -206,8 +206,79 @@ def test_a_write_that_would_change_an_unmapped_field_is_refused(monkeypatch):
         return real(document, changes).replace("<!-- keep me -->", "")
 
     monkeypatch.setattr(nfo_writer, "_edit", careless)
-    with pytest.raises(NfoWriteError, match="fields Harmonist doesn't map"):
+    with pytest.raises(NfoWriteError, match="fields it wasn't given"):
         nfo_writer.apply(KODI.encode(), {"name": "Ada Lovelace"})
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        (
+            "<disambiguation>wrong one</disambiguation>",
+            "<disambiguation>right one</disambiguation>",
+        ),
+        ("Wrote the first program", "Wrote a program"),
+    ],
+    ids=["mapped", "filled"],
+)
+def test_a_write_that_would_change_an_element_it_could_write_but_wasnt_given_is_refused(
+    monkeypatch, before, after
+):
+    """An element Harmonist may write is still the file's whenever this write
+    leaves it alone: a biography already there is never Harmonist's (#1018)."""
+    real = nfo_writer._edit
+
+    def careless(document, changes):
+        return real(document, changes).replace(before, after)
+
+    monkeypatch.setattr(nfo_writer, "_edit", careless)
+    with pytest.raises(NfoWriteError, match="fields it wasn't given"):
+        nfo_writer.apply(KODI.encode(), {"name": "Ada Lovelace"})
+
+
+def test_a_biography_goes_where_kodi_writes_it():
+    """Between formed and died, in Kodi's own order (`xbmc/music/Artist.cpp`)."""
+    before = (
+        "<artist>\n    <name>N</name>\n    <formed>1999</formed>\n"
+        "    <disbanded>2004</disbanded>\n</artist>"
+    )
+    result = nfo_writer.apply(before.encode(), {"biography": "One.\nTwo & three."})
+    assert result.decode() == before.replace(
+        "    <disbanded>", "    <biography>One.\nTwo &amp; three.</biography>\n    <disbanded>"
+    )
+    assert nfo_writer.plan(before.encode(), {"biography": "One."}) == {"biography": (None, "One.")}
+
+
+def test_an_empty_file_gets_a_biography_in_order_too():
+    result = nfo_writer.apply(b"", {**nfo_writer.mapped(GROUP), "biography": "Bio"})
+    assert result.decode().endswith(
+        "    <formed>1843</formed>\n    <biography>Bio</biography>\n</artist>\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("data", "lacks"),
+    [
+        (b"", True),
+        (b"<artist><name>N</name></artist>", True),
+        (b"<artist><biography/></artist>", True),
+        (b"<artist><biography>  \n </biography></artist>", True),
+        (b"<artist><biography>Mine</biography></artist>", False),
+        (b"<artist><biography>A</biography><biography>B</biography></artist>", False),
+        (b"<artist><biography/><biography/></artist>", False),
+        (b"<artist><biography><p>Mine</p></biography></artist>", False),
+    ],
+    ids=["empty-file", "absent", "empty", "blank", "text", "two", "two-empty", "nested"],
+)
+def test_a_file_lacks_a_biography_only_when_it_has_nothing_there(data, lacks):
+    """Several, or one holding other elements, are something there: a file is
+    filled in only where that can't lose anything (#1018)."""
+    assert nfo_writer.lacks(data, "biography") is lacks
+
+
+def test_lacks_refuses_a_file_it_cannot_read():
+    with pytest.raises(NfoWriteError, match="invalid artist XML"):
+        nfo_writer.lacks(b"<artist>", "biography")
 
 
 def test_writing_replaces_the_file_and_keeps_its_permissions(tmp_path):

@@ -447,6 +447,23 @@ def test_fetch_release_keeps_network_errors_transient(monkeypatch):
     assert not isinstance(excinfo.value, mb_lookup.ReleaseGoneError)
 
 
+def test_an_artist_comes_with_its_links_in_the_same_request(monkeypatch):
+    """Its Wikidata link is how a biography is found (#1018), and asking for it
+    with the artist costs no request of its own."""
+    link = {"type": "wikidata", "target": "https://www.wikidata.org/wiki/Q1"}
+
+    def get_artist_by_id(mbid, includes=()):
+        artist = {"id": mbid, "name": "Carol"}
+        if "url-rels" in includes:
+            artist["url-relation-list"] = [link]
+        return {"artist": artist}
+
+    lookup = MagicMock(side_effect=get_artist_by_id)
+    monkeypatch.setattr(musicbrainzngs, "get_artist_by_id", lookup)
+    assert mb_lookup.fetch_artist("art-1")["url-relation-list"] == [link]
+    assert lookup.call_count == 1
+
+
 def _http_error(status: int):
     from urllib.error import HTTPError
 

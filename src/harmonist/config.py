@@ -174,6 +174,29 @@ class LibraryConfig(BaseModel):
     watch_settle_seconds: float = 5.0
 
 
+#: A Wikipedia's language code, as its address spells it: `en`, `pt`, `zh-yue`.
+_WIKIPEDIA_LANGUAGE_RE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
+
+
+class ArtistsConfig(BaseModel):
+    #: The Wikipedias an artist NFO's biography is taken from, most wanted first
+    #: (#1018): the first with an article for the artist wins. Each code becomes
+    #: part of an address Harmonist asks, so anything that isn't one stops
+    #: startup rather than being sent.
+    biography_languages: list[str] = Field(default_factory=lambda: ["en"], min_length=1)
+
+    @field_validator("biography_languages")
+    @classmethod
+    def _wikipedia_languages(cls, value: list[str]) -> list[str]:
+        codes = [code.strip().lower() for code in value]
+        bad = [code for code in codes if not _WIKIPEDIA_LANGUAGE_RE.fullmatch(code)]
+        if bad:
+            raise ValueError(f"not Wikipedia language codes, such as 'en' or 'pt': {bad}")
+        if len(set(codes)) != len(codes):
+            raise ValueError(f"each language once: {codes}")
+        return codes
+
+
 class GardenerConfig(BaseModel):
     """How much of the metadata gardener (#32) is allowed to run by itself.
 
@@ -342,6 +365,7 @@ class Config(BaseModel):
     cover_art: CoverArtConfig = Field(default_factory=CoverArtConfig)
     artwork_store: ArtworkStoreConfig = Field(default_factory=ArtworkStoreConfig)
     library: LibraryConfig = Field(default_factory=LibraryConfig)
+    artists: ArtistsConfig = Field(default_factory=ArtistsConfig)
     gardener: GardenerConfig = Field(default_factory=GardenerConfig)
     tagging: TaggingConfig = Field(default_factory=TaggingConfig)
     test: TestConfig = Field(default_factory=TestConfig)
@@ -413,6 +437,7 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     server = data.setdefault("server", {})
     auth = data.setdefault("auth", {})
     library = data.setdefault("library", {})
+    artists = data.setdefault("artists", {})
     gardener = data.setdefault("gardener", {})
     tagging = data.setdefault("tagging", {})
     test = data.setdefault("test", {})
@@ -482,6 +507,9 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         # Pydantic's own bool parsing, so "true"/"false"/"1"/"0" all work and
         # anything else stops startup rather than reading as off.
         tagging["always_standardize_multivalue_artist"] = v.strip()
+    if v := env.get("HARMONIST_ARTISTS_BIOGRAPHY_LANGUAGES"):
+        # Comma-separated, like HARMONIST_ALLOWED_HOSTS; validated with the rest.
+        artists["biography_languages"] = [c.strip() for c in v.split(",") if c.strip()]
     if v := env.get("HARMONIST_DEMO_MODE"):
         data["demo_mode"] = v.strip() not in ("", "0", "false", "False", "no")
     return data

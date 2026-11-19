@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from harmonist import cover_art, formats, mb_lookup, mb_search
+from harmonist import cover_art, formats, mb_lookup, mb_search, wikimedia
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -35,6 +35,7 @@ _PRISTINE_GLOBALS = {
     (cover_art, "fetch_listing"): cover_art.fetch_listing,
     (cover_art, "fetch_bytes"): cover_art.fetch_bytes,
     (cover_art, "fetch_head"): cover_art.fetch_head,
+    (wikimedia, "biography"): wikimedia.biography,
 }
 
 

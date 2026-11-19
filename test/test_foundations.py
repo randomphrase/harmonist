@@ -98,6 +98,41 @@ port = 8765
     assert cfg.server.port == 9999
 
 
+def test_biographies_come_from_english_wikipedia_unless_told_otherwise(monkeypatch, tmp_path):
+    monkeypatch.delenv("HARMONIST_ARTISTS_BIOGRAPHY_LANGUAGES", raising=False)
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
+    assert config_mod.load().artists.biography_languages == ["en"]
+
+
+def test_biography_languages_come_in_order_from_the_file_or_the_environment(monkeypatch, tmp_path):
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    (cfg_dir / "harmonist.toml").write_text('[artists]\nbiography_languages = ["pt", "EN"]\n')
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
+    monkeypatch.delenv("HARMONIST_ARTISTS_BIOGRAPHY_LANGUAGES", raising=False)
+    assert config_mod.load().artists.biography_languages == ["pt", "en"]
+    monkeypatch.setenv("HARMONIST_ARTISTS_BIOGRAPHY_LANGUAGES", "de, zh-yue")
+    assert config_mod.load().artists.biography_languages == ["de", "zh-yue"]
+
+
+@pytest.mark.parametrize("languages", ["[]", '["en.wikipedia.org"]', '["en", "en"]'])
+def test_biography_languages_that_name_no_wikipedia_stop_startup(monkeypatch, tmp_path, languages):
+    """Each code becomes part of an address Harmonist asks, so anything that
+    isn't one is refused while the config loads."""
+    from pydantic import ValidationError
+
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    (cfg_dir / "harmonist.toml").write_text(f"[artists]\nbiography_languages = {languages}\n")
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
+    monkeypatch.delenv("HARMONIST_ARTISTS_BIOGRAPHY_LANGUAGES", raising=False)
+    with pytest.raises(ValidationError, match="biography_languages"):
+        config_mod.load()
+
+
 def test_every_download_format_arrives_as_files_harmonist_can_tag():
     """The choices are the formats Harmonist can READ, not the ones Bandcamp
     offers (#627). WAV and AIFF are Bandcamp's too, and an album downloaded as

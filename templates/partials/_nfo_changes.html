@@ -2,12 +2,22 @@
    before-and-after pair as a tagging's rows. One file, so no reach beside them;
    where an artist has two NFOs, the file is named under the rows.
 
+   A field filled in from elsewhere, a biography (#1018), runs to paragraphs,
+   so its row shows the first few lines: the whole text is in Artist info.
+   Its credit stays under the row, so History still says where the text came
+   from once the file's text has changed since.
+
    Expects `write` (nfo_history.HistoryWrite) and `several_files`. #}
 {% from 'partials/_change_pair.html' import pair %}
 <dl class="tag-changes">
     {% for c in write.changes %}
     <dt>{{ c.label }}</dt>
+    {% if c.is_filled %}
+    <dd><div class="line-clamp-3">{{ pair(c, c.before, c.after, none, none, removed_by='this write') }}</div>
+        {% if c.credit %}{% with credit = c.credit %}{% include 'partials/_wikipedia_credit.html' %}{% endwith %}{% endif %}</dd>
+    {% else %}
     <dd>{{ pair(c, c.before, c.after, none, none, removed_by='this write') }}</dd>
+    {% endif %}
     {% endfor %}
 </dl>
 {% if several_files %}<p class="text-2xs text-muted break-all">{{ write.file }}</p>{% endif %}

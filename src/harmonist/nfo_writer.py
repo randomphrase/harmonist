@@ -1,14 +1,17 @@
-"""Write what MusicBrainz says about an artist into an artist NFO (#981).
+"""Write what MusicBrainz says about an artist into an artist NFO (#981), and
+a biography from the Wikipedia article it links to where the file has none
+(#1018).
 
-Only the mapped elements change. Everything else in the file (the elements
-Harmonist doesn't map, comments, attributes, the declaration and the whitespace
-between them) is kept byte for byte, because the write edits the text where the
-mapped elements sit rather than re-serialising a parsed tree. A tree would keep
-the same content but respell it: quotes, empty elements, character references
-and indentation would all change, and every write would rewrite the whole file.
+Only the elements a write is given change. Everything else in the file (the
+elements Harmonist doesn't write, comments, attributes, the declaration and the
+whitespace between them) is kept byte for byte, because the write edits the
+text where those elements sit rather than re-serialising a parsed tree. A tree
+would keep the same content but respell it: quotes, empty elements, character
+references and indentation would all change, and every write would rewrite the
+whole file.
 
 That promise is checked rather than assumed. The new text is parsed and compared
-with the old outside the mapped elements before anything is written, and the
+with the old outside the changed elements before anything is written, and the
 file is read back afterwards; if it doesn't hold what was meant, the original
 goes back.
 """
@@ -29,9 +32,13 @@ from xml.etree import ElementTree as ET
 from xml.parsers import expat
 from xml.sax.saxutils import escape
 
-#: The elements MusicBrainz decides, in the order Kodi writes them. A new
-#: element goes after the nearest one before it in this order that the file has.
-MAPPED: tuple[str, ...] = (
+#: Every element a write may change, in the order Kodi writes them
+#: (`xbmc/music/Artist.cpp`). A new element goes after the nearest one before
+#: it in this order that the file has. All but the filled ones are the mapped
+#: elements, MusicBrainz's to decide (`mapped`); no list of those is kept, since
+#: nothing reads one: a write changes what it is given, and the self-check
+#: holds everything else still.
+ELEMENTS: tuple[str, ...] = (
     "name",
     "musicbrainzartistid",
     "sortname",
@@ -40,11 +47,16 @@ MAPPED: tuple[str, ...] = (
     "disambiguation",
     "born",
     "formed",
+    "biography",
     "died",
     "disbanded",
 )
 
-#: How each mapped element is named on a page.
+#: The elements Harmonist fills in only where the file has nothing (#1018):
+#: never removed, and never replaced. Whether a file has something is `lacks`.
+FILLED: tuple[str, ...] = ("biography",)
+
+#: How each element a write may change is named on a page.
 LABELS: dict[str, str] = {
     "name": "Name",
     "musicbrainzartistid": "MusicBrainz ID",
@@ -54,6 +66,7 @@ LABELS: dict[str, str] = {
     "disambiguation": "Disambiguation",
     "born": "Born",
     "formed": "Formed",
+    "biography": "Biography",
     "died": "Died",
     "disbanded": "Disbanded",
 }
@@ -125,7 +138,7 @@ def plan(data: bytes, wanted: Mapping[str, str | None]) -> dict[str, tuple[str |
     now = _values(_parse(data), wanted)
     return {
         field: (now[field], wanted[field])
-        for field in MAPPED
+        for field in ELEMENTS
         if field in wanted and now[field] != wanted[field]
     }
 
@@ -134,6 +147,19 @@ def values(data: bytes, fields: Mapping[str, object]) -> dict[str, str | None]:
     """What the file `data` holds now in each of `fields`, None where absent.
     Raises `NfoWriteError` as `plan` does."""
     return _values(_parse(data), fields)
+
+
+def lacks(data: bytes, field: str) -> bool:
+    """Whether the file `data` has nothing in `field` for a filled element to
+    fill (#1018): no such element, or one that is blank. Several, or one
+    holding other elements, are something there, so filling never has to
+    choose among them or flatten one. Raises `NfoWriteError` for a file that
+    can't be read."""
+    tree = _parse(data).tree
+    found = tree.findall(field) if tree is not None else []
+    return not found or (
+        len(found) == 1 and not len(found[0]) and not "".join(found[0].itertext()).strip()
+    )
 
 
 def apply(data: bytes, wanted: Mapping[str, str | None]) -> bytes:
@@ -151,7 +177,7 @@ def apply(data: bytes, wanted: Mapping[str, str | None]) -> bytes:
     if document.root is None:
         body = "".join(
             f"{_INDENT}<{field}>{escape(value)}</{field}>"
-            for field in MAPPED
+            for field in ELEMENTS
             if (value := changes.get(field)) is not None
         )
         result = _NEW_DOCUMENT.format(body).encode("utf-8") if body else data
@@ -341,7 +367,7 @@ def _edit(document: _Document, changes: Mapping[str, str | None]) -> str:
     by_tag = {child.tag: child for child in document.children}
     edits: list[tuple[int, int, str]] = []
     additions: dict[int, list[str]] = {}
-    for field in MAPPED:
+    for field in ELEMENTS:
         if field not in changes:
             continue
         value = changes[field]
@@ -368,7 +394,7 @@ def _edit(document: _Document, changes: Mapping[str, str | None]) -> str:
             anchor = next(
                 (
                     by_tag[earlier].end
-                    for earlier in reversed(MAPPED[: MAPPED.index(field)])
+                    for earlier in reversed(ELEMENTS[: ELEMENTS.index(field)])
                     if earlier in by_tag and changes.get(earlier, "") is not None
                 ),
                 None,
@@ -409,8 +435,12 @@ def _indent(document: _Document) -> str:
 
 def _check(before: bytes, after: bytes, changes: Mapping[str, str | None]) -> None:
     """Refuse `after` unless it differs from `before` only in the changed
-    elements: every unmapped element, comment and attribute as it was, nothing
-    outside the root moved, and each change holding what it should."""
+    elements: every other element, comment and attribute as it was, nothing
+    outside the root moved, and each change holding what it should.
+
+    "Every other" includes elements a write may change but this one wasn't
+    given: a biography the file already has is the file's (#1018), and a mapped
+    element that already agrees with MusicBrainz has no business moving."""
     old, new = _parse(before), _parse(after)
     if new.tree is None:
         raise NfoWriteError("the written file would be empty")
@@ -420,17 +450,18 @@ def _check(before: bytes, after: bytes, changes: Mapping[str, str | None]) -> No
             old.text[: old.root.start] != new.text[: new.root.start]
             or old.text[old.root.end :] != new.text[new.root.end :]
             or old.tree.attrib != new.tree.attrib
-            or _unmapped(old.tree) != _unmapped(new.tree)
+            or _kept(old.tree, changes) != _kept(new.tree, changes)
         ):
-            raise NfoWriteError("the write would have changed fields Harmonist doesn't map")
+            raise NfoWriteError("the write would have changed fields it wasn't given")
     if _values(new, changes) != dict(changes):
         raise NfoWriteError("the write would not have held the values it was meant to")
 
 
-def _unmapped(root: ET.Element) -> tuple[object, ...]:
+def _kept(root: ET.Element, changes: Mapping[str, object]) -> tuple[object, ...]:
+    """Everything in the file a write given `changes` must leave as it was."""
     return (
         (root.text or "").strip(),
-        tuple(_signature(child) for child in root if child.tag not in MAPPED),
+        tuple(_signature(child) for child in root if child.tag not in changes),
     )
 
 

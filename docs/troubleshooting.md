@@ -457,6 +457,27 @@ second entry goes.
 - **"Nothing was written: Could not write …"**: Harmonist can't write to that
   folder. See [not writable by this process](#startup-fails-with-not-writable-by-this-process).
 
+### An identified artist has no biography
+
+A biography is only filled in where the file has none, and only from the
+Wikipedia article MusicBrainz leads to. The message after **Identify** says
+which of these happened:
+
+- **"MusicBrainz links no Wikidata item"**: the artist's MusicBrainz page has
+  no Wikidata relationship, or more than one. Once it has exactly one,
+  identifying the artist again, from the edit button beside its MusicBrainz
+  artist, fills the biography in.
+- **"No Wikipedia article in en"**: the Wikidata item has no article in any of
+  the [biography languages](configuration.md#artists). Adding a language and
+  identifying again tries that Wikipedia too.
+- **"Couldn't fetch a biography from Wikipedia"**: Wikidata or Wikipedia didn't
+  answer. The rest of the identification was written; identifying again tries
+  the biography again.
+
+A file that already has a `<biography>`, even one written by Kodi or Jellyfin,
+keeps it, and no message is shown. To have Wikipedia's instead, empty that
+element and identify the artist again.
+
 ## Undoing things
 
 ### Undo a change

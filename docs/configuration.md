@@ -92,6 +92,12 @@ release's own comment; missing or identical comments can leave titles identical.
 |---|---|---|---|
 | `watch_settle_seconds` | `HARMONIST_WATCH_SETTLE_SECONDS` | `5` | After files change, how long to wait for quiet before rescanning. Only applies on a local disk; network shares are rescanned hourly. |
 
+## `[artists]`
+
+| Key | Env | Default | |
+|---|---|---|---|
+| `biography_languages` | `HARMONIST_ARTISTS_BIOGRAPHY_LANGUAGES` | `["en"]` | The Wikipedias an artist NFO's biography comes from, by language code, most wanted first: `["pt", "en"]` takes the Portuguese article, or the English one where there's no Portuguese. The env var is comma-separated. |
+
 ## `[server]`
 
 | Key | Env | Default | |

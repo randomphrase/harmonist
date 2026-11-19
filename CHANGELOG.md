@@ -6,6 +6,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- **Identifying an artist NFO fills in its biography from Wikipedia**, through
+  MusicBrainz's link, where the file has none (#1018).
+
 ## [1.34.0] - 2026-11-17
 
 ### Added

@@ -21,7 +21,8 @@ and the [user docs](../how-it-works.md).
 - [Bandcamp](bandcamp.md): linking purchases to albums already on disk, and the
   sync's safety rules.
 - [MusicBrainz and the Cover Art Archive](external-services.md): the request
-  budget, caching, merges and deletions.
+  budget, caching, merges and deletions, and the Wikipedia biographies reached
+  through MusicBrainz's links.
 - [Tagging](tagging.md): what Harmonist writes, what it leaves alone, and how it
   judges a change.
 - [Artwork](artwork.md): how an album's images are chosen and written.

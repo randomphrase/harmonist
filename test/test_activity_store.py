@@ -1464,6 +1464,52 @@ def test_a_page_key_leads_to_where_its_file_went_newest_write_first():
     assert activity_store.artist_successors("never-written") == []
 
 
+def test_migrates_a_v13_database_in_place_keeping_its_nfo_writes(tmp_path):
+    """The 13 -> 14 upgrade (#1018): a write recorded before sources were kept
+    survives, with none."""
+    db = tmp_path / "v13.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for statements in activity_store._MIGRATIONS[:13]:
+        for sql in statements:
+            conn.execute(sql)
+    conn.execute(
+        "INSERT INTO events (id, ts, level, source, message, artist_id) VALUES (?, ?, ?, ?, ?, ?)",
+        (7, "2026-11-01T00:00:00+00:00", "info", "audit", "nfo.write", "art-1"),
+    )
+    conn.execute(
+        "INSERT INTO nfo_changes (event_id, file, key_before, changes) VALUES (?, ?, ?, ?)",
+        (7, "Carol/artist.nfo", "path-hash", '{"name": [null, "Carol"]}'),
+    )
+    conn.execute("PRAGMA user_version = 13")
+    conn.close()
+
+    activity_store.init(db)
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    detail = activity_store.nfo_changes_for([7])[7]
+    assert (detail.file, detail.changes, detail.sources) == (
+        "Carol/artist.nfo",
+        {"name": [None, "Carol"]},
+        {},
+    )
+
+
+def test_an_nfo_write_keeps_where_each_sourced_field_came_from():
+    with activity_store.action():
+        event = audit.record("nfo.write", artist_id="art-1", file="Carol/artist.nfo")
+        assert event is not None
+        activity_store.record_nfo_changes(
+            event,
+            file="Carol/artist.nfo",
+            key_before="path-hash",
+            changes={"biography": [None, "Bio"], "name": [None, "Carol"]},
+            sources={"biography": {"url": "https://en.wikipedia.org/wiki/Carol", "revision": "42"}},
+        )
+    assert activity_store.nfo_changes_for([event])[event].sources == {
+        "biography": {"url": "https://en.wikipedia.org/wiki/Carol", "revision": "42"}
+    }
+
+
 def test_clear_drops_nfo_changes():
     event = _nfo_write("path-hash", "art-1", {"name": [None, "Carol"]})
     activity_store.clear()

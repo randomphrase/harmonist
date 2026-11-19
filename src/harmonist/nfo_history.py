@@ -43,6 +43,15 @@ class Written:
 
 
 @dataclass(frozen=True)
+class Credit:
+    """Where a field a write filled in came from (#1018): the article, and the
+    revision of it whose text was written."""
+
+    url: str
+    revision: str
+
+
+@dataclass(frozen=True)
 class Change:
     """One field of a write, before and after, as History shows it."""
 
@@ -51,6 +60,8 @@ class Change:
     after: str | None
     #: The names known for the IDs in this row.
     names: tuple[tuple[str, str], ...] = ()
+    #: Where `after` came from, for a field filled in from elsewhere.
+    credit: Credit | None = None
 
     @property
     def label(self) -> str:
@@ -59,6 +70,11 @@ class Change:
     @property
     def is_id(self) -> bool:
         return self.field == "musicbrainzartistid"
+
+    @property
+    def is_filled(self) -> bool:
+        """A field filled in from elsewhere, which runs to paragraphs."""
+        return self.field in nfo_writer.FILLED
 
     def parts(self, value: str | None) -> tuple[IdRef | str, ...]:
         """The ID in an ID row's value, named where the name is known."""
@@ -99,11 +115,17 @@ def label(path: Path, data: bytes) -> str:
 
 
 def write(
-    path: Path, *, root: Path, expected: bytes, wanted: Mapping[str, str | None]
+    path: Path,
+    *,
+    root: Path,
+    expected: bytes,
+    wanted: Mapping[str, str | None],
+    credits: Mapping[str, Credit] | None = None,
 ) -> Written | None:
     """Write `wanted` into the NFO at `path`, which holds `expected`, and record
-    each field it changed. None when nothing would change, and then nothing is
-    written or recorded: a write that changed nothing has nothing to undo.
+    each field it changed, with where `credits` says any of them came from.
+    None when nothing would change, and then nothing is written or recorded: a
+    write that changed nothing has nothing to undo.
 
     Raises `nfo_writer.NfoWriteError` (and its `NfoChangedError`) from the
     writer, before anything is recorded.
@@ -117,7 +139,15 @@ def write(
     event = audit.record(WRITE_EVENT, artist_id=key, file=path, fields=",".join(changes))
     if event is not None:
         activity_store.record_nfo_changes(
-            event, file=_relative(path, root), key_before=before, changes=changes
+            event,
+            file=_relative(path, root),
+            key_before=before,
+            changes=changes,
+            sources={
+                field: {"url": credit.url, "revision": credit.revision}
+                for field, credit in (credits or {}).items()
+                if field in changes
+            },
         )
     return Written(key, label(path, after), changes)
 
@@ -165,11 +195,32 @@ def history(key: str, *, root: Path) -> tuple[list[StoredEvent], dict[int, Histo
             event_id=event.id,
             file=record.file,
             changes=changes_of(
-                record.changes, names=_names(record.changes, entry.artist_label if entry else None)
+                record.changes,
+                names=_names(record.changes, entry.artist_label if entry else None),
+                credits={
+                    field: Credit(source["url"], source["revision"])
+                    for field, source in record.sources.items()
+                    if "url" in source and "revision" in source
+                },
             ),
             undoable=_undoable(record, root),
         )
     return events, writes
+
+
+def credit_for(writes: Mapping[int, HistoryWrite], field: str, value: str | None) -> Credit | None:
+    """Where the text `value` in `field` came from (#1018): the credit of the
+    newest write that put exactly that text there. None once the text has
+    changed since, by hand or by another program, since it is then no longer
+    the text that was credited."""
+    wanted = (value or "").strip()
+    if not wanted:
+        return None
+    for write in sorted(writes.values(), key=lambda w: w.event_id, reverse=True):
+        for change in write.changes:
+            if change.field == field and change.after == wanted and change.credit:
+                return change.credit
+    return None
 
 
 def _names(changes: Mapping[str, Sequence[str | None]], label: str | None) -> dict[str, str]:
@@ -186,12 +237,21 @@ def _names(changes: Mapping[str, Sequence[str | None]], label: str | None) -> di
 
 
 def changes_of(
-    changes: Mapping[str, Sequence[str | None]], *, names: Mapping[str, str] | None = None
+    changes: Mapping[str, Sequence[str | None]],
+    *,
+    names: Mapping[str, str] | None = None,
+    credits: Mapping[str, Credit] | None = None,
 ) -> tuple[Change, ...]:
     """Each field's change, in the order the elements are written."""
-    order = {field: index for index, field in enumerate(nfo_writer.MAPPED)}
+    order = {field: index for index, field in enumerate(nfo_writer.ELEMENTS)}
     return tuple(
-        Change(field, before, after, tuple(sorted((names or {}).items())))
+        Change(
+            field,
+            before,
+            after,
+            tuple(sorted((names or {}).items())),
+            (credits or {}).get(field),
+        )
         for field, (before, after) in sorted(
             changes.items(), key=lambda item: order.get(item[0], len(order))
         )

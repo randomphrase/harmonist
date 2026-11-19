@@ -510,11 +510,32 @@ value is removed.
 
 An `artist.nfo` gets the owned-set promise too (#981). Its **mapped fields** are
 the ones MusicBrainz decides: the artist ID, name, sort name, type, gender,
-disambiguation, and the dates the type uses. Everything else, the biography,
-genres, style, mood, pictures and discography, is the file's, and a write leaves
-it alone. A mapped field MusicBrainz has no value for is removed, as an owned tag
-is. There is no choosing fields one by one: MusicBrainz is canonical, so a value
-that's wrong there is corrected there.
+disambiguation, and the dates the type uses. Everything else, the genres, style,
+mood, pictures and discography, is the file's, and a write leaves it alone, as
+it does a biography the file already has. A mapped field MusicBrainz has no
+value for is removed, as an owned tag is. There is no choosing fields one by
+one: MusicBrainz is canonical, so a value that's wrong there is corrected there.
+
+**A biography is filled in, never replaced** (#1018). MusicBrainz has no
+biographies, but it links an artist to their Wikidata item, and the item links
+to an article in each Wikipedia. Following those links finds the article with no
+name matched, so it is MusicBrainz's say on who the artist is. A wrong article
+means a wrong link, put right on MusicBrainz. The text is the article's
+introduction, from the first Wikipedia in the configured languages that has one.
+It's a third kind of field, between mapped and the file's: written where the
+file has no biography, and otherwise left alone, as an artwork addition is
+written and a replacement waits for a person. The file's own biography may come
+from Kodi's scraper, from Jellyfin, or from the user, and nothing about it says
+it is worse than Wikipedia's.
+
+Nor is a biography written once kept current. Introductions are edited
+constantly and sometimes vandalised, and rewriting one would set off every
+media server's rescan of the file, for text that says nothing about who the
+artist is. Identifying the artist again fills in one that is missing.
+Wikipedia's text is CC BY-SA, so the write records the article and revision it
+came from, and the artist page credits Wikipedia while the file still holds that
+text (see [history](history.md#what-an-artist-nfo-write-records)). The file
+holds only the text, since players show whatever is there.
 
 **The row is the review.** The only decision is which artist, and the row that
 offers one already says who it is, with MusicBrainz a link away, so its
@@ -540,14 +561,17 @@ Harmonist doesn't map.
 content but respell all of it: quote marks, empty elements, character
 references, indentation. Every write would then rewrite the whole file, and an
 undo couldn't leave it as it found it. So a write replaces, removes or inserts
-the mapped elements' text and leaves every other byte where it was.
+the text of the elements it changes and leaves every other byte where it was.
+A new element goes where Kodi would write it, `biography` between `formed` and
+`died`.
 
 **The promise is checked, not assumed.** History records fields, not files (see
 [history](history.md#what-an-artist-nfo-write-records)), so there is no copy to
 fall back on if the writer gets one wrong. Before writing, the new text is
-parsed and compared with the old outside the mapped elements; afterwards the
-file is read back. A difference in either refuses the write, and puts the
-original back if it was already on disk.
+parsed and compared with the old outside the elements the write changes, a
+biography it leaves alone included; afterwards the file is read back. A
+difference in either refuses the write, and puts the original back if it was
+already on disk.
 
 **What would be a guess isn't written.** A file with a mapped element twice, or
 with other elements inside one, has no single value to replace. Keeping one, or
