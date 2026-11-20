@@ -77,6 +77,12 @@ the source of metadata and you in control of changes.
 - **[beets](https://beets.io)** offers a flexible command-line workflow for
   organising and tagging music. Harmonist puts library maintenance and review
   in a web interface.
+- **[Codetta](https://github.com/gavndev/codetta)** is a self-hosted music
+  library manager with browser-based tag editing, MusicBrainz matching, file
+  organization, and an inbox for new downloads, with previews and undo.
+  It's worth a look if you want a general-purpose tool for fixing and filing
+  music; Harmonist focuses on keeping MusicBrainz metadata and artwork
+  current over time, with Bandcamp sync built in.
 - **[bandcampsync](https://github.com/meeb/bandcampsync)** downloads your Bandcamp
   purchases. Harmonist builds on it, adding MusicBrainz matching, tagging,
   artwork, and a review inbox.
