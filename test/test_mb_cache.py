@@ -241,3 +241,29 @@ def test_an_unreachable_store_still_answers_from_musicbrainz(monkeypatch):
 
     assert mb_cache.fetch_release(MBID)["title"] == "Geogaddi"
     assert fetch.calls == 1
+
+
+ARTIST = "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+
+
+def test_an_artist_is_always_asked_for_and_its_answer_kept(monkeypatch):
+    """Each read is the user asking now (#981), so nothing is served from the
+    store; what it answered is kept for the artist page's MB checked (#1022)."""
+    fetch = _Counter({"id": ARTIST, "name": "Radiohead"})
+    monkeypatch.setattr(mb_lookup, "fetch_artist", fetch)
+    assert mb_cache.stored_artist(ARTIST) is None
+    mb_cache.fetch_artist(ARTIST)
+    assert mb_cache.fetch_artist(ARTIST)["name"] == "Radiohead"
+    assert fetch.calls == 2
+    stored = mb_cache.stored_artist(ARTIST)
+    assert stored is not None and stored.payload == {"id": ARTIST, "name": "Radiohead"}
+
+
+def test_an_artist_musicbrainz_cannot_find_stores_nothing(monkeypatch):
+    def gone(_mbid):
+        raise mb_lookup.ArtistNotFoundError("gone")
+
+    monkeypatch.setattr(mb_lookup, "fetch_artist", gone)
+    with pytest.raises(mb_lookup.ArtistNotFoundError):
+        mb_cache.fetch_artist(ARTIST)
+    assert mb_cache.stored_artist(ARTIST) is None

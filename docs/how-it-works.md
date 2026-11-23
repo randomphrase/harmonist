@@ -117,7 +117,12 @@ Wikipedia: the introduction of the article that the artist's Wikidata item,
 linked from MusicBrainz, leads to, in the first of the
 [biography languages](configuration.md#artists) that has one. A biography the file already has is left as it is, and nothing else
 in the file is touched. The artist page credits Wikipedia beside the biography
-while it is still the text that was written. An identified NFO has the same finder
+while it is still the text that was written. Where the file has none, its
+Biography row says why, as of when MusicBrainz was last read: the
+**MB checked** time at the top of Artist info. The ↻ beside it reads the artist
+from MusicBrainz again and fills in a biography that is missing, so one linked
+on MusicBrainz since arrives without identifying the artist again. It writes
+nothing else MusicBrainz has changed. An identified NFO has the same finder
 behind the edit button beside its MusicBrainz artist, with its own ID already
 filled in: for an artist that turns out to be the wrong one, or to fill in what
 the file lacks. Where an artist has two NFOs, each is identified on its own.

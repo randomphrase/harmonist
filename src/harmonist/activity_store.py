@@ -413,6 +413,24 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
     # on from since. NULL for a write that took nothing from elsewhere, and for
     # every write before this.
     ("ALTER TABLE nfo_changes ADD COLUMN sources TEXT",),
+    # 14 -> 15: each artist's answer from MusicBrainz, and when it was read
+    # (#1022). The artist page's "MB checked" is `fetched_at`, and why an
+    # identified NFO has no biography is read from `payload`'s links and from
+    # `biography`: what the last biography lookup found, as JSON
+    # {"item", "languages", "status"}, NULL until one is made. Written whenever
+    # Harmonist reads an artist and never served in place of reading it, so it
+    # is a dated record of the last answer, not a cache a request falls back
+    # on. #981 had a store like this and dropped it with the review it served;
+    # this one has readers on the page, and is the baseline step 2's updater
+    # compares a fresh read against.
+    (
+        """CREATE TABLE mb_artist_cache (
+            mbid       TEXT PRIMARY KEY,
+            fetched_at TEXT NOT NULL,
+            payload    TEXT NOT NULL,
+            biography  TEXT
+        )""",
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
@@ -1604,6 +1622,102 @@ def store_release(mbid: str, inc: str, payload: Mapping[str, Any]) -> None:
         )
 
 
+@dataclass(frozen=True)
+class CachedArtist:
+    """An artist's last answer from MusicBrainz, when it was read, and what the
+    last biography lookup for it found (#1022)."""
+
+    payload: dict[str, Any]
+    fetched_at: datetime
+    biography: dict[str, Any] | None
+
+
+def cached_artist(mbid: str) -> CachedArtist | None:
+    """The stored answer for the artist `mbid`, or None if it was never read.
+
+    Raises `StoreUnavailableError` rather than returning None, unlike
+    `cached_release`: nothing here falls back on asking MusicBrainz, and the
+    page would read a None as "not yet checked" for an artist checked
+    yesterday. A row that can't be parsed is reported and read as never read,
+    since the next read replaces it.
+    """
+    try:
+        with _LOCK:
+            conn = _ensure()
+            row = conn.execute(
+                "SELECT payload, fetched_at, biography FROM mb_artist_cache WHERE mbid = ?",
+                (mbid,),
+            ).fetchone()
+    except sqlite3.Error as exc:
+        log.exception("activity_store cached_artist(%s) failed", mbid, extra=_QUIET_MIRROR)
+        raise StoreUnavailableError("could not read the stored artist") from exc
+    if row is None:
+        return None
+    blob, stamp, lookup = row
+    try:
+        payload = json.loads(blob)
+        fetched_at = datetime.fromisoformat(stamp)
+        biography = json.loads(lookup) if lookup is not None else None
+    except ValueError, TypeError:
+        log.warning(
+            "mb_artist_cache row %s is unreadable — reading it as never read",
+            mbid,
+            extra=_QUIET_MIRROR,
+        )
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return CachedArtist(
+        payload=payload,
+        fetched_at=fetched_at,
+        biography=biography if isinstance(biography, dict) else None,
+    )
+
+
+def store_artist(mbid: str, payload: Mapping[str, Any]) -> None:
+    """Keep a freshly read MusicBrainz artist, and when it was read (#1022).
+
+    What the last biography lookup found is kept as it was: it says which
+    Wikidata item it was about, so a reader can tell when it no longer applies.
+    Best-effort, like every write here: failing to remember the answer must not
+    fail the work it was read for.
+    """
+    try:
+        blob = json.dumps(payload, sort_keys=True)
+    except TypeError, ValueError:
+        log.exception(
+            "activity_store store_artist(%s) could not serialise", mbid, extra=_QUIET_MIRROR
+        )
+        return
+    try:
+        with _LOCK:
+            conn = _ensure()
+            conn.execute(
+                "INSERT INTO mb_artist_cache (mbid, fetched_at, payload) VALUES (?, ?, ?) "
+                "ON CONFLICT (mbid) DO UPDATE SET "
+                "fetched_at = excluded.fetched_at, payload = excluded.payload",
+                (mbid, datetime.now(UTC).isoformat(), blob),
+            )
+            conn.commit()
+    except sqlite3.Error:
+        log.exception("activity_store store_artist(%s) failed", mbid, extra=_QUIET_MIRROR)
+
+
+def store_artist_biography(mbid: str, lookup: Mapping[str, Any]) -> None:
+    """Keep what a biography lookup for the stored artist `mbid` found (#1022).
+    Best-effort, as `store_artist` is; the artist has been stored first."""
+    try:
+        with _LOCK:
+            conn = _ensure()
+            conn.execute(
+                "UPDATE mb_artist_cache SET biography = ? WHERE mbid = ?",
+                (json.dumps(dict(lookup), sort_keys=True), mbid),
+            )
+            conn.commit()
+    except sqlite3.Error, TypeError, ValueError:
+        log.exception("activity_store store_artist_biography(%s) failed", mbid, extra=_QUIET_MIRROR)
+
+
 def release_fetch_times(inc: str) -> dict[str, datetime]:
     """When each cached release under `inc` was last read from MusicBrainz.
 
@@ -1860,8 +1974,8 @@ def clear() -> None:
     but it's a record of writes into the library being torn down, and a reset
     leaves none of that library's history behind.
 
-    NFO changes and cached artists (#981) go for the reasons tag changes and
-    cached releases do.
+    NFO changes and stored artists (#981, #1022) go for the reasons tag changes
+    and cached releases do.
     """
     try:
         with _LOCK:
@@ -1871,6 +1985,7 @@ def clear() -> None:
             conn.execute("DELETE FROM events")
             conn.execute("DELETE FROM album_aliases")
             conn.execute("DELETE FROM mb_release_cache")
+            conn.execute("DELETE FROM mb_artist_cache")
             conn.execute("DELETE FROM gardener_ignores")
             conn.execute("DELETE FROM derived_images")
             conn.commit()

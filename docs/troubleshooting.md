@@ -460,23 +460,23 @@ second entry goes.
 ### An identified artist has no biography
 
 A biography is only filled in where the file has none, and only from the
-Wikipedia article MusicBrainz leads to. The message after **Identify** says
-which of these happened:
+Wikipedia article MusicBrainz leads to. The artist's Biography row, in Artist
+info, says which of these happened when MusicBrainz was last read (**MB
+checked**):
 
 - **"MusicBrainz links no Wikidata item"**: the artist's MusicBrainz page has
-  no Wikidata relationship, or more than one. Once it has exactly one,
-  identifying the artist again, from the edit button beside its MusicBrainz
-  artist, fills the biography in.
+  no Wikidata relationship, or more than one. Once it has exactly one, the ↻
+  beside **MB checked** fills the biography in.
 - **"No Wikipedia article in en"**: the Wikidata item has no article in any of
-  the [biography languages](configuration.md#artists). Adding a language and
-  identifying again tries that Wikipedia too.
-- **"Couldn't fetch a biography from Wikipedia"**: Wikidata or Wikipedia didn't
-  answer. The rest of the identification was written; identifying again tries
-  the biography again.
+  the [biography languages](configuration.md#artists). After adding a language,
+  the ↻ tries that Wikipedia too.
+- **"Wikipedia couldn't be reached"**: Wikidata or Wikipedia didn't answer. The
+  ↻ tries again.
+- **"None"**, with **MB checked** saying *not yet*: the artist was identified
+  before Harmonist kept what MusicBrainz said. The ↻ reads it.
 
 A file that already has a `<biography>`, even one written by Kodi or Jellyfin,
-keeps it, and no message is shown. To have Wikipedia's instead, empty that
-element and identify the artist again.
+keeps it. To have Wikipedia's instead, empty that element and press the ↻.
 
 ## Undoing things
 

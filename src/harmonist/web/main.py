@@ -20,7 +20,7 @@ import zoneinfo
 from collections import Counter
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal, Protocol, get_args
@@ -49,6 +49,7 @@ from harmonist import (
     activity_store,
     album_files,
     archive,
+    artist_fill,
     artist_nfo,
     artists,
     artwork,
@@ -91,7 +92,6 @@ from harmonist import (
     timing,
     track_assignment,
     url_recovery,
-    wikimedia,
 )
 from harmonist import album_artwork as album_artwork_mod
 from harmonist import config as config_mod
@@ -3366,13 +3366,14 @@ class _NoArtist(Exception):
 
 
 def _read_artist(entered: str) -> Mapping[str, Any]:
-    """MusicBrainz's answer, now, for a pasted artist URL or MBID. Never stored:
-    every caller is the user asking at this moment, and one of them writes."""
+    """MusicBrainz's answer, now, for a pasted artist URL or MBID. Never served
+    from the store: every caller is the user asking at this moment, and one of
+    them writes. The answer is kept for the artist page (#1022)."""
     mbid = _artist_input(entered)
     if mbid is None:
         raise _NoArtist("That isn't a MusicBrainz artist URL or MBID.")
     try:
-        return mb_lookup.fetch_artist(mbid)
+        return mb_cache.fetch_artist(mbid)
     except mb_lookup.ArtistNotFoundError as exc:
         raise _NoArtist("MusicBrainz has no artist with this ID.") from exc
     except mb_lookup.MBError as exc:
@@ -3380,45 +3381,26 @@ def _read_artist(entered: str) -> Mapping[str, Any]:
         raise _NoArtist("Couldn't read MusicBrainz. Try again later.") from exc
 
 
-@dataclass(frozen=True)
-class _Filled:
-    """What an identification found to fill an NFO's empty biography with
-    (#1018), or why there is none, in words for the answer."""
-
-    biography: wikimedia.Biography | None = None
-    note: str | None = None
-    level: Level = Level.INFO
-
-    @property
-    def credits(self) -> dict[str, nfo_history.Credit]:
-        found = self.biography
-        return {"biography": nfo_history.Credit(found.url, found.revision)} if found else {}
+#: What an answer says when a biography lookup failed rather than found none.
+#: Why there is none otherwise is the Biography row's to say (#1022).
+_BIOGRAPHY_FAILED = "couldn't fetch a biography from Wikipedia"
 
 
-def _fill_biography(answer: Mapping[str, Any], cfg: config_mod.Config) -> _Filled:
-    """The biography for the artist MusicBrainz answered with: the introduction
-    of the article its Wikidata item links to, in the first configured
-    language that has one. Never found by name, so without a Wikidata link on
-    MusicBrainz there is none (#1018)."""
-    item = wikimedia.wikidata_item(answer)
-    if item is None:
-        return _Filled(note="MusicBrainz links no Wikidata item, so no biography")
-    languages = cfg.artists.biography_languages
-    try:
-        found = wikimedia.biography(
-            item, languages=languages, user_agent=cfg.musicbrainz.user_agent
-        )
-    except wikimedia.WikimediaError as exc:
-        # The identification goes ahead and its answer carries the warning into
-        # Activity, so the log only keeps the detail.
-        log.warning("could not fetch a biography for %s: %s", item, exc, extra=_LOG_ONLY)
-        return _Filled(
-            note="couldn't fetch a biography from Wikipedia; identifying again tries again",
-            level=Level.WARNING,
-        )
-    if found is None:
-        return _Filled(note=f"no Wikipedia article in {' or '.join(languages)}, so no biography")
-    return _Filled(biography=found)
+def _fill_biography(
+    answer: Mapping[str, Any], data: bytes, cfg: config_mod.Config
+) -> artist_fill.Filled:
+    """The biography to fill the NFO holding `data` in with, for the artist
+    MusicBrainz answered with (#1018): none where the file has one already,
+    and then Wikipedia isn't asked. Raises `nfo_writer.NfoWriteError` for a
+    file that can't be read."""
+    if not nfo_writer.lacks(data, "biography"):
+        return artist_fill.Filled()
+    return artist_fill.biography(
+        str(answer.get("id", "")),
+        answer,
+        languages=cfg.artists.biography_languages,
+        user_agent=cfg.musicbrainz.user_agent,
+    )
 
 
 def _artist_results(
@@ -5086,6 +5068,17 @@ def _register_routes(app: FastAPI) -> None:
         except activity_store.StoreUnavailableError:
             history, history_writes, history_unavailable = [], {}, True
 
+        # When MusicBrainz was last read for the NFO's artist, and why the file
+        # has no biography if it has none (#1022), both from the stored answer:
+        # drawing the page asks nobody. "Couldn't read" is not "not yet".
+        checked: activity_store.CachedArtist | None = None
+        checked_unavailable = False
+        if result.profile and result.profile.mbid:
+            try:
+                checked = mb_cache.stored_artist(result.profile.mbid)
+            except activity_store.StoreUnavailableError:
+                checked_unavailable = True
+
         return _templates(request).TemplateResponse(
             request,
             "artist.html",
@@ -5122,6 +5115,9 @@ def _register_routes(app: FastAPI) -> None:
                     "biography",
                     result.profile.biography if result.profile else None,
                 ),
+                artist_checked=checked,
+                artist_checked_unavailable=checked_unavailable,
+                biography_note=artist_fill.note(checked),
                 artist_image=image is not None,
                 artist_image_url=inventory.image_url(artist.key),
                 artist_back_url=artists.index_url(
@@ -5231,11 +5227,9 @@ def _register_routes(app: FastAPI) -> None:
         root = cfg.paths.music_dir
         try:
             wanted = nfo_writer.mapped(answer)
-            filled = _Filled()
-            if nfo_writer.lacks(data, "biography"):
-                filled = _fill_biography(answer, cfg)
-                if filled.biography is not None:
-                    wanted["biography"] = filled.biography.text
+            filled = _fill_biography(answer, data, cfg)
+            if filled.biography is not None:
+                wanted["biography"] = filled.biography.text
             written = nfo_history.write(
                 profile.path,
                 root=root,
@@ -5253,6 +5247,8 @@ def _register_routes(app: FastAPI) -> None:
                 artist_label=profile.name or profile.path.parent.name,
             )
             return _identify_problem(f"Nothing was written: {exc}")
+        failure = _BIOGRAPHY_FAILED if filled.failed else None
+        level = Level.WARNING if filled.failed else Level.INFO
         if written is None:
             # A biography that couldn't be fetched is still a failure to report
             # in Activity, though nothing was written.
@@ -5261,12 +5257,12 @@ def _register_routes(app: FastAPI) -> None:
                 _flash_response(
                     "Nothing to change",
                     "; ".join(
-                        filter(None, ["the file already holds what MusicBrainz says", filled.note])
+                        filter(None, ["the file already holds what MusicBrainz says", failure])
                     ),
-                    level=filled.level,
+                    level=level,
                     tasks_changed=False,
                     artist=(profile.key, profile.name or profile.path.parent.name),
-                    record_activity=filled.level is not Level.INFO,
+                    record_activity=filled.failed,
                 ),
                 profile.key,
             )
@@ -5275,9 +5271,95 @@ def _register_routes(app: FastAPI) -> None:
             written,
             profile.path,
             "Identified" if "musicbrainzartistid" in written.changes else "Filled in",
-            "; ".join(filter(None, [_relative_path(profile.path, root), filled.note])),
-            level=filled.level,
+            "; ".join(filter(None, [_relative_path(profile.path, root), failure])),
+            level=level,
         )
+
+    @app.post("/artist/{artist_key}/refresh", response_class=HTMLResponse)
+    def artist_refresh(request: Request, artist_key: str, file: str = Form(...)) -> Response:
+        """Read an identified artist from MusicBrainz again, keep the answer,
+        and fill in what its NFO lacks (#1022): additions only, as an album's
+        re-read doesn't re-tag. Where MusicBrainz now says something else about
+        a mapped field, writing it is step 2's update, with its own review.
+
+        The page is drawn again whatever happens, since the date it shows has
+        moved. A read that fills nothing in says nothing: the page shows it."""
+        profile = _nfo_file(_nfo_inventory(request), artist_key, file)
+        if profile.mbid is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "this NFO isn't identified")
+        artist = (profile.key, profile.name or profile.path.parent.name)
+        try:
+            answer = mb_cache.fetch_artist(profile.mbid)
+        except mb_lookup.ArtistNotFoundError:
+            return _flash_response(
+                "Not read",
+                "MusicBrainz has no artist with this ID",
+                level=Level.WARNING,
+                tasks_changed=False,
+                artist=artist,
+            )
+        except mb_lookup.MBError as exc:
+            log.warning(
+                "could not read MusicBrainz artist %s: %s", profile.mbid, exc, extra=_LOG_ONLY
+            )
+            return _flash_response(
+                "Not read",
+                "couldn't read MusicBrainz; try again later",
+                level=Level.WARNING,
+                tasks_changed=False,
+                artist=artist,
+            )
+        cfg = request.app.state.cfg
+        root = cfg.paths.music_dir
+        try:
+            data = profile.path.read_bytes()
+            filled = _fill_biography(answer, data, cfg)
+            written = nfo_history.write(
+                profile.path,
+                root=root,
+                expected=data,
+                wanted={"biography": filled.biography.text} if filled.biography else {},
+                credits=filled.credits,
+            )
+        except OSError as exc:
+            return _flash_response(
+                "Not filled in",
+                f"couldn't read the file: {exc.strerror}",
+                level=Level.ERROR,
+                tasks_changed=False,
+                artist=artist,
+            )
+        except nfo_writer.NfoChangedError:
+            return _flash_response(
+                "Not filled in",
+                "the file has just changed, so nothing was written",
+                level=Level.WARNING,
+                tasks_changed=False,
+                artist=artist,
+            )
+        except nfo_writer.NfoWriteError as exc:
+            return _flash_response(
+                "Couldn't write the artist NFO",
+                str(exc),
+                level=Level.ERROR,
+                tasks_changed=False,
+                artist=artist,
+            )
+        if written is not None:
+            return _artist_written(
+                request, written, profile.path, "Filled in", _relative_path(profile.path, root)
+            )
+        if filled.failed:
+            response = _flash_response(
+                "Not filled in",
+                _BIOGRAPHY_FAILED,
+                level=Level.WARNING,
+                tasks_changed=False,
+                artist=artist,
+            )
+        else:
+            response = _quiet_response(tasks_changed=False)
+        return _close_finder(request, response, profile.key)
 
     @app.post("/artist/{artist_key}/undo", response_class=HTMLResponse)
     def artist_nfo_undo(request: Request, artist_key: str, event_id: int = Form(...)) -> Response:

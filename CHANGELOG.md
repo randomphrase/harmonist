@@ -10,6 +10,8 @@ versions follow [semantic versioning](https://semver.org).
 
 - **Identifying an artist NFO fills in its biography from Wikipedia**, through
   MusicBrainz's link, where the file has none (#1018).
+- **Artist info shows when MusicBrainz was last checked**, with a ↻ that fills
+  in a missing biography, and says why an artist has none (#1022).
 
 ### Fixed
 

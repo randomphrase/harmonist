@@ -1516,6 +1516,64 @@ def test_clear_drops_nfo_changes():
     assert activity_store.nfo_changes_for([event]) == {}
 
 
+def test_migrates_a_v14_database_in_place_with_no_artists_stored(tmp_path):
+    """The 14 -> 15 upgrade (#1022): the artist store starts empty and works,
+    and what was there before is kept."""
+    db = tmp_path / "v14.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for statements in activity_store._MIGRATIONS[:14]:
+        for sql in statements:
+            conn.execute(sql)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message, artist_id) VALUES (?, ?, ?, ?, ?)",
+        ("2026-11-01T00:00:00+00:00", "info", "activity", "written by v14", "art-1"),
+    )
+    conn.execute("PRAGMA user_version = 14")
+    conn.close()
+
+    activity_store.init(db)
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    assert [e.message for e in activity_store.artist_history("art-1")] == ["written by v14"]
+    assert activity_store.cached_artist("art-1") is None
+    activity_store.store_artist("art-1", {"id": "art-1", "name": "Carol"})
+    stored = activity_store.cached_artist("art-1")
+    assert stored is not None and stored.payload == {"id": "art-1", "name": "Carol"}
+
+
+def test_an_artist_is_stored_with_when_it_was_read_and_what_its_biography_lookup_found():
+    activity_store.store_artist("art-1", {"id": "art-1", "name": "Carol"})
+    first = activity_store.cached_artist("art-1")
+    assert first is not None and first.biography is None
+    lookup = {"item": "Q1", "languages": ["en"], "status": "missing"}
+    activity_store.store_artist_biography("art-1", lookup)
+    # A later read of the artist keeps what the lookup found, and the clock moves.
+    activity_store.store_artist("art-1", {"id": "art-1", "name": "Carol (renamed)"})
+    again = activity_store.cached_artist("art-1")
+    assert again is not None
+    assert again.payload["name"] == "Carol (renamed)"
+    assert again.biography == lookup
+    assert again.fetched_at >= first.fetched_at
+
+
+def test_an_artist_store_that_cant_be_read_says_so(monkeypatch):
+    """The page would otherwise say "not yet" for an artist read yesterday."""
+    activity_store.store_artist("art-1", {"id": "art-1"})
+
+    def broken():
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(activity_store, "_ensure", broken)
+    with pytest.raises(activity_store.StoreUnavailableError):
+        activity_store.cached_artist("art-1")
+
+
+def test_clear_drops_stored_artists():
+    activity_store.store_artist("art-1", {"id": "art-1"})
+    activity_store.clear()
+    assert activity_store.cached_artist("art-1") is None
+
+
 @pytest.mark.parametrize(
     "read",
     [

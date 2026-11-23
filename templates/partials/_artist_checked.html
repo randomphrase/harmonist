@@ -1,0 +1,38 @@
+{# When an identified artist was last read from MusicBrainz, and the ↻ that
+   reads it again and fills in what the NFO lacks (#1022), laid out as an
+   album's "MB checked" (`_checked_at.html`). The request names the file, as
+   Identify does. Its answer draws the page again, so the date moves.
+
+   A store that can't be read says so rather than "not yet": the artist may
+   have been read yesterday.
+
+   Expects `artist`, `artist_checked`, `artist_checked_unavailable` and
+   `file_key`. #}
+{% from 'partials/_reread_icons.html' import reread_icon, reread_spinner %}
+<dl id="artist-checked" class="flex items-center gap-2 text-xs">
+    <dt class="text-2xs text-muted uppercase tracking-widest">MB checked</dt>
+    {% if artist_checked %}
+    <dd class="text-ink tabular-nums whitespace-nowrap"
+        title="MusicBrainz artist last read {{ local_stamp(artist_checked.fetched_at) }}">{{ ago(artist_checked.fetched_at) }}</dd>
+    {% elif artist_checked_unavailable %}
+    <dd class="text-muted italic whitespace-nowrap" title="The stored answer can't be read right now">unavailable</dd>
+    {% else %}
+    <dd class="text-muted italic whitespace-nowrap">not yet</dd>
+    {% endif %}
+    <dd class="flex items-center">
+        <button type="button" id="artist-reread"
+                hx-post="/artist/{{ artist.key }}/refresh"
+                hx-vals='{"file": "{{ file_key }}"}'
+                hx-swap="none" hx-disabled-elt="this" hx-indicator="#artist-refreshing"
+                title="Read this artist from MusicBrainz again, and fill in what the NFO lacks"
+                aria-label="Read this artist from MusicBrainz again"
+                class="mb-reread inline-flex items-center justify-center w-4 h-4 rounded-full text-muted hover:text-mb-purple hover:bg-mb-purple/10 transition">
+            {{ reread_icon() }}
+        </button>
+        <span id="artist-refreshing" class="mb-refreshing w-4 h-4 items-center justify-center text-muted"
+              role="status" title="Reading this artist from MusicBrainz again…">
+            {{ reread_spinner() }}
+            <span class="sr-only">Reading this artist from MusicBrainz again…</span>
+        </span>
+    </dd>
+</dl>

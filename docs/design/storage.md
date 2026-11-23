@@ -101,6 +101,11 @@ belongs in a music folder.
   (see [the model](model.md#identity)).
 - **The MusicBrainz and Cover Art Archive caches** (see
   [external services](external-services.md)).
+- **Artists as MusicBrainz last answered**, with when, and what the last
+  biography lookup found (#1022). Never served in place of asking: it dates the
+  artist page's MB checked and says why an NFO has no biography (see
+  [external services](external-services.md#the-cache)). Harmonist's record of
+  what it read, so not the NFO's to hold.
 - **Ignored updates**: which albums the user muted, and against which version of
   the release (see [staying current](staying-current.md#ignoring-an-update)).
   Kept here rather than in the sidecar because muting fifty albums would

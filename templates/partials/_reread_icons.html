@@ -1,0 +1,18 @@
+{# The ↻ that reads something from MusicBrainz again, and the spinner shown in
+   its place while it does: an album's release (`_checked_at.html`) and an
+   artist (`_artist_checked.html`, #1022) look the same. `.mb-reread` hides the
+   arrow while the `.mb-refreshing` beside it is the request's indicator. #}
+{% macro reread_icon() -%}
+<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+     stroke-width="2.5" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M20 12a8 8 0 11-2.34-5.66"/>
+    <path stroke-linecap="round" stroke-linejoin="round" d="M20 3.5V9h-5.5"/>
+</svg>
+{%- endmacro %}
+
+{% macro reread_spinner() -%}
+<svg class="animate-spin" viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
+    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path>
+</svg>
+{%- endmacro %}

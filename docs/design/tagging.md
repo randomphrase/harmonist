@@ -531,7 +531,15 @@ it is worse than Wikipedia's.
 Nor is a biography written once kept current. Introductions are edited
 constantly and sometimes vandalised, and rewriting one would set off every
 media server's rescan of the file, for text that says nothing about who the
-artist is. Identifying the artist again fills in one that is missing.
+artist is. Reading the artist from MusicBrainz again fills in one that is
+missing, with the ↻ beside **MB checked** on the artist page (#1022), as does
+identifying it again. That's how a biography arrives once someone adds the
+Wikidata link on MusicBrainz, the correction belonging there. The ↻ fills in
+and nothing else: an album's re-read doesn't re-tag either, and a mapped field
+MusicBrainz has since changed is step 2's update, with its review. Why a file
+has no biography is said on its Biography row rather than in the answer to a
+click, which is gone once read; the row takes it from what the last read found,
+and the page asks nobody when it is drawn.
 Wikipedia's text is CC BY-SA, so the write records the article and revision it
 came from, and the artist page credits Wikipedia while the file still holds that
 text (see [history](history.md#what-an-artist-nfo-write-records)). The file

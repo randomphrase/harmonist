@@ -271,6 +271,31 @@ def stored_release_group_editions(release_group_mbid: str) -> tuple[list[Release
     return releases, int(cached.payload.get("release-count", len(releases)))
 
 
+def fetch_artist(mbid: str) -> dict[str, Any]:
+    """Read an artist from MusicBrainz, always live, and keep the answer (#1022).
+
+    Never served from the store: every caller is the user asking now (#981),
+    Identify writes what it gets, and the artist page's ↻ exists to look again.
+    What is kept dates the page's "MB checked" and explains a missing
+    biography, and is the baseline step 2's updater will compare against.
+    Failures propagate and store nothing.
+
+    Kept under the ID the answer carries, which is the one Identify writes into
+    the file: MusicBrainz answers a merged artist's old ID with the artist it
+    became, and a page keyed by the new ID has to find what was read.
+    """
+    with timing.warn_if_slow("MusicBrainz artist lookup", _SLOW_FETCH, mbid=mbid):
+        artist = mb_lookup.fetch_artist(mbid)
+    activity_store.store_artist(str(artist.get("id") or mbid), artist)
+    return artist
+
+
+def stored_artist(mbid: str) -> activity_store.CachedArtist | None:
+    """The artist's last stored answer; never fetches. Raises
+    `activity_store.StoreUnavailableError` when the store can't be read."""
+    return activity_store.cached_artist(mbid)
+
+
 def fetched_at(mbid: str) -> datetime | None:
     """When the album's release payload was last read from MusicBrainz, or None
     if it never has been.

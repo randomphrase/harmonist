@@ -559,14 +559,23 @@ def test_wikipedia_unreachable_says_so_even_when_nothing_else_changes(wikipedia)
     assert "couldn't fetch a biography from Wikipedia" in status["details"]
 
 
-def test_no_article_identifies_and_says_there_is_none(wikipedia):
+def biography_note(client, key):
+    """What the Biography row says, where the file has no biography (#1022)."""
+    page = BeautifulSoup(client.get(f"/artist/{key}").text, "html.parser")
+    row = page.select_one("#artist-biography")
+    assert row is not None, "an identified NFO always has a Biography row"
+    assert row.name != "details", "there is no biography to fold"
+    return row.select_one(".artist-info__note").get_text(" ", strip=True)
+
+
+def test_no_article_says_so_on_the_biography_row_not_in_the_answer(wikipedia):
     client, path, key, found = wikipedia
     found.return_value = None
     response = identify_as(client, key, key)
     assert "<biography>" not in path.read_text()
     status = flash(response)
-    assert status["level"] == Level.INFO
-    assert "no Wikipedia article" in status["details"]
+    assert (status["level"], status["details"]) == (Level.INFO, "Carol/artist.nfo")
+    assert biography_note(client, CAROL) == "No Wikipedia article in en"
 
 
 def test_no_wikidata_link_on_musicbrainz_asks_wikipedia_nothing(identify, monkeypatch):
@@ -575,4 +584,127 @@ def test_no_wikidata_link_on_musicbrainz_asks_wikipedia_nothing(identify, monkey
     monkeypatch.setattr(wikimedia, "biography", found)
     response = identify_as(client, key, key)
     assert "<biography>" not in path.read_text()
-    assert "MusicBrainz links no Wikidata item" in flash(response)["details"]
+    assert flash(response)["details"] == "Carol/artist.nfo"
+    assert biography_note(client, CAROL) == "MusicBrainz links no Wikidata item"
+
+
+def test_wikipedia_unreachable_says_so_on_the_biography_row_too(wikipedia):
+    client, _path, key, found = wikipedia
+    found.side_effect = wikimedia.WikimediaError("503")
+    identify_as(client, key, key)
+    assert biography_note(client, CAROL) == "Wikipedia couldn't be reached"
+
+
+# When MusicBrainz was last read, and reading it again (#1022).
+
+
+def checked(client, key):
+    page = BeautifulSoup(client.get(f"/artist/{key}").text, "html.parser")
+    return one(page, "#artist-checked")
+
+
+def refresh(client, key, file_key, current=None):
+    headers = {"HX-Current-URL": f"http://testserver{current}"} if current else {}
+    return client.post(f"/artist/{key}/refresh", data={"file": file_key}, headers=headers)
+
+
+def test_artist_info_says_when_musicbrainz_was_last_read(identify):
+    client, _path, key, _lookup = identify
+    # Alice's NFO was identified before anything was stored.
+    assert "not yet" in checked(client, ALICE).get_text(" ", strip=True)
+    identify_as(client, key, key)
+    when = checked(client, CAROL).select_one("dd[title]")
+    assert when is not None and when["title"].startswith("MusicBrainz artist last read")
+
+
+def test_the_refresh_button_names_the_file_on_the_page(identify):
+    client, _path, key, _lookup = identify
+    identify_as(client, key, key)
+    button = one(checked(client, CAROL), f'button[hx-post="/artist/{CAROL}/refresh"]')
+    assert json.loads(button["hx-vals"]) == {"file": key}
+
+
+def test_reading_again_fills_in_a_biography_musicbrainz_now_links(identify, monkeypatch):
+    """The user adds the Wikidata link on MusicBrainz, then presses ↻."""
+    client, path, key, lookup = identify
+    identify_as(client, key, key)
+    assert biography_note(client, CAROL) == "MusicBrainz links no Wikidata item"
+    lookup.side_effect = lambda mbid: {**CAROL_MB, "url-relation-list": [dict(WIKIDATA)]}
+    monkeypatch.setattr(wikimedia, "biography", Mock(return_value=BIOGRAPHY))
+
+    response = refresh(client, CAROL, key, f"/artist/{CAROL}?artist_page=1")
+    assert lookup.call_count == 2
+    assert flash(response)["verb"] == "Filled in"
+    assert response.headers["HX-Redirect"] == f"/artist/{CAROL}?artist_page=1"
+    assert "<biography>Carol are a band" in path.read_text()
+    _page, events, writes = history(client, CAROL)
+    write = writes[next(e.id for e in events if e.message.startswith("Filled in"))]
+    assert [c.field for c in write.changes] == ["biography"]
+    assert biography_link(client, CAROL)["href"] == BIOGRAPHY.url
+
+    # Again: the biography is there now, so nothing is written or recorded.
+    filled, recorded = path.read_bytes(), activity_store.artist_history(CAROL)
+    refresh(client, CAROL, key)
+    assert path.read_bytes() == filled
+    assert activity_store.artist_history(CAROL) == recorded
+
+
+def test_reading_again_writes_nothing_else_musicbrainz_changed(identify):
+    """A changed name is step 2's update, with its own review; reading again
+    only fills in what's missing."""
+    client, path, key, lookup = identify
+    identify_as(client, key, key)
+    written = path.read_bytes()
+    lookup.side_effect = lambda mbid: {**CAROL_MB, "name": "Carol (renamed)"}
+    before = activity_store.artist_history(CAROL)
+
+    response = refresh(client, CAROL, key)
+    # Nothing to say: the page it redraws shows the new date.
+    assert "harmonist-status" not in response.headers.get("HX-Trigger", "")
+    assert response.headers["HX-Redirect"] == f"/artist/{CAROL}"
+    assert path.read_bytes() == written
+    assert activity_store.artist_history(CAROL) == before
+    stored = activity_store.cached_artist(CAROL)
+    assert stored is not None and stored.payload["name"] == "Carol (renamed)"
+
+
+def test_reading_again_with_wikipedia_unreachable_warns(identify, monkeypatch):
+    client, _path, key, lookup = identify
+    identify_as(client, key, key)
+    lookup.side_effect = lambda mbid: {**CAROL_MB, "url-relation-list": [dict(WIKIDATA)]}
+    monkeypatch.setattr(wikimedia, "biography", Mock(side_effect=wikimedia.WikimediaError("x")))
+    status = flash(refresh(client, CAROL, key))
+    assert status["level"] == Level.WARNING
+    assert "couldn't fetch a biography from Wikipedia" in status["details"]
+    assert biography_note(client, CAROL) == "Wikipedia couldn't be reached"
+
+
+def test_reading_again_with_musicbrainz_unreachable_writes_and_stores_nothing(identify):
+    client, path, key, lookup = identify
+    identify_as(client, key, key)
+    written, stored = path.read_bytes(), activity_store.cached_artist(CAROL)
+    lookup.side_effect = mb_lookup.MBError("503")
+    status = flash(refresh(client, CAROL, key))
+    assert status["level"] == Level.WARNING
+    assert "read MusicBrainz" in status["details"]
+    assert path.read_bytes() == written
+    assert activity_store.cached_artist(CAROL) == stored
+
+
+def test_only_an_identified_artist_is_read_again(identify):
+    client, _path, key, lookup = identify
+    assert refresh(client, key, key).status_code == 404
+    lookup.assert_not_called()
+
+
+def test_a_store_that_cannot_be_read_says_so_rather_than_not_yet(identify, monkeypatch):
+    client, _path, _key, _lookup = identify
+
+    def broken(_mbid):
+        raise activity_store.StoreUnavailableError("disk I/O error")
+
+    monkeypatch.setattr(activity_store, "cached_artist", broken)
+    response = client.get(f"/artist/{ALICE}")
+    assert response.status_code == 200
+    text = checked(client, ALICE).get_text(" ", strip=True)
+    assert "unavailable" in text and "not yet" not in text

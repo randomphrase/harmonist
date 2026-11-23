@@ -29,12 +29,15 @@ cache is a layer above the MusicBrainz client, not inside it. That keeps the
 client a plain API wrapper, and lets demo mode replace the client's functions
 while everything above it still works.
 
-Artists aren't stored (#981). Each lookup is the user asking now, and the one
-that writes needs the current answer, so a stored answer would have nothing to
-serve but a row that can't say how old it is. Searching artists by name isn't
-cached either, as searching releases isn't. A lookup asks for the artist's links
-too, in the same request: one of them is the Wikidata item a biography is found
-through (#1018).
+An artist is kept but never served (#1022). Each lookup is the user asking now,
+and the one that writes needs the current answer, so nothing reads a stored
+artist in place of asking. What each lookup answered is kept anyway, with when:
+it's what the artist page's **MB checked** dates, what says why an NFO has no
+biography, and the baseline step 2's updater will compare a fresh read against.
+#981 first stored artists for a review step, and dropped the store with it;
+this one has those readers instead. Searching artists by name isn't stored, as
+searching releases isn't. A lookup asks for the artist's links too, in the same
+request: one of them is the Wikidata item a biography is found through (#1018).
 
 **A row is served for its TTL but kept forever.** Expiry means "ask again", not
 "forget". An expired row is still the last thing MusicBrainz said, which is what
@@ -148,16 +151,19 @@ page takes to the extract it shows, and an endpoint there serves that extract,
 but it is part of MusicBrainz's website rather than its API and sits behind a
 browser check, so Harmonist asks Wikimedia itself.
 
-- **Two requests, only when the user identifies an artist** whose file has no
-  biography: the item's sitelinks, then the article. Drawing a page asks
-  nothing, so neither service is in the way of browsing, and no background work
-  asks either.
-- **Nothing is cached.** The answer is written into the file, which is then
-  where it lives, and it is never asked for again unless the user identifies the
-  artist again with the biography gone.
+- **Two requests, only when the user reads an artist** whose file has no
+  biography, by identifying it or with the artist page's ↻ (#1022): the item's
+  sitelinks, then the article. Drawing a page asks nothing, so neither service
+  is in the way of browsing, and no background work asks either.
+- **The text isn't cached.** It's written into the file, which is then where it
+  lives. What the lookup found (which item, which languages, and whether there
+  was an article or the service failed) is kept with the stored artist, so the
+  page can say why a file has no biography. That record is about the item it
+  names, and says nothing once MusicBrainz links another.
 - **A failure doesn't stop the identification.** The MusicBrainz fields are
-  written and the answer says the biography is missing, since the identity is
-  the part the user asked for and the biography can be filled in on another try.
+  written and the answer warns that the biography is missing, since the identity
+  is the part the user asked for and the biography can be filled in on another
+  try.
 - **Only a Wikipedia is asked for the article.** Its address comes from
   Wikidata's answer, so a host that isn't one is refused rather than sent a
   request.

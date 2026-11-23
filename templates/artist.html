@@ -114,11 +114,19 @@
 
        The biography keeps its id and `hmt-group`: the page redraws itself,
        and an open disclosure has to stay open. Wikipedia is credited beside
-       it while it is still the text Harmonist took from there (#1018). #}
+       it while it is still the text Harmonist took from there (#1018).
+
+       An identified NFO's section always shows, headed by when MusicBrainz
+       was last read and the ↻ that reads it again, as an album's comparison
+       is (#1022). Its Biography row is there even when the file has none,
+       saying why, from what the last read found. #}
     {% with profile = nfo.profile %}
-    {% if profile and (profile.about or profile.genres or profile.sound or profile.biography) %}
+    {% if profile and (profile.about or profile.genres or profile.sound or profile.biography or profile.mbid) %}
     <section id="artist-info" aria-labelledby="artist-info-heading" class="border border-line rounded-lg p-4 space-y-3">
-        <h2 id="artist-info-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Artist info</h2>
+        <div class="flex items-center justify-between gap-3">
+            <h2 id="artist-info-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Artist info</h2>
+            {% if profile.mbid %}{% with file_key = nfo_files[0][0] %}{% include 'partials/_artist_checked.html' %}{% endwith %}{% endif %}
+        </div>
         {% if profile.about or profile.genres or profile.sound %}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 items-start">
             {% if profile.about %}
@@ -146,6 +154,11 @@
             <p class="mt-2 text-sm text-ink whitespace-pre-line break-words">{{ profile.biography }}</p>
             {% if biography_credit %}{% with credit = biography_credit %}{% include 'partials/_wikipedia_credit.html' %}{% endwith %}{% endif %}
         </details>
+        {% elif profile.mbid %}
+        <div id="artist-biography">
+            <p class="text-2xs font-bold text-muted uppercase tracking-widest">Biography</p>
+            <p class="artist-info__note mt-1 text-sm text-muted italic">{{ biography_note or "None" }}</p>
+        </div>
         {% endif %}
     </section>
     {% endif %}

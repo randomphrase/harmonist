@@ -32,7 +32,8 @@ and surviving the response.
 | `mb_cache.stored_release_group_editions(rg)` | browse | stored page only, **never fetches** — for the Library filters |
 | `mb_lookup.fetch_video_media(mbid)` | by id | no — the **sidecar** is its cache |
 | `mb_search.search_releases(artist, title)` | search | no, deliberately |
-| `mb_lookup.fetch_artist(mbid)` | by id | no, deliberately: each is the user asking now, and Identify writes what it gets (#981) |
+| `mb_cache.fetch_artist(mbid)` | by id | **always fetches**, then stores the answer: each is the user asking now, and Identify writes what it gets (#981); the stored row dates the artist page's MB checked (#1022) |
+| `mb_cache.stored_artist(mbid)` | by id | stored answer only, **never fetches** — for the artist page |
 | `mb_search.search_artists(name)` | search | no, deliberately |
 
 **Never call `mb_lookup.fetch_release` or `fetch_release_urls` directly.** They
