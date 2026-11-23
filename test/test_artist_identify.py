@@ -439,8 +439,12 @@ def flash(response):
 
 
 def biography_link(client, key):
+    """The credit beside the Biography label, on the same line (#1025)."""
     page = BeautifulSoup(client.get(f"/artist/{key}").text, "html.parser")
-    return page.select_one("#artist-biography a")
+    label = page.select_one("#artist-biography dt")
+    assert label is not None and label.get_text(strip=True) == "Biography"
+    links = label.find_next_sibling("dd").find_all("a")
+    return next((a for a in links if "From Wikipedia" in a.get_text()), None)
 
 
 def test_identify_fills_in_a_biography_from_the_linked_wikipedia_article(wikipedia):
@@ -560,12 +564,79 @@ def test_wikipedia_unreachable_says_so_even_when_nothing_else_changes(wikipedia)
 
 
 def biography_note(client, key):
-    """What the Biography row says, where the file has no biography (#1022)."""
+    """What the Biography row says beside its label, where the file has no
+    biography (#1022, #1025)."""
     page = BeautifulSoup(client.get(f"/artist/{key}").text, "html.parser")
     row = page.select_one("#artist-biography")
     assert row is not None, "an identified NFO always has a Biography row"
-    assert row.name != "details", "there is no biography to fold"
-    return row.select_one(".artist-info__note").get_text(" ", strip=True)
+    assert row.select_one(".artist-bio__text") is None, "there is no biography"
+    label = one(row, "dt")
+    assert label.get_text(strip=True) == "Biography"
+    return one(label.find_next_sibling("dd"), ".artist-info__note").get_text(" ", strip=True)
+
+
+def add_link(client, key):
+    """The button that opens the artist's edit page on MusicBrainz (#1025)."""
+    page = BeautifulSoup(client.get(f"/artist/{key}").text, "html.parser")
+    return page.select_one(f'#artist-biography a[href="https://musicbrainz.org/artist/{key}/edit"]')
+
+
+def test_no_wikidata_link_offers_to_add_one_on_musicbrainz(identify):
+    client, _path, key, _lookup = identify
+    identify_as(client, key, key)
+    button = add_link(client, CAROL)
+    assert button is not None
+    assert button.get_text(" ", strip=True) == "Add link on MB ↗"
+    assert button["aria-label"] == "Add a Wikidata link on MusicBrainz"
+    assert (button["target"], button["rel"]) == ("_blank", ["noopener"])
+
+
+def test_a_linked_artist_without_an_article_offers_no_edit(wikipedia):
+    """Editing the artist wouldn't help: MusicBrainz's link is there."""
+    client, _path, key, found = wikipedia
+    found.return_value = None
+    identify_as(client, key, key)
+    assert biography_note(client, CAROL) == "No Wikipedia article in en"
+    assert add_link(client, CAROL) is None
+
+
+def nfo_with_biography(client, text):
+    """Alice's NFO, holding `text` as its biography."""
+    path = next(client.app.state.cfg.paths.music_dir.rglob("Different directory name/artist.nfo"))
+    path.write_text(
+        f"<artist><name>Alice</name><musicbrainzartistid>{ALICE}</musicbrainzartistid>"
+        f"<biography>{text}</biography></artist>"
+    )
+    page = BeautifulSoup(client.get(f"/artist/{ALICE}").text, "html.parser")
+    return one(page, "#artist-biography")
+
+
+def test_a_long_biography_shows_its_first_lines_and_show_all(identify):
+    client, _path, _key, _lookup = identify
+    row = nfo_with_biography(client, "A sentence about Alice. " * 40)
+    text = one(row, ".artist-bio__text")
+    toggle = one(row, "details.artist-bio__more")
+    # The toggle follows the text, which the stylesheet clamps while it's closed,
+    # and keeps its state through the page's redraws as any disclosure does.
+    assert text.find_next_sibling("details") is toggle
+    assert "hmt-group" in toggle["class"] and toggle["id"]
+    assert toggle.summary.get_text(" ", strip=True) == "Show all Show less"
+    assert len(toggle.contents) == len(toggle.find_all("summary", recursive=False)) + sum(
+        1 for c in toggle.contents if isinstance(c, str)
+    ), "the toggle holds nothing but its summary"
+
+
+def test_a_short_biography_is_shown_whole(identify):
+    client, _path, _key, _lookup = identify
+    row = nfo_with_biography(client, "Alice sings.")
+    assert one(row, ".artist-bio__text").get_text(strip=True) == "Alice sings."
+    assert row.select_one("details") is None
+
+
+def test_a_biography_of_several_short_paragraphs_counts_as_long(identify):
+    client, _path, _key, _lookup = identify
+    row = nfo_with_biography(client, "One.\nTwo.\nThree.\nFour.")
+    assert row.select_one("details.artist-bio__more") is not None
 
 
 def test_no_article_says_so_on_the_biography_row_not_in_the_answer(wikipedia):

@@ -42,9 +42,10 @@ def test_public_demo_artist_nfos_are_browsable_offline(
     pw.expect(
         page.get_by_role("heading", name="Barry Jive and the Uptown Five", exact=True)
     ).to_be_visible()
+    # A short biography is shown whole, with nothing to press (#1025).
     biography = page.locator("#artist-biography")
-    biography.locator("summary").click()
-    pw.expect(biography.locator("p")).to_contain_text("An after-hours soul band")
+    pw.expect(biography.locator(".artist-bio__text")).to_contain_text("An after-hours soul band")
+    pw.expect(biography.locator("details")).to_have_count(0)
     pw.expect(page.locator("#artist-identity img")).to_be_visible()
 
     mouse = demo.MB_RELEASES["demo-rel-mouserat"]["artist-credit"][0]["artist"]["id"]

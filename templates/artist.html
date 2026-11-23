@@ -109,17 +109,25 @@
 
     {# Everything else the NFO says about the artist, as the file gives it:
        who they are on the left, what they sound like on the right, and the
-       biography folded at the foot. Nothing here is compared with
-       MusicBrainz; the MB artist row above is where a difference shows.
-
-       The biography keeps its id and `hmt-group`: the page redraws itself,
-       and an open disclosure has to stay open. Wikipedia is credited beside
-       it while it is still the text Harmonist took from there (#1018).
+       biography at the foot. Nothing here is compared with MusicBrainz; the
+       MB artist row above is where a difference shows.
 
        An identified NFO's section always shows, headed by when MusicBrainz
        was last read and the ↻ that reads it again, as an album's comparison
-       is (#1022). Its Biography row is there even when the file has none,
-       saying why, from what the last read found. #}
+       is (#1022).
+
+       The Biography row reads like the rows above (#1025): what's said about
+       the biography sits beside its label, either where the text came from
+       (Wikipedia, while it is still the text Harmonist took from there, #1018)
+       or why there is none, from what the last read found. The one reason the
+       user can put right, a missing Wikidata link, comes with the way to MB.
+       The text follows across the full width. A long one shows its first
+       lines until Show all: a <details> holding only its summary, after the
+       text, which the stylesheet clamps while it's closed. Its id and
+       `hmt-group` keep it open through the page's own redraws. Whether a
+       biography is long is judged from its length, set high enough that the
+       button always has more to show, and text is clamped only where the
+       button is, so a short one is never cut off. #}
     {% with profile = nfo.profile %}
     {% if profile and (profile.about or profile.genres or profile.sound or profile.biography or profile.mbid) %}
     <section id="artist-info" aria-labelledby="artist-info-heading" class="border border-line rounded-lg p-4 space-y-3">
@@ -148,16 +156,39 @@
             {% endif %}
         </div>
         {% endif %}
-        {% if profile.biography %}
-        <details id="artist-biography" class="hmt-group">
-            <summary class="cursor-pointer text-2xs font-bold text-muted hover:text-ink uppercase tracking-widest">Biography</summary>
-            <p class="mt-2 text-sm text-ink whitespace-pre-line break-words">{{ profile.biography }}</p>
-            {% if biography_credit %}{% with credit = biography_credit %}{% include 'partials/_wikipedia_credit.html' %}{% endwith %}{% endif %}
-        </details>
-        {% elif profile.mbid %}
+        {% if profile.biography or profile.mbid %}
         <div id="artist-biography">
-            <p class="text-2xs font-bold text-muted uppercase tracking-widest">Biography</p>
-            <p class="artist-info__note mt-1 text-sm text-muted italic">{{ biography_note or "None" }}</p>
+            <dl class="album-identity__fields artist-info__fields">
+                <dt>Biography</dt>
+                <dd class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    {%- if profile.biography -%}
+                    {% if biography_credit %}{% with credit = biography_credit %}{% include 'partials/_wikipedia_credit.html' %}{% endwith %}{% endif %}
+                    {%- else -%}
+                    <span class="artist-info__note text-muted italic">{{ biography_note or "None" }}</span>
+                    {% if biography_unlinked %}
+                    {# The album page's MusicBrainz edit button ("Edit store link on
+                       MusicBrainz"), at the row's right edge. The label is short
+                       beside the note, which says which link; the accessible name
+                       and tooltip say it in full. #}
+                    <a href="https://musicbrainz.org/artist/{{ profile.mbid }}/edit" target="_blank" rel="noopener"
+                       title="Open this artist's edit page on MusicBrainz, where a Wikidata link can be added"
+                       aria-label="Add a Wikidata link on MusicBrainz"
+                       class="ml-auto px-3 py-1.5 bg-mb-purple/15 hover:bg-mb-purple/25 text-mb-purple border border-mb-purple/30 rounded text-xs font-bold uppercase tracking-widest transition">Add link on MB ↗</a>
+                    {% endif %}
+                    {%- endif -%}
+                </dd>
+            </dl>
+            {% if profile.biography %}
+            {% set bio = profile.biography %}
+            <p class="artist-bio__text mt-2 text-sm text-ink whitespace-pre-line break-words">{{ bio }}</p>
+            {# Long: more than three lines even across a wide screen, so Show all
+               always has something to show. #}
+            {% if bio | length > 600 or bio.count('\n') >= 3 %}
+            <details id="artist-biography-more" class="hmt-group artist-bio__more">
+                <summary class="mt-1 text-xs font-semibold text-accent hover:underline"><span class="artist-bio__show">Show all</span><span class="artist-bio__hide">Show less</span></summary>
+            </details>
+            {% endif %}
+            {% endif %}
         </div>
         {% endif %}
     </section>

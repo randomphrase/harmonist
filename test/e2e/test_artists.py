@@ -171,13 +171,21 @@ def test_artist_nfo_sections_and_disclosures_survive_background_refresh(
     page = browser_factory(engine).new_page(viewport={"width": width, "height": 900})
     page.goto(artists_server + f"/artist/{ALICE}")
     info = page.get_by_role("region", name="Artist info")
-    biography = info.locator("#artist-biography")
-    pw.expect(biography.locator("summary")).to_have_text("Biography")
+    row = info.locator("#artist-biography")
+    pw.expect(row.locator("dt")).to_have_text("Biography")
+    # The first lines show, and Show all shows the rest (#1025).
+    text = row.locator(".artist-bio__text")
+    biography = row.locator("details.artist-bio__more")
+    clamped = "e => e.scrollHeight > e.clientHeight + 1"
+    pw.expect(text).to_be_visible()
     pw.expect(biography).to_have_js_property("open", False)
-    pw.expect(biography.locator("p")).not_to_be_visible()
+    pw.expect(biography.locator("summary")).to_have_text("Show all", use_inner_text=True)
+    assert text.evaluate(clamped)
     biography.locator("summary").focus()
     biography.locator("summary").press("Enter")
-    pw.expect(biography.locator("p")).to_be_visible()
+    pw.expect(biography).to_have_js_property("open", True)
+    pw.expect(biography.locator("summary")).to_have_text("Show less", use_inner_text=True)
+    assert not text.evaluate(clamped)
     pw.expect(info.get_by_role("list", name="Artist genres").locator("li")).to_have_text(
         ["Rock", "Alternative"]
     )
@@ -576,10 +584,10 @@ def test_artist_identity_panel_and_title(browser_factory, artist_identity_server
             "local project"
         )
         pw.expect(info.locator("dt", has_text="Mood").locator("+ dd")).to_have_text("Calm")
-        biography = info.locator("#artist-biography")
+        biography = info.locator("#artist-biography details.artist-bio__more")
         biography.locator("summary").focus()
         biography.locator("summary").press("Enter")
-        pw.expect(biography.locator("p")).to_be_visible()
+        pw.expect(biography).to_have_js_property("open", True)
         detail = page.locator("#artist-detail")
         detail.evaluate("e => e.dataset.beforeRefresh = 'yes'")
         with page.expect_response(lambda r: f"/artist/{ALICE}" in r.url and r.ok):
@@ -588,7 +596,7 @@ def test_artist_identity_panel_and_title(browser_factory, artist_identity_server
         pw.expect(biography).to_have_js_property("open", True)
         headings = page.locator("#artist-detail > section h2")
         pw.expect(headings).to_have_text(["Artist info", "Albums 2", re.compile(r"History")])
-        columns = info.locator(".album-identity__fields")
+        columns = info.locator("div.grid > .album-identity__fields")
         if width >= 768:
             assert (
                 dates.bounding_box()["x"]

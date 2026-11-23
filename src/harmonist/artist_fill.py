@@ -80,6 +80,13 @@ def note(stored: activity_store.CachedArtist | None) -> str | None:
     return None
 
 
+def unlinked(stored: activity_store.CachedArtist | None) -> bool:
+    """Whether MusicBrainz, as last read, links the artist to no Wikidata item:
+    the one reason for no biography the user can put right, on MusicBrainz
+    (#1025). False for an artist never read, since nothing says so yet."""
+    return stored is not None and wikimedia.wikidata_item(stored.payload) is None
+
+
 def _keep(mbid: str, item: str, languages: Sequence[str], status: str) -> None:
     activity_store.store_artist_biography(
         mbid, {"item": item, "languages": list(languages), "status": status}

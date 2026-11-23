@@ -5118,6 +5118,7 @@ def _register_routes(app: FastAPI) -> None:
                 artist_checked=checked,
                 artist_checked_unavailable=checked_unavailable,
                 biography_note=artist_fill.note(checked),
+                biography_unlinked=artist_fill.unlinked(checked),
                 artist_image=image is not None,
                 artist_image_url=inventory.image_url(artist.key),
                 artist_back_url=artists.index_url(

@@ -230,8 +230,12 @@ def test_the_panel_holds_identity_and_artist_info_holds_what_the_nfo_says(artist
         "Style": "Indie",
         "Mood": "Calm",
         "Instruments": "Voice",
+        # A row like the others (#1025); this biography is the file's own, so
+        # nothing is said beside it.
+        "Biography": "",
     }
-    assert info.select_one("details#artist-biography summary").get_text(strip=True) == "Biography"
+    text = info.select_one("#artist-biography .artist-bio__text")
+    assert text is not None and text.get_text(strip=True)
     names = [
         s.find(["h1", "h2"]).get_text(" ", strip=True)
         for s in soup.select("#artist-detail > section")
@@ -285,7 +289,7 @@ def test_artist_identity_without_a_unique_nfo_name_keeps_tag_identity(artist_cli
         assert panel.select_one('[role="alert"]') is not None
     if profile_state == "nameless":
         assert list(_fields(panel)) == ["MB artist", "Path"]
-        assert _fields(soup.select_one("#artist-info")) == {"Born": "1980"}
+        assert _fields(soup.select_one("#artist-info")) == {"Born": "1980", "Biography": ""}
     else:
         # Nothing to read the artist's details from: one file, or none, has to
         # be chosen first. What the tags hold is on each album's own page.

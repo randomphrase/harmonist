@@ -465,8 +465,9 @@ info, says which of these happened when MusicBrainz was last read (**MB
 checked**):
 
 - **"MusicBrainz links no Wikidata item"**: the artist's MusicBrainz page has
-  no Wikidata relationship, or more than one. Once it has exactly one, the ↻
-  beside **MB checked** fills the biography in.
+  no Wikidata relationship, or more than one. **Add link on MB** opens the
+  artist's edit page there. Once it has exactly one,
+  the ↻ beside **MB checked** fills the biography in.
 - **"No Wikipedia article in en"**: the Wikidata item has no article in any of
   the [biography languages](configuration.md#artists). After adding a language,
   the ↻ tries that Wikipedia too.

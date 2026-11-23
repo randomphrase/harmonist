@@ -12,6 +12,9 @@ from harmonist.web.main import create_app
 
 _seed = demo.seed
 
+#: Long enough that the page shows its first lines and Show all (#1025).
+BIOGRAPHY = "A locally stored biography. " + "It goes on, as an introduction does. " * 24
+
 
 def seed(music_dir, **kwargs):
     _seed(music_dir, **kwargs)
@@ -39,7 +42,7 @@ def seed(music_dir, **kwargs):
     info.mkdir(parents=True)
     (info / "artist.nfo").write_text(
         f"<artist><name>Álice</name><musicbrainzartistid>{ALICE}</musicbrainzartistid>"
-        "<biography>A locally stored biography.</biography><formed>2001</formed>"
+        f"<biography>{BIOGRAPHY}</biography><formed>2001</formed>"
         "<genre>Rock</genre><genre>Alternative</genre><genre>Rock</genre>"
         "<style>Indie</style><yearsactive>2001–present</yearsactive>"
         "<album><title>Unowned studio album</title><year>1999</year>"

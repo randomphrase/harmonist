@@ -13,6 +13,12 @@ versions follow [semantic versioning](https://semver.org).
 - **Artist info shows when MusicBrainz was last checked**, with a ↻ that fills
   in a missing biography, and says why an artist has none (#1022).
 
+### Changed
+
+- **An artist's biography shows its first lines**, with **Show all**, under a
+  Biography row like the others; a missing Wikidata link offers a way to add
+  it on MusicBrainz (#1025).
+
 ### Fixed
 
 - **An artist's finder closes after Identify** even when the file already held

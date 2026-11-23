@@ -688,6 +688,21 @@ button.library-update-option:focus-visible { background: var(--color-surface); c
 /* An artist's info is the same list with longer labels: "Disambiguation"
    doesn't fit the panel's column (#938). */
 .artist-info__fields { grid-template-columns: 7.5rem minmax(0, 1fr); }
+/* A long biography shows its first lines until Show all (#1025). The toggle is
+   a <details> holding only its summary, right after the text, so it keeps its
+   state through the page's redraws (`hmt-group`) with no script; the text is
+   clamped only while the toggle beside it is closed. */
+.artist-bio__text:has(+ .artist-bio__more:not([open])) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+.artist-bio__more > summary { display: inline-flex; list-style: none; cursor: pointer; }
+.artist-bio__more > summary::-webkit-details-marker { display: none; }
+.artist-bio__more[open] .artist-bio__show,
+.artist-bio__more:not([open]) .artist-bio__hide { display: none; }
 .album-warning { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem .75rem; margin-top: .75rem; }
 .album-warning__badge {
   display: inline-flex;
