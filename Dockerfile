@@ -2,7 +2,8 @@
 #
 # The CSS bundle (static/harmonist.css) is pre-built and committed, so the
 # runtime image needs no Node/Tailwind toolchain — just Python + runtime deps.
-# Browser JavaScript is copied from locked npm packages in a build-only stage.
+# Browser JavaScript and web fonts are copied from locked npm packages in a
+# build-only stage.
 #
 # Built for linux/amd64 and linux/arm64; published to GHCR by CI. To build
 # locally: docker build -t harmonist:latest .

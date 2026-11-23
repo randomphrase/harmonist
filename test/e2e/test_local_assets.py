@@ -48,3 +48,23 @@ def test_navigation_and_morphing_work_without_external_requests(
     page.wait_for_function("window.feedSettled")
     assert row.evaluate("el => el === window.originalRow")
     page.context.close()
+
+
+@pytest.mark.parametrize("engine", ["chromium", "webkit"])
+def test_web_fonts_load_without_external_requests(browser_factory, demo_server, engine):
+    """Each font stack's first choice is one Harmonist serves itself (#1029)."""
+    page = browser_factory(engine).new_page()
+    page.goto(demo_server)
+    loaded = page.evaluate("""async () => {
+        const root = getComputedStyle(document.documentElement);
+        const out = {};
+        for (const stack of ['--font-sans', '--font-mono']) {
+            const first = root.getPropertyValue(stack).split(',')[0].trim();
+            const faces = await document.fonts.load(`16px ${first}`);
+            out[stack] = [first, faces.filter(f => f.status === 'loaded').length];
+        }
+        return out;
+    }""")
+    for stack, (family, faces) in loaded.items():
+        assert faces, f"{stack} starts with {family}, and no face of it loaded"
+    page.context.close()

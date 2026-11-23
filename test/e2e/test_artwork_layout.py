@@ -40,13 +40,7 @@ def test_apply_uses_section_footer_within_picker_reservation(
     image = rows.first.locator(".art-row__art").first.bounding_box()
     assert image, rows.first.inner_html()
     assert abs(apply["x"] - image["x"]) <= 0.5, (apply, image)
-    # As wide while its label fits, and that depends on the font. These
-    # browsers have no web fonts (#1028), and the fallback's label is wider than
-    # an image, which rightly widens the button. A smaller one fits in any font.
-    smaller = page.add_style_tag(content=".art-apply button { font-size: 6px; }")
-    fitted = button.bounding_box()
-    assert fitted and abs(fitted["width"] - image["width"]) <= 0.5, (fitted, image)
-    smaller.evaluate("style => style.remove()")
+    assert abs(apply["width"] - image["width"]) <= 0.5, (apply, image)
 
     rows.last.locator(".art-row__select").click()
     picker = section.locator(".art-pick__picker").bounding_box()

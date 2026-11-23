@@ -1,7 +1,6 @@
 """The public demo exposes artist profiles and metadata problems offline."""
 
 import os
-from urllib.parse import urlsplit
 
 import pytest
 
@@ -60,9 +59,6 @@ def test_public_demo_artist_nfos_are_browsable_offline(
     pw.expect(tile).to_have_count(1)
     pw.expect(tile.locator("div.text-xs")).to_have_text("Various Artists")
     pw.expect(tile.locator(".library-artist-link")).to_have_count(0)
-    # Optional web fonts are blocked too; profiles and pictures remain usable.
-    assert {urlsplit(url).hostname for url in blocked} <= {
-        "fonts.googleapis.com",
-        "fonts.gstatic.com",
-    }
+    # Fonts included (#1029), nothing came from anywhere else.
+    assert blocked == []
     page.context.close()

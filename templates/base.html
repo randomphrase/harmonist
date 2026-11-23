@@ -5,9 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Harmonist :: Music Tagging Tool{% endblock %}</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%A7%3C/text%3E%3C/svg%3E">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code&family=Inter:wght@400;500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="/static/vendor/inter/index.css?v={{ static_version('vendor/inter/index.css') }}">
+    <link rel="stylesheet" href="/static/vendor/fira-code/index.css?v={{ static_version('vendor/fira-code/index.css') }}">
     <link rel="stylesheet" href="/static/harmonist.css?v={{ static_version('harmonist.css') }}">
     <script src="/static/vendor/htmx.min.js?v={{ static_version('vendor/htmx.min.js') }}"></script>
     {# Idiomorph: DOM-diffing swaps for the inbox (#task-list) so a rescan-driven

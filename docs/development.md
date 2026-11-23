@@ -112,11 +112,12 @@ the same `devcontainer.json`.
 
 ## Browser dependencies
 
-HTMX and Idiomorph are pinned in `package.json` and `package-lock.json`.
-The production Docker build installs them in a separate Node stage and copies
-only their browser scripts and licenses into the Python
-image. The app serves those files locally; Node and `node_modules` are not
-runtime dependencies.
+HTMX, Idiomorph and the Inter and Fira Code web fonts (from Fontsource) are
+pinned in `package.json` and `package-lock.json`. The production Docker build
+installs them in a separate Node stage and copies only their browser scripts,
+font stylesheets, font files and licenses into the Python image. The app serves
+those files locally, so a page asks no other host for anything; Node and
+`node_modules` are not runtime dependencies.
 
 The devcontainer setup builds the same files. For development outside the
 container, Node 24 or newer and npm are needed once after cloning, and after
@@ -129,11 +130,12 @@ make browser-assets
 This runs `npm ci` with package lifecycle scripts disabled, then copies the
 locked distributions into `static/vendor/`. That directory and `node_modules/`
 are generated and ignored by Git. The template uses the existing static-file
-cache versioning so a new build refreshes the browser's scripts.
+cache versioning so a new build refreshes the browser's scripts and font
+stylesheets.
 
 Dependabot checks the npm packages weekly, grouping minor and patch updates.
 Its PRs change the manifest and lockfile; the ordinary container and browser
-test builds then use those new versions. No generated JavaScript is committed
+test builds then use those new versions. Nothing the build copies is committed
 or manually refreshed.
 
 For a deliberate version change:

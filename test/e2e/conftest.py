@@ -40,10 +40,10 @@ _CALL_REPORT = pytest.StashKey[pytest.TestReport]()
 
 
 # Every server under test listens on loopback; anything else is the internet,
-# whose timing no test controls. A page's `load` waits for the web fonts
-# base.html takes from Google, and a stalled handshake there timed out
-# `page.goto` (#1028). Send everything else to a proxy where nothing listens, so
-# it fails at once, as on a machine with no network.
+# whose timing no test controls. A page's `load` once waited on web fonts from
+# Google, and a stalled handshake there timed out `page.goto` (#1028). Send
+# everything else to a proxy where nothing listens, so it fails at once, as on a
+# machine with no network.
 _OFFLINE = {"server": "http://127.0.0.1:9", "bypass": "127.0.0.1"}
 
 

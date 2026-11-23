@@ -15,6 +15,8 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **Harmonist serves its own web fonts**, so its pages no longer load anything
+  from Google (#1029).
 - **An artist's biography shows its first lines**, with **Show all**, under a
   Biography row like the others; a missing Wikidata link offers a way to add
   it on MusicBrainz (#1025).
