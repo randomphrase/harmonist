@@ -6,8 +6,15 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
 - **Identifying an artist NFO fills in its biography from Wikipedia**, through
   MusicBrainz's link, where the file has none (#1018).
+
+### Fixed
+
+- **An artist's finder closes after Identify** even when the file already held
+  what MusicBrainz says (#1021).
 
 ## [1.34.0] - 2026-11-17
 

@@ -286,8 +286,23 @@ def test_identifying_with_the_same_answer_again_records_nothing(identify):
     before = activity_store.artist_history(CAROL)
     again = identify_as(client, CAROL, key)
     assert "Nothing to change" in again.headers["HX-Trigger"]
-    assert "HX-Redirect" not in again.headers
     assert activity_store.artist_history(CAROL) == before
+
+
+def test_identify_that_changes_nothing_still_closes_the_finder(identify):
+    """The artist is identified either way, so its finder goes, as after a
+    write (#1021), and what it says goes to the status bar rather than into the
+    finder."""
+    client, _path, key, _lookup = identify
+    identify_as(client, key, key)
+    opened = f"/artist/{CAROL}?artist_page=1&find={key}"
+    again = client.post(
+        f"/artist/{CAROL}/identify",
+        data={"file": key, "artist": CAROL},
+        headers={"HX-Current-URL": f"http://testserver{opened}"},
+    )
+    assert "Nothing to change" in again.headers["HX-Trigger"]
+    assert again.headers["HX-Redirect"] == f"/artist/{CAROL}?artist_page=1"
 
 
 def test_undo_puts_back_the_write_and_can_itself_be_undone(identify):

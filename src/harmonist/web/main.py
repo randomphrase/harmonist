@@ -5256,15 +5256,19 @@ def _register_routes(app: FastAPI) -> None:
         if written is None:
             # A biography that couldn't be fetched is still a failure to report
             # in Activity, though nothing was written.
-            return _flash_response(
-                "Nothing to change",
-                "; ".join(
-                    filter(None, ["the file already holds what MusicBrainz says", filled.note])
+            return _close_finder(
+                request,
+                _flash_response(
+                    "Nothing to change",
+                    "; ".join(
+                        filter(None, ["the file already holds what MusicBrainz says", filled.note])
+                    ),
+                    level=filled.level,
+                    tasks_changed=False,
+                    artist=(profile.key, profile.name or profile.path.parent.name),
+                    record_activity=filled.level is not Level.INFO,
                 ),
-                level=filled.level,
-                tasks_changed=False,
-                artist=(profile.key, profile.name or profile.path.parent.name),
-                record_activity=filled.level is not Level.INFO,
+                profile.key,
             )
         return _artist_written(
             request,
@@ -9742,14 +9746,20 @@ def _artist_written(
     request.app.state.scan_runner.refresh_nfo(path)
     request.state.skip_rescan = True
     response = _flash_response(verb, details, level=level, artist=(written.key, written.label))
+    return _close_finder(request, response, written.key)
+
+
+def _close_finder(request: Request, response: HTMLResponse, key: str) -> HTMLResponse:
+    """`response`, sending the browser to the artist page `key` without `find`,
+    so the finder that asked closes, as an album's goes once its release is
+    confirmed (#938). Whether or not anything was written: the artist is
+    identified either way (#1021). The Inbox, at `/`, stays where it is."""
     current = urlsplit(request.headers.get("HX-Current-URL", ""))
     if current.path != "/":
-        # Without `find`: the finder that made the write closes, as an album's
-        # goes once its release is confirmed (#938).
         query = urlencode(
             [(k, v) for k, v in parse_qsl(current.query, keep_blank_values=True) if k != "find"]
         )
-        response.headers["HX-Redirect"] = f"/artist/{written.key}" + (f"?{query}" if query else "")
+        response.headers["HX-Redirect"] = f"/artist/{key}" + (f"?{query}" if query else "")
     return response
 
 
