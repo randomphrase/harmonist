@@ -77,15 +77,29 @@ the source of metadata and you in control of changes.
 - **[beets](https://beets.io)** offers a flexible command-line workflow for
   organising and tagging music. Harmonist puts library maintenance and review
   in a web interface.
-- **[Codetta](https://github.com/gavndev/codetta)** is a self-hosted music
-  library manager with browser-based tag editing, MusicBrainz matching, file
-  organization, and an inbox for new downloads, with previews and undo.
-  It's worth a look if you want a general-purpose tool for fixing and filing
-  music; Harmonist focuses on keeping MusicBrainz metadata and artwork
-  current over time, with Bandcamp sync built in.
 - **[bandcampsync](https://github.com/meeb/bandcampsync)** downloads your Bandcamp
   purchases. Harmonist builds on it, adding MusicBrainz matching, tagging,
   artwork, and a review inbox.
+
+The following tools are similar to Harmonist in that they are
+self-hosted web-UIs. I haven't evaluated these tools hands-on, so the
+descriptions below are copied verbatim from the project's website.
+Some are quite new and evolving rapidly. If Harmonist doesn't suit
+your needs, maybe one of these projects will?
+
+- **[Codetta](https://github.com/gavndev/codetta)** "Self-hosted music
+  library manager: fix tags, match albums on MusicBrainz, organize
+  files and bring in new music, from any browser".
+- **[Metadata
+  Remote](https://github.com/wow-signal-dev/metadata-remote)**. "Edit
+  metadata on headless servers (or anywhere else) via a clean web
+  interface without complicated music library ecosystems, command line
+  surgery, or file transfers — just Docker, a browser, and zero
+  setup."
+- **[Modern Music Metadata Manager
+  (M⁴)](https://github.com/TopherJohnson/Modern-Music-Metadata-Manager)**.
+  "Modern Music Metadata Manager (M⁴) — a Dockerized metadata
+  companion for Navidrome."
 
 ## Where Harmonist is going
 
