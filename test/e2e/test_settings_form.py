@@ -202,12 +202,13 @@ def test_the_tag_update_grid_keeps_both_columns_contiguous_and_saves(
         "cosmetic": "apply",
         "settings": "apply",
     }
+    # Every level but Settings is logged by default, and an applied one always.
     assert outcomes() == [
-        "Sent to the Inbox",
-        "Left in the Library",
-        "Applied automatically",
-        "Applied automatically",
-        "Applied automatically",
+        "Sent to the Inbox, added to Activity Log",
+        "Left in the Library, added to Activity Log",
+        "Applied automatically, added to Activity Log",
+        "Applied automatically, added to Activity Log",
+        "Applied automatically, added to Activity Log",
     ]
 
     cell("review", "enrichment").click()  # Inbox down to Enrichment pushes Apply back
@@ -258,12 +259,13 @@ def test_the_tag_update_grid_keeps_both_columns_contiguous_and_saves(
     page.context.close()
 
 
-def test_the_activity_column_runs_down_from_structure_on_its_own_and_saves(
+def test_the_log_column_runs_down_from_structure_on_its_own_and_saves(
     browser_factory, demo_server: str
 ) -> None:
-    """#1024. The Activity column is kept contiguous by the same script as the
-    other two, but moves neither of them and is moved by neither; and its ticks
-    don't count as a destination in the outcome column."""
+    """#1024. The Log column is kept contiguous by the same script as the
+    other two, but moves neither of them and is moved by neither. The outcome
+    column says when an update is logged, and an applied one always is, by its
+    write, whatever its own box says."""
     browser = browser_factory("chromium")
     page = browser.new_page()
     page.set_default_timeout(5000)
@@ -274,12 +276,12 @@ def test_the_activity_column_runs_down_from_structure_on_its_own_and_saves(
             f'.update-routing__row[data-level="{level}"] label:has(.update-routing__{column})'
         )
 
-    def recorded() -> list[str]:
+    def logged() -> list[str]:
         return [
             level
-            for level in _LEVELS[:-1]  # Settings has no box
+            for level in _LEVELS
             if page.locator(
-                f'.update-routing__row[data-level="{level}"] .update-routing__activity'
+                f'.update-routing__row[data-level="{level}"] .update-routing__log'
             ).is_checked()
         ]
 
@@ -290,26 +292,31 @@ def test_the_activity_column_runs_down_from_structure_on_its_own_and_saves(
             .strip()
         )
 
-    assert recorded() == ["structure", "identity", "enrichment", "cosmetic"]
-    settings_cells = page.locator(
-        '.update-routing__row[data-level="settings"] .update-routing__cell'
-    )
-    assert settings_cells.nth(2).inner_text() == "never"  # Apply, Inbox, then Activity
+    assert logged() == ["structure", "identity", "enrichment", "cosmetic"]
+    assert outcome("identity") == "Left in the Library, added to Activity Log"
+    assert outcome("settings") == "Left in the Library"
+
+    cell("log", "identity").click()  # shrink to just short of Identity
+    assert logged() == ["structure"]
     assert outcome("identity") == "Left in the Library"
 
-    cell("activity", "identity").click()  # shrink to just short of Identity
-    assert recorded() == ["structure"]
-
-    cell("review", "enrichment").click()  # the Inbox moves; Activity doesn't
+    cell("review", "enrichment").click()  # the Inbox moves; Log doesn't
     cell("apply", "cosmetic").click()
-    assert recorded() == ["structure"]
+    assert logged() == ["structure"]
+    # Applying is always logged, though Cosmetic's own box is unticked.
+    assert outcome("cosmetic") == "Applied automatically, added to Activity Log"
 
-    cell("activity", "enrichment").click()  # extend down to Enrichment
-    assert recorded() == ["structure", "identity", "enrichment"]
+    cell("log", "enrichment").click()  # extend down to Enrichment
+    assert logged() == ["structure", "identity", "enrichment"]
     assert page.locator(
         '.update-routing__row[data-level="enrichment"] .update-routing__review'
     ).is_checked()
-    assert outcome("cosmetic") == "Applied automatically"
+
+    cell("apply", "settings").click()  # nothing applied: Cosmetic's own box shows again
+    assert outcome("cosmetic") == "Left in the Library"
+    cell("log", "settings").click()  # and Settings can be logged too
+    assert logged() == _LEVELS
+    assert outcome("settings") == "Left in the Library, added to Activity Log"
 
     with page.expect_response(
         lambda r: r.url.endswith("/settings") and r.request.method == "POST"
@@ -317,13 +324,12 @@ def test_the_activity_column_runs_down_from_structure_on_its_own_and_saves(
         page.get_by_role("button", name="Save settings", exact=True).click()
     assert saved.value.ok
     page.reload()
-    assert recorded() == ["structure", "identity", "enrichment"]
+    assert logged() == _LEVELS
 
     # Back to the shipped levels for the module's other tests.
-    cell("activity", "cosmetic").click()
-    cell("apply", "settings").click()
+    cell("log", "settings").click()
     cell("review", "identity").click()
-    assert recorded() == ["structure", "identity", "enrichment", "cosmetic"]
+    assert logged() == ["structure", "identity", "enrichment", "cosmetic"]
     with page.expect_response(lambda r: r.url.endswith("/settings") and r.request.method == "POST"):
         page.get_by_role("button", name="Save settings", exact=True).click()
     page.context.close()

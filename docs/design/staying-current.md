@@ -102,10 +102,13 @@ from the cache and the files whenever needed. **Only new updates are
 announced.** One the user hasn't taken yet isn't announced again when the
 release changes further, and one Harmonist is seeing for the first time (on a
 new install, or after the cache was refilled) isn't announced at all. Nor is
-one that only brings an album into line with the user's settings: they chose it
-on the Settings page, so it's never news. For the same reason, a waiting
-Settings change doesn't count as an update already announced, or the album would
-go quiet about real edits for as long as it waited.
+one that changing a setting brought: the user caused it on the Settings page,
+so it's never news. A Settings update that a MusicBrainz edit brought, such as
+a disambiguation arriving under the setting that writes it, is news like any
+other, though announced only to a user who asks for that level (see
+[what gets recorded](#what-gets-recorded)). A waiting Settings change doesn't
+count as an update already announced, or the album would go quiet about real
+edits for as long as it waited.
 
 ### The background update check
 
@@ -257,14 +260,27 @@ rare, so the feed stays quiet without being filtered. A burst, such as an artist
 renamed across a discography, arrives a few albums per tick over the week's
 schedule, and a pass that finds more than a handful still records one counted
 line. The threshold is there for a library where that judgement is wrong.
+Settings is the one level off by default: what it records is a spelling the
+user chose, arriving.
 
 **A threshold, like the Inbox's**, for the same reason: no level is treated as
-less worth recording than one below it. It never takes Settings, whose updates
-the user caused.
+less worth recording than one below it.
+
+**Only a fresh answer from MusicBrainz can record anything**, wherever it was
+asked for. The album page's refresh is a live check like the background one,
+and an update it turns up is recorded by the same rules; leaving it out would
+lose the update for good, because by the time the background check reached
+the album it would no longer be new. An answer served from the cache, at
+startup, after a rescan or on a page view, says nothing new about MusicBrainz,
+and a payload identical to the stored one says nothing either, so opening an
+album records nothing however often it's opened. Two checks fetching the same
+payload at once record it once: whichever judges the album second finds it
+already judged against that payload.
 
 **Not what's about to be applied.** The write records itself, with its changes
 and its Undo, within minutes; an entry for the update as well would record the
-same change twice.
+same change twice. An applied level's tick on the Settings page is therefore
+fixed: the write is always recorded, so the box can't say otherwise.
 
 ### Ignoring an update
 

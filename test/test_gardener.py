@@ -1702,23 +1702,85 @@ def test_an_album_already_flagged_is_not_announced_a_second_time(tmp_path, monke
     assert _named_updates() == []
 
 
-def test_a_settings_only_update_is_never_announced(tmp_path, monkeypatch):
-    """#685. MusicBrainz gives the release a disambiguation, and the user's
-    transform makes that a title change — so the album has an update, and it is
-    only the user's own setting arriving. The flag goes up; the feed says
-    nothing, because there is nothing MusicBrainz did that they need to look at.
-    """
+@pytest.mark.parametrize(
+    ("activity_from", "logged"),
+    [(owned.Significance.COSMETIC, []), (owned.Significance.SETTINGS, ["settings"])],
+)
+def test_a_settings_update_musicbrainz_caused_is_logged_only_if_chosen(
+    tmp_path, monkeypatch, activity_from, logged
+):
+    """#685, #1024. MusicBrainz gives the release a disambiguation, and the
+    user's transform makes that a title change — so the album has an update,
+    and it is the user's own setting arriving. News, since it wasn't waiting
+    before; logged only if the user chose to log Settings, off by default."""
     activity_store.init(tmp_path / "activity.db")
     album = _tagged(tmp_path, _release())
     _store(_release(), age=_stale())
     _serving(monkeypatch, {**_release(), "disambiguation": "expanded edition"})
     gardener.configure(_disambiguating)
+    gardener.configure_routing(lambda: GardenerConfig(activity_from=activity_from))
 
     result = gardener.sweep([album])
 
     assert album.update_significance == owned.Significance.SETTINGS
-    assert (result.flagged, len(result.newly_flagged)) == (1, 0)
+    assert (result.flagged, len(result.newly_flagged)) == (1, 1)
+    assert [message for _, _, message in _named_updates()] == [
+        f"Update available from MusicBrainz ({level})" for level in logged
+    ]
+
+
+def test_a_waiting_settings_change_is_not_news_when_musicbrainz_moves_again(tmp_path, monkeypatch):
+    """#1024. Already waiting, so an edit upstream that leaves it a Settings
+    change says nothing new, even to a user logging Settings."""
+    activity_store.init(tmp_path / "activity.db")
+    release = {**_release(), "disambiguation": "expanded edition"}
+    album = _tagged(tmp_path, release)
+    _store(release, age=_stale())
+    gardener.configure(_disambiguating)
+    gardener.configure_routing(lambda: GardenerConfig(activity_from=owned.Significance.SETTINGS))
+    gardener.refresh_flag(album, release)
+    assert album.update_significance == owned.Significance.SETTINGS
+    _serving(monkeypatch, {**release, "quality": "high"})
+
+    result = gardener.sweep([album])
+
+    assert (result.examined, len(result.newly_flagged)) == (1, 0)
+    assert album.update_significance == owned.Significance.SETTINGS
     assert _named_updates() == []
+
+
+def test_the_settings_re_check_logs_nothing_even_when_settings_is_logged(tmp_path):
+    """#1024. The user caused those updates a moment ago on the Settings page;
+    only a change MusicBrainz made can be news."""
+    activity_store.init(tmp_path / "activity.db")
+    release = {**_release(), "disambiguation": "expanded edition"}
+    album = _tagged(tmp_path, release)
+    activity_store.store_release(
+        release["id"], "+".join(sorted(mb_lookup.RELEASE_INCLUDES)), release
+    )
+    gardener.configure(_disambiguating)  # the setting just saved
+    gardener.configure_routing(lambda: GardenerConfig(activity_from=owned.Significance.SETTINGS))
+
+    assert gardener.recheck_for_settings([album], TaggingChoices(), _disambiguating()) == 1
+
+    assert album.update_significance == owned.Significance.SETTINGS
+    assert _named_updates() == []
+
+
+def test_a_payload_already_judged_is_not_news_a_second_time(tmp_path):
+    """#1024. The album page and the background check can fetch the same moved
+    release at once; whichever judges the album second finds it already judged
+    against that payload, and logs nothing."""
+    activity_store.init(tmp_path / "activity.db")
+    album = _tagged(tmp_path, _release())
+    moved = _release("Test Album (remastered)")
+
+    gardener.refresh_after_fetch(album, moved, before=_release())
+    gardener.refresh_after_fetch(album, moved, before=_release())
+
+    assert _named_updates() == [
+        (album.id, album.label, "Update available from MusicBrainz (identity)")
+    ]
 
 
 def test_a_waiting_settings_change_does_not_hide_news_from_musicbrainz(tmp_path, monkeypatch):

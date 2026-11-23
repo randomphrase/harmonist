@@ -405,9 +405,10 @@ lists the release's images.
 **Activity records what the check finds by a threshold of its own**, as for
 tag updates and for the same reasons
 ([staying current](staying-current.md#what-gets-recorded)): wherever the update
-waits, only when the check first finds it, and not when it's about to be
-applied, since the write records itself. A watched album's is recorded whatever
-the threshold says, because the watch asked to be told (#1024).
+waits, only when a check first finds it (the background check's or the album
+page's), and not when it's about to be applied, since the write records
+itself. A watched album's is recorded whatever the threshold says, because the
+watch asked to be told (#1024).
 
 **A first look at the archive isn't news.** With nothing stored about a
 release, nothing says the archive changed, so an update the check finds then

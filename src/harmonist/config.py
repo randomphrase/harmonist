@@ -252,7 +252,8 @@ class GardenerConfig(BaseModel):
     artwork. Independent of the Inbox: the Inbox is what needs the user, and
     Activity is a record they read when they choose to. Every level from
     MusicBrainz by default, since only a transition is recorded and those are
-    rare. Never Settings, whose updates the user caused on the Settings page.
+    rare. Settings is the user's to add: an update at that level brings an
+    album into line with a setting they chose.
     """
 
     level: GardenerLevel = "off"
@@ -270,16 +271,6 @@ class GardenerConfig(BaseModel):
             raise ValueError(
                 "structure updates are never applied automatically; choose settings, "
                 "cosmetic, enrichment, identity or none"
-            )
-        return value
-
-    @field_validator("activity_from")
-    @classmethod
-    def _never_settings(cls, value: ReviewFrom) -> ReviewFrom:
-        if value == Significance.SETTINGS:
-            raise ValueError(
-                "settings updates are never recorded in Activity; choose cosmetic, "
-                "enrichment, identity, structure or none"
             )
         return value
 

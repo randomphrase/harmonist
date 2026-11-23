@@ -12,10 +12,11 @@ stored: it is a function of the same plan, rebuilt whenever it is asked.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -643,9 +644,7 @@ def sweep(albums: Sequence[Album], *, limit: int | None = None) -> int:
         _attempted[mbid] = datetime.now(UTC)
         # Judged before anything this check learns reaches the plan, so the
         # digest names only albums whose update this check itself found.
-        waited = {id(a) for a in groups[mbid] if _recorded(a, routing)}
-        # With nothing stored, nothing says the archive changed (#1024).
-        first_look = caa_cache.stored(mbid) is None
+        before = _before(mbid, groups[mbid], routing)
         release = mb_cache.stored_release(mbid)
         group = (release.get("release-group") or {}).get("id") if release else None
         try:
@@ -689,15 +688,55 @@ def sweep(albums: Sequence[Album], *, limit: int | None = None) -> int:
         observe(mbid)
         _failures.succeeded()
         checked += 1
-        if first_look:
-            continue
-        found.extend(
-            (a, op)
-            for a in groups[mbid]
-            if id(a) not in waited and _recorded(a, routing) and (op := waiting(a)) is not None
-        )
+        found.extend(_found(groups[mbid], routing, before))
     _record_digest(found)
     return checked
+
+
+@contextlib.contextmanager
+def recording(mbid: str, albums: Sequence[Album]) -> Iterator[None]:
+    """Record in Activity the artwork updates that the archive check of `mbid`
+    run inside finds for `albums` (#1024): the album page's, by the background
+    check's rules. The check must leave the answer observed, as the page's does.
+
+    Nothing is recorded if the check raises. An answer served from the store
+    changes no plan, so only a check that reached the archive and heard
+    something new can record anything, however often the page is opened.
+    """
+    routing = _routing()
+    before = _before(mbid, albums, routing)
+    yield
+    _record_digest(_found(albums, routing, before))
+
+
+@dataclass(frozen=True)
+class _Before:
+    """What an archive check's albums looked like before it (#1024)."""
+
+    #: The albums whose update was already one Activity records, by `id`.
+    waited: frozenset[int]
+    #: Whether nothing was stored about the release: then nothing says the
+    #: archive changed, and an update found may have waited for years.
+    first_look: bool
+
+
+def _before(mbid: str, albums: Sequence[Album], routing: GardenerConfig) -> _Before:
+    return _Before(
+        frozenset(id(a) for a in albums if _recorded(a, routing)), caa_cache.stored(mbid) is None
+    )
+
+
+def _found(
+    albums: Sequence[Album], routing: GardenerConfig, before: _Before
+) -> list[tuple[Album, artwork.Operation]]:
+    """The albums whose artwork update a check found, as news Activity records."""
+    if before.first_look:
+        return []
+    return [
+        (a, op)
+        for a in albums
+        if id(a) not in before.waited and _recorded(a, routing) and (op := waiting(a)) is not None
+    ]
 
 
 def _recorded(album: Album, routing: GardenerConfig) -> bool:

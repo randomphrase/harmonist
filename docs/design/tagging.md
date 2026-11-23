@@ -426,8 +426,9 @@ rather than by hiding the change:
   them off everywhere. Turning one off offers updates that remove data from
   titles, so the Settings page warns before it's saved that the updates will be
   pending.
-- **It's a flood the user caused**, so it isn't news. An album with only a
-  Settings change is never announced. The same goes for one an upgrade produces.
+- **It's a flood the user caused**, so it isn't news. A Settings change that
+  changing a setting brought is never announced. The same goes for one an
+  upgrade produces.
 - **Ignore doesn't apply.** Ignore waits for MusicBrainz to change, and nothing
   about MusicBrainz is in question; the remedy is the setting. An album with
   only a Settings change offers no Ignore, and an album ignored for a

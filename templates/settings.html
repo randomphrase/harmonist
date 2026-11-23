@@ -153,12 +153,14 @@
             {# Where each level's updates go (#273), widest first: a grid of tick
                cells, one checkbox each. Apply ticks run up from Settings, never
                to Structure; Inbox ticks run down from Structure; a row ticks at
-               most one of those two. Activity (#1024) runs down from Structure
-               too, never to Settings, independent of the other two. The script
-               below keeps every column contiguous as cells are clicked, and the
-               server reads each threshold off whatever is ticked, so a form
-               without the script still saves a sound set. The outcome column
-               reads each row's own Apply and Inbox ticks. #}
+               most one of those two. Log (#1024) runs down from Structure too,
+               independent of the other two, and an applied row shows it ticked
+               whatever its box says, since the write is always logged. The
+               script below keeps every column contiguous as cells are clicked,
+               and the server reads each threshold off whatever is ticked, so a
+               form without the script still saves a sound set. The outcome
+               column reads each row's own ticks; its spans sit with no
+               whitespace between them, so the logged clause follows on. #}
             <fieldset class="update-routing">
                 <legend class="block text-xs font-bold text-ink mb-1">When a tag update is found</legend>
                 <input type="hidden" name="gardener_routing" value="1">
@@ -168,7 +170,7 @@
                     <span></span>
                     <span class="update-routing__heading">Apply</span>
                     <span class="update-routing__heading">Inbox</span>
-                    <span class="update-routing__heading">Activity</span>
+                    <span class="update-routing__heading">Log</span>
                 </div>
                 <ul class="divide-y divide-line border border-line rounded">
                     {% for level in update_levels %}
@@ -193,21 +195,13 @@
                                    {{ 'checked' if goes == 'review' }}>
                             <span class="update-routing__tick" aria-hidden="true"></span>
                         </label>
-                        {% if level.value == 'settings' %}
-                        <span class="update-routing__cell update-routing__cell--never text-xs text-muted">never</span>
-                        {% else %}
-                        <label class="update-routing__cell">
-                            <input type="checkbox" name="gardener_activity" value="{{ level.value }}" class="update-routing__activity sr-only"
-                                   aria-label="Record {{ level.value }} updates in Activity"
-                                   {{ 'checked' if update_recorded[level] }}>
+                        <label class="update-routing__cell update-routing__cell--log">
+                            <input type="checkbox" name="gardener_log" value="{{ level.value }}" class="update-routing__log sr-only"
+                                   aria-label="Add {{ level.value }} updates to Activity Log"
+                                   {{ 'checked' if update_logged[level] }}>
                             <span class="update-routing__tick" aria-hidden="true"></span>
                         </label>
-                        {% endif %}
-                        <span class="update-routing__outcome text-xs text-muted">
-                            <span class="update-routing__applied">Applied automatically</span>
-                            <span class="update-routing__inbox">Sent to the Inbox</span>
-                            <span class="update-routing__library">Left in the Library</span>
-                        </span>
+                        <span class="update-routing__outcome text-xs text-muted"><span><span class="update-routing__applied">Applied automatically</span><span class="update-routing__inbox">Sent to the Inbox</span><span class="update-routing__library">Left in the Library</span><span class="update-routing__logged">, added to Activity Log</span></span></span>
                     </li>
                     {% endfor %}
                 </ul>
@@ -219,8 +213,8 @@
                     // Clicking a cell extends its column's range to that level, or
                     // shrinks it to just short of it. Apply runs up from the last
                     // row, the Inbox down from the first, and extending one moves
-                    // the other back, so no row is ticked twice. Activity runs
-                    // down from the first row and moves nothing else.
+                    // the other back, so no row is ticked twice. Log runs down
+                    // from the first row and moves nothing else.
                     document.addEventListener('change', function (e) {
                         const box = e.target;
                         const grid = box.closest && box.closest('.update-routing');
@@ -229,12 +223,11 @@
                         const at = rows.indexOf(box.closest('.update-routing__row'));
                         const apply = (row) => row.querySelector('.update-routing__apply');
                         const review = (row) => row.querySelector('.update-routing__review');
-                        const activity = (row) => row.querySelector('.update-routing__activity');
-                        if (box.classList.contains('update-routing__activity')) {
+                        const logged = (row) => row.querySelector('.update-routing__log');
+                        if (box.classList.contains('update-routing__log')) {
                             rows.forEach(function (row, i) {
-                                const r = activity(row);
-                                if (r && box.checked && i <= at) r.checked = true;
-                                else if (r && !box.checked && i >= at) r.checked = false;
+                                if (box.checked && i <= at) logged(row).checked = true;
+                                else if (!box.checked && i >= at) logged(row).checked = false;
                             });
                         } else if (box.classList.contains('update-routing__apply')) {
                             rows.forEach(function (row, i) {
@@ -274,7 +267,7 @@
                     <span></span>
                     <span class="update-routing__heading">Apply</span>
                     <span class="update-routing__heading">Inbox</span>
-                    <span class="update-routing__heading">Activity</span>
+                    <span class="update-routing__heading">Log</span>
                 </div>
                 <ul class="divide-y divide-line border border-line rounded">
                     {% for op in artwork_operations %}
@@ -299,17 +292,13 @@
                                    {{ 'checked' if goes == 'review' }}>
                             <span class="update-routing__tick" aria-hidden="true"></span>
                         </label>
-                        <label class="update-routing__cell">
-                            <input type="checkbox" name="gardener_artwork_activity" value="{{ op.value }}" class="update-routing__activity sr-only"
-                                   aria-label="Record artwork {{ op.value }}s in Activity"
-                                   {{ 'checked' if artwork_recorded[op] }}>
+                        <label class="update-routing__cell update-routing__cell--log">
+                            <input type="checkbox" name="gardener_artwork_log" value="{{ op.value }}" class="update-routing__log sr-only"
+                                   aria-label="Add artwork {{ op.value }}s to Activity Log"
+                                   {{ 'checked' if artwork_logged[op] }}>
                             <span class="update-routing__tick" aria-hidden="true"></span>
                         </label>
-                        <span class="update-routing__outcome text-xs text-muted">
-                            <span class="update-routing__applied">Applied automatically</span>
-                            <span class="update-routing__inbox">Sent to the Inbox</span>
-                            <span class="update-routing__library">Left in the Library</span>
-                        </span>
+                        <span class="update-routing__outcome text-xs text-muted"><span><span class="update-routing__applied">Applied automatically</span><span class="update-routing__inbox">Sent to the Inbox</span><span class="update-routing__library">Left in the Library</span><span class="update-routing__logged">, added to Activity Log</span></span></span>
                     </li>
                     {% endfor %}
                 </ul>

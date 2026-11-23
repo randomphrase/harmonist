@@ -27,8 +27,8 @@ Two consequences follow, and they are what make it safe to ship:
   library converges on the setting, existing albums included (#685): an album
   carrying the other spelling has an update. Because the value on disk is a
   member of the accepted set and the new one is the setting's choice, that
-  update is classified `Significance.SETTINGS` — the lowest level, never
-  announced, never ignorable — rather than the IDENTITY a retitle is. A value
+  update is classified `Significance.SETTINGS` — the lowest level, logged only
+  if the user asks, never ignorable — rather than the IDENTITY a retitle is. A value
   outside the set keeps its own significance, so nothing MusicBrainz did can
   ride along under the user's setting.
 - **It stays idempotent.** A transform reads the release and library membership, never

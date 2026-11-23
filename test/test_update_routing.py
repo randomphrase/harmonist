@@ -101,10 +101,10 @@ def test_the_review_level_can_be_set_from_the_environment(tmp_path, monkeypatch)
     assert config.load().gardener.review_from == S.IDENTITY
 
 
-# ---- the Activity threshold (#1024) ---------------------------------------
+# ---- the Log threshold (#1024) --------------------------------------------
 
 
-@pytest.mark.parametrize("threshold", [S.COSMETIC, S.ENRICHMENT, S.IDENTITY, S.STRUCTURE, "none"])
+@pytest.mark.parametrize("threshold", [*owned.ORDER, "none"])
 def test_activity_records_the_chosen_level_and_every_level_above_it(threshold):
     recorded = {level for level in owned.ORDER if gardener.records(level, threshold)}
     expected = set() if threshold == "none" else set(owned.ORDER[owned.ORDER.index(threshold) :])
@@ -112,16 +112,10 @@ def test_activity_records_the_chosen_level_and_every_level_above_it(threshold):
 
 
 def test_activity_records_every_update_from_musicbrainz_unless_told_otherwise():
+    """Settings is the user's to add: it brings an album into line with a
+    setting they chose, so it is the one level off by default."""
     assert GardenerConfig().activity_from == S.COSMETIC
-
-
-def test_a_settings_update_is_never_recorded_in_activity():
-    """The user caused it on the Settings page a moment ago, so neither the
-    threshold nor the level can name it. The level is refused too because a
-    `model_copy` skips the threshold's validation."""
-    assert not gardener.records(S.SETTINGS, S.SETTINGS)
-    with pytest.raises(ValueError, match="never recorded"):
-        GardenerConfig.model_validate({"activity_from": "settings"})
+    assert GardenerConfig.model_validate({"activity_from": "settings"}).activity_from == S.SETTINGS
 
 
 def test_the_activity_level_can_be_set_from_the_environment(tmp_path, monkeypatch):
@@ -376,13 +370,29 @@ def test_the_digest_records_nothing_when_activity_takes_nothing(cfg):
     assert all(e.album_label != albums["Renumbered"].label for e in activity.recent(10))
 
 
-# ---- the Settings grid's Activity column (#1024) --------------------------
+def test_the_digest_records_a_settings_update_only_once_settings_is_chosen(cfg):
+    """#1024. Off by default, like any level below the threshold."""
+    albums = _digest_of(cfg, {"Spelled": S.SETTINGS})
+    assert all(e.album_label != albums["Spelled"].label for e in activity.recent(10))
+
+    gardener.configure_routing(lambda: GardenerConfig(activity_from=S.SETTINGS))
+    gardener._record_digest(
+        gardener.PassResult(
+            asked=1, examined=1, flagged=1, newly_flagged=(albums["Spelled"],), gone=0, failed=0
+        )
+    )
+    assert [e.message for e in activity.recent(10)] == [
+        "Update available from MusicBrainz (settings)"
+    ]
 
 
-def _activity_ticks(page: str) -> set[str]:
-    """The levels whose Activity box is ticked, read off each box's own tag
-    with attribute values blanked, so `checked` can only match the attribute."""
-    boxes = re.findall(r'<input[^>]*name="gardener_activity"[^>]*>', page)
+# ---- the Settings grid's Log column (#1024) -------------------------------
+
+
+def _log_ticks(page: str) -> set[str]:
+    """The levels whose Log box is ticked, read off each box's own tag with
+    attribute values blanked, so `checked` can only match the attribute."""
+    boxes = re.findall(r'<input[^>]*name="gardener_log"[^>]*>', page)
     return {
         re.search(r'value="(\w+)"', box).group(1)
         for box in boxes
@@ -393,25 +403,22 @@ def _activity_ticks(page: str) -> set[str]:
 @pytest.mark.parametrize(
     ("activity_from", "ticked"),
     [
+        (S.SETTINGS, {"settings", "cosmetic", "enrichment", "identity", "structure"}),
         (S.COSMETIC, {"cosmetic", "enrichment", "identity", "structure"}),
         (S.IDENTITY, {"identity", "structure"}),
         ("none", set()),
     ],
 )
-def test_the_activity_column_ticks_the_chosen_level_and_above(client, activity_from, ticked):
+def test_the_log_column_ticks_the_chosen_level_and_above(client, activity_from, ticked):
     client.app.state.cfg = client.app.state.cfg.model_copy(
         update={"gardener": GardenerConfig(activity_from=activity_from)}
     )
 
-    page = client.get("/settings").text
-
-    assert _activity_ticks(page) == ticked
-    # Settings has no box to tick at all.
-    assert not re.search(r'name="gardener_activity"[^>]*value="settings"', page)
+    assert _log_ticks(client.get("/settings").text) == ticked
 
 
-def test_saving_the_activity_ticks_keeps_the_narrowest_as_the_level(client, cfg):
-    form = {**_FORM, "gardener_routing": "1", "gardener_activity": ["structure", "identity"]}
+def test_saving_the_log_ticks_keeps_the_narrowest_as_the_level(client, cfg):
+    form = {**_FORM, "gardener_routing": "1", "gardener_log": ["structure", "identity"]}
 
     assert client.post("/settings", data=form).status_code == 200
 

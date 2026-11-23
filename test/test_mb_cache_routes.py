@@ -20,11 +20,13 @@ import pytest
 from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
-from harmonist import activity_store, mb_cache, mb_lookup
+from harmonist import activity, activity_store, mb_cache, mb_lookup
 from harmonist import sidecar as sidecar_mod
 from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
 from harmonist.models import Sidecar
 from harmonist.web.main import create_app
+from test.test_gardener import _release as tagged_release
+from test.test_gardener import _tagged as tagged_album
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -451,3 +453,45 @@ def test_a_release_deleted_since_the_stored_answer_gives_way_to_the_banner(
     body = client.get(f"/library/{album_id}/compare?check=1").text
 
     assert "This release is gone from MusicBrainz" in body
+
+
+def _logged_updates() -> list[str]:
+    return [e.message for e in activity.recent(20) if e.message.startswith("Update available")]
+
+
+def _serving(monkeypatch, title: str) -> None:
+    monkeypatch.setattr(mb_lookup, "fetch_release", _Counter(tagged_release(title)))
+
+
+def test_a_refresh_that_finds_a_new_update_logs_it_once(client, cfg, monkeypatch):
+    """#1024. The album page's refresh is a live check like the background
+    one, and an update it turns up is logged by the same rules: only when the
+    payload moved, and only once however often the page is opened."""
+    album = tagged_album(cfg.paths.music_dir, tagged_release())
+    _serving(monkeypatch, "Test Album")
+    client.get(f"/library/{album.id}/compare")  # the first fetch: no baseline
+    _age_stored_release(timedelta(hours=20))
+    _serving(monkeypatch, "Test Album (remastered)")
+
+    client.get(f"/library/{album.id}/compare?check=1")
+    assert _logged_updates() == ["Update available from MusicBrainz (identity)"]
+
+    # Fresh now, so these are answered from the store…
+    client.get(f"/library/{album.id}/compare")
+    client.get(f"/library/{album.id}/compare?check=1")
+    # …and when MusicBrainz moves again, the update was already waiting.
+    _serving(monkeypatch, "Test Album (remastered, again)")
+    client.get(f"/library/{album.id}/compare?reread=1")
+    assert len(_logged_updates()) == 1
+
+
+def test_a_first_fetch_logs_nothing(client, cfg, monkeypatch):
+    """With nothing stored, nothing says MusicBrainz moved: opening an album
+    whose files never took an old edit would otherwise log it as news."""
+    album = tagged_album(cfg.paths.music_dir, tagged_release())
+    _serving(monkeypatch, "Test Album (remastered)")
+
+    body = client.get(f"/library/{album.id}/compare").text
+
+    assert "Test Album (remastered)" in body
+    assert _logged_updates() == []

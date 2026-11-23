@@ -67,7 +67,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Final, Literal
 
 from . import (
     activity,
@@ -339,6 +339,31 @@ def refresh_flag(album: Album, release: Release) -> Assessment:
         return _assess(album, release)
 
 
+def refresh_after_fetch(album: Album, release: Release, *, before: Release | None) -> Assessment:
+    """`refresh_flag` for a release the album page has just fetched, recording
+    the album's update in Activity if it is news (#1024), as the background
+    check does.
+
+    `before` is the payload stored before the fetch. Only one that moved can
+    be news: a fetch the cache answered returns `before` itself, and one
+    MusicBrainz answered with nothing new says nothing either, so opening an
+    album records nothing however often it is opened. And only a transition
+    (`_is_news`) is recorded, so an update the user hasn't taken is recorded
+    once, however often MusicBrainz moves after it.
+
+    An album already judged against the fetched payload isn't news here (see
+    `_earlier_verdict`), so this and the background check, fetching the same
+    release at once, don't record the same update twice.
+    """
+    if before is None or _same_release(before, release):
+        return refresh_flag(album, release)
+    earlier = _earlier_verdict(album, before, release)
+    assessment = refresh_flag(album, release)
+    if album.update_available and _is_news(earlier, album.update_significance):
+        _record_updates([album])
+    return assessment
+
+
 def _assess(album: Album, release: Release) -> Assessment:
     """`refresh_flag`'s body, which the caller holds `_flag_lock` around."""
     try:
@@ -516,8 +541,9 @@ def recheck_for_settings(
     same. The rest cannot have moved, and re-reading them would be a
     whole-library pass over a network mount for a click in Settings.
 
-    Records nothing in the Activity feed: the user caused these updates a moment
-    ago, and an album with nothing but a Settings change is never announced.
+    Records nothing in the Activity feed, even for a user logging Settings
+    updates (#1024): the user caused these a moment ago, and only a change
+    MusicBrainz made can be news.
     """
     changed_groups = {group for _, group in before.library_releases ^ after.library_releases}
     return _refresh_from_cache(
@@ -801,6 +827,8 @@ class PassResult:
     #: `flagged` would announce it again on an edit that changed nothing for
     #: them. A transition is news; a standing state is not (#272). The albums
     #: themselves rather than a count, so the digest can name them (#600).
+    #: At any level, Settings included (`_is_news`); the digest decides which
+    #: levels it records.
     newly_flagged: tuple[Album, ...]
     #: Releases MusicBrainz no longer has (#194/#210).
     gone: int
@@ -974,11 +1002,11 @@ def sweep(
             # fields it reads. The digest is a statement about the difference
             # between the two verdicts, and this is the only moment both are
             # knowable.
-            already = _already_outstanding(album, before)
+            earlier = _earlier_verdict(album, before, release)
             refresh_flag(album, release)
             if album.update_available:
                 flagged += 1
-                if not already and _from_musicbrainz(album.update_significance):
+                if _is_news(earlier, album.update_significance):
                     newly_flagged.append(album)
         if time.monotonic() - reported >= _PROGRESS_EVERY.total_seconds():
             reported = time.monotonic()
@@ -1014,9 +1042,21 @@ def sweep(
     return result
 
 
-def _already_outstanding(album: Album, before: Release | None) -> bool:
-    """Whether `album` already had an update against `before`, the payload
-    MusicBrainz gave us last time. An update found now is news only if not.
+#: An earlier verdict nobody can state (see `_earlier_verdict`). No update is
+#: news over one.
+_UNKNOWN: Final = "unknown"
+
+
+def _earlier_verdict(
+    album: Album, before: Release | None, after: Release
+) -> owned.Significance | Literal["unknown"] | None:
+    """How far `album`'s update reached against `before`, the payload
+    MusicBrainz gave us last time, or None if it had none. Read before the
+    refresh to `after`, which overwrites what it reads.
+
+    **Already judged against `after` is unknown.** Something else fetched the
+    same payload and judged the album first (the album page and the
+    background check, at once), and recorded the update if it was news.
 
     The in-memory flag answers this only when it was computed against `before`,
     which `mb_version` says. It was not after a restart the warm-up has not
@@ -1026,39 +1066,54 @@ def _already_outstanding(album: Album, before: Release | None) -> bool:
     cost of one more read of the files. That happens only for albums whose
     payload moved and whose flag nobody has computed, so it is rare.
 
-    **No baseline counts as outstanding.** With nothing stored, nothing says
-    MusicBrainz moved: a first look at a release (a new install, or a cache
-    orphaned by an include change, #599) may find an update that has been
-    waiting for years. The flag still goes up; it just is not announced.
+    **No baseline is unknown.** With nothing stored, nothing says MusicBrainz
+    moved: a first look at a release (a new install, or a cache orphaned by an
+    include change, #599) may find an update that has been waiting for years.
+    The flag still goes up; it just is not announced.
 
-    Nor does a verdict nobody could reach. If the files cannot be read,
+    Nor is a verdict nobody could reach. If the files cannot be read,
     `refresh_flag` logs it as they are read again straight after, and the flag
-    stays as it was, so there is nothing to announce either way.
-
-    **A Settings-only update was not outstanding** (#685). It was never
-    announced, so counting it here would leave a real edit from MusicBrainz
-    unannounced for as long as the album waited on the user's setting.
+    stays as it was, so there is nothing to announce either way. A tracklist
+    that did not fit then is outstanding too, at a level nobody knows.
     """
     if before is None:
-        return True
+        return _UNKNOWN
+    if album.mb_version is not None and album.mb_version == release_version(after):
+        return _UNKNOWN
     version = release_version(before)
     if version is not None and album.mb_version == version:
-        return _from_musicbrainz(album.update_significance)
+        return owned.Significance(album.update_significance) if album.update_significance else None
     try:
-        return _from_musicbrainz(verdict_for(plan_for(album, before)))
+        return verdict_for(plan_for(album, before))
     except tagger.TagMismatchError:
-        return True  # a tracklist that did not fit then is outstanding too
+        return _UNKNOWN
     except formats.READ_ERRORS:
-        return True  # reported by `refresh_flag`, which reads the same files next
+        return _UNKNOWN  # reported by `refresh_flag`, which reads the same files next
 
 
-def _from_musicbrainz(verdict: owned.Significance | str | None) -> bool:
-    """Whether an album's verdict is an update MusicBrainz is offering — any
-    level but `SETTINGS`, whose content the user chose a moment ago on the
-    Settings page and so is never news to them (#685). The verdict is the
-    album's highest-ranked change, so anything above `SETTINGS` means at least
-    one change came from MusicBrainz."""
-    return verdict is not None and verdict != owned.Significance.SETTINGS
+def _is_news(
+    earlier: owned.Significance | Literal["unknown"] | None, now: owned.Significance | str | None
+) -> bool:
+    """Whether an album's update, now at `now`, is news over `earlier` (#274,
+    #600): a transition, not a standing state.
+
+    **An update from MusicBrainz is news over a Settings one** (#685). A
+    waiting Settings change isn't announced, so counting it as outstanding
+    would leave a real edit from MusicBrainz unannounced for as long as the
+    album waited on the user's setting.
+
+    **A Settings update is news only over none** (#1024): MusicBrainz moved
+    and the user's setting turned that into a change of spelling, a
+    disambiguation arriving under the transform that writes it. One that was
+    already waiting is not news when MusicBrainz moves again, and nothing here
+    sees one a change of setting causes: the re-check that finds those
+    records nothing.
+    """
+    if now is None or earlier == _UNKNOWN:
+        return False
+    if now == owned.Significance.SETTINGS:
+        return earlier is None
+    return earlier is None or earlier == owned.Significance.SETTINGS
 
 
 def _record_digest(result: PassResult) -> None:
@@ -1100,16 +1155,22 @@ def _record_digest(result: PassResult) -> None:
     revert. The album id is safe to read here because the pass writes nothing
     that could move it.
     """
+    _record_updates(result.newly_flagged)
+
+
+def _record_updates(newly_flagged: Sequence[Album]) -> None:
+    """Record the albums whose update is news, as `_record_digest` describes:
+    those the Activity level takes, a line each up to the cap."""
     routing = _routing_now()
     albums = [
         a
-        for a in result.newly_flagged
+        for a in newly_flagged
         if a.update_significance is not None
         and _recorded(owned.Significance(a.update_significance), routing)
     ]
     if len(albums) > NAMED_UPDATES_MAX:
         # No pointer to where they wait: some may be in the Inbox and some in
-        # the Library, and each album's own entry would say which.
+        # the Library.
         activity.record(f"Update check: {len(albums)} albums now have an update available")
         return
     for album in albums:
@@ -1212,17 +1273,9 @@ def applies(significance: owned.Significance, apply_up_to: ReviewFrom) -> bool:
 
 def records(significance: owned.Significance, activity_from: ReviewFrom) -> bool:
     """Whether a newly found update reaching `significance` is recorded in the
-    Activity feed (#1024).
-
-    The chosen level and everything ranked above it, as for the Inbox, and
-    never `SETTINGS`: the config refuses it as a threshold, and this refuses
-    it as a level, because the user caused those updates on the Settings page.
-    """
-    return (
-        activity_from != "none"
-        and significance != owned.Significance.SETTINGS
-        and owned.ranked(significance) >= owned.ranked(activity_from)
-    )
+    Activity feed (#1024): the chosen level and everything ranked above it, as
+    for the Inbox."""
+    return activity_from != "none" and owned.ranked(significance) >= owned.ranked(activity_from)
 
 
 def outcome(significance: owned.Significance, routing: GardenerConfig) -> str:

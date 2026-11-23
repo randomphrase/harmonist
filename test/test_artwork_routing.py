@@ -477,7 +477,7 @@ def test_a_watched_album_is_recorded_whatever_the_threshold(asked, monkeypatch):
     ("threshold", "ticked"),
     [(A.ADDITION, {"addition", "replacement"}), (A.REPLACEMENT, {"replacement"}), ("none", set())],
 )
-def test_settings_ticks_the_artwork_activity_column_from_its_threshold(
+def test_settings_ticks_the_artwork_log_column_from_its_threshold(
     client, library, threshold, ticked
 ):
     state = client.app.state
@@ -486,7 +486,7 @@ def test_settings_ticks_the_artwork_activity_column_from_its_threshold(
     )
 
     boxes = re.findall(
-        r'<input[^>]*name="gardener_artwork_activity"[^>]*>', client.get("/settings").text
+        r'<input[^>]*name="gardener_artwork_log"[^>]*>', client.get("/settings").text
     )
 
     assert {
@@ -500,9 +500,37 @@ def test_settings_ticks_the_artwork_activity_column_from_its_threshold(
     ("ticked", "saved"),
     [(["replacement", "addition"], A.ADDITION), (["replacement"], A.REPLACEMENT), ([], "none")],
 )
-def test_saving_the_artwork_activity_ticks_keeps_the_least(client, ticked, saved):
-    form = {**_FORM, "gardener_artwork_routing": "1", "gardener_artwork_activity": ticked}
+def test_saving_the_artwork_log_ticks_keeps_the_least(client, ticked, saved):
+    form = {**_FORM, "gardener_artwork_routing": "1", "gardener_artwork_log": ticked}
 
     assert client.post("/settings", data=form).status_code == 200
 
     assert client.app.state.cfg.gardener.artwork_activity_from == saved
+
+
+# ---- the album page's own archive check (#1024) ---------------------------
+
+
+def test_the_album_page_records_an_update_its_check_finds_once(asked, client, monkeypatch):
+    """The page asks the archive when its answer is due, as the background
+    check does, and an update that turns up is logged by the same rules. Asked
+    again, the page has nothing new to say."""
+    monkeypatch.setattr(cover_art, "fetch_listing", lambda kind, mbid, **kw: [])
+
+    client.get(f"/album/{asked.id}/artwork?check=1")
+    assert _announced(asked) == ["Artwork update available from the Cover Art Archive (addition)"]
+
+    client.get(f"/album/{asked.id}/artwork?check=1")
+    client.get(f"/album/{asked.id}/artwork?reread=1")
+    assert len(_announced(asked)) == 1
+
+
+def test_the_album_page_records_nothing_on_a_first_look(unchecked, client, monkeypatch):
+    """Opening an album the archive was never asked about would otherwise log
+    every album lacking good art the first time each is opened."""
+    monkeypatch.setattr(cover_art, "fetch_listing", lambda kind, mbid, **kw: [])
+
+    client.get(f"/album/{unchecked.id}/artwork?check=1")
+
+    assert artwork_updates.operation(unchecked) is A.ADDITION
+    assert _announced(unchecked) == []

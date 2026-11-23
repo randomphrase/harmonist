@@ -5671,14 +5671,14 @@ def _register_routes(app: FastAPI) -> None:
             keep_per_album=cfg.artwork_store.keep_per_album,
             waiting_by_level=gardener.waiting_by_level(_albums(request), _ignored_updates()),
             update_outcome={level: gardener.outcome(level, cfg.gardener) for level in owned.ORDER},
-            update_recorded={
+            update_logged={
                 level: gardener.records(level, cfg.gardener.activity_from) for level in owned.ORDER
             },
             artwork_waiting=artwork_updates.waiting_by_operation(_albums(request)),
             artwork_outcome={
                 op: artwork_updates.outcome(op, cfg.gardener) for op in artwork_updates.ORDER
             },
-            artwork_recorded={
+            artwork_logged={
                 op: artwork_updates.records(op, cfg.gardener.artwork_activity_from)
                 for op in artwork_updates.ORDER
             },
@@ -5733,13 +5733,13 @@ def _register_routes(app: FastAPI) -> None:
         gardener_routing: str | None = Form(None),
         gardener_apply: list[str] = Form(default=[]),
         gardener_review: list[str] = Form(default=[]),
-        # The grid's Activity column (#1024), behind the same marker.
-        gardener_activity: list[str] = Form(default=[]),
+        # The grid's Log column (#1024), behind the same marker.
+        gardener_log: list[str] = Form(default=[]),
         # The artwork grid (#852), posting the same way, with a marker of its own.
         gardener_artwork_routing: str | None = Form(None),
         gardener_artwork_review: list[str] = Form(default=[]),
         gardener_artwork_apply: list[str] = Form(default=[]),
-        gardener_artwork_activity: list[str] = Form(default=[]),
+        gardener_artwork_log: list[str] = Form(default=[]),
         folder_cover: str = Form(...),
         # Empty dropdown values and an omitted field both clear the list.
         transforms: list[str] = Form(default=[]),
@@ -5776,12 +5776,12 @@ def _register_routes(app: FastAPI) -> None:
                     "review_from": _narrowest(gardener_review),
                     "apply_up_to": _widest_level(gardener_apply),
                     # The least far-reaching ticked level, as for the Inbox.
-                    "activity_from": _narrowest(gardener_activity),
+                    "activity_from": _narrowest(gardener_log),
                 }
             if gardener_artwork_routing is not None:
                 routing["artwork_review_from"] = _artwork_review_from(gardener_artwork_review)
                 routing["artwork_apply_up_to"] = _artwork_apply_up_to(gardener_artwork_apply)
-                routing["artwork_activity_from"] = _artwork_review_from(gardener_artwork_activity)
+                routing["artwork_activity_from"] = _artwork_review_from(gardener_artwork_log)
             new_gardener = config_mod.GardenerConfig.model_validate(
                 {"level": gardener_level.strip(), **routing}
             )
@@ -6643,6 +6643,8 @@ def _register_routes(app: FastAPI) -> None:
                 return _comparison_response(
                     request, album, mbid, stored, refreshing=mb_cache.due(mbid)
                 )
+        # What the fetch is judged against, for whether its update is news (#1024).
+        before = mb_cache.stored_release(mbid)
         try:
             release = mb_cache.fetch_release(mbid, max_age=mb_cache.FRESH if reread else None)
         except mb_lookup.ReleaseGoneError:
@@ -6754,7 +6756,9 @@ def _register_routes(app: FastAPI) -> None:
                     caa_check_due=_caa_check_due(mbid, failed_artwork),
                 ),
             )
-        return _comparison_response(request, album, mbid, release, asking=check or reread)
+        return _comparison_response(
+            request, album, mbid, release, asking=check or reread, fetched_over=before
+        )
 
     def _comparison_response(
         request: Request,
@@ -6765,6 +6769,7 @@ def _register_routes(app: FastAPI) -> None:
         refreshing: bool = False,
         refresh_error: str | None = None,
         asking: bool = False,
+        fetched_over: Release | None = None,
     ) -> Response:
         """Render the comparison from `release`, whether it came off the wire or
         out of the store (#387).
@@ -6782,7 +6787,12 @@ def _register_routes(app: FastAPI) -> None:
         `asking` says this response IS one of those refreshes, and it decides
         one thing: whether the Artwork section rides along (#485). It cannot be
         inferred from `refreshing`, which is false on a refresh response and
-        equally false on the first render of an album whose payload is fresh."""
+        equally false on the first render of an album whose payload is fresh.
+
+        `fetched_over` is the payload stored before `release` was fetched, on
+        the render that fetched it; an update the fetch turned up is recorded
+        in Activity if it is news (#1024). A render from the store passes none,
+        and records nothing."""
         # No `assess_match` here any more (#135). It re-opened every file in the
         # album for a duration and a title that `_album_comparison` had just
         # read, to produce a release-fit verdict that is stale news on an album
@@ -6813,7 +6823,7 @@ def _register_routes(app: FastAPI) -> None:
         # Costs one read per file on top of the comparison, which is affordable
         # on a page the user asked for and is exactly why the Library's own
         # render cannot do this for every tile.
-        plan = gardener.refresh_flag(album, release).plan
+        plan = gardener.refresh_after_fetch(album, release, before=fetched_over).plan
         assignment_review = tagger_mod.assignment_review(release, [t for _, t in reads[0]])
         # The artwork half of the page's findings, from the pass made above
         # rather than from one of its own (#485).
@@ -7896,17 +7906,20 @@ def _register_routes(app: FastAPI) -> None:
         contradicted = mbid is not None and caa_listings.front_listed_since_answer(mbid)
         asking = check or reread or (contradicted and bool(more))
         if asking and mbid is not None:
-            _check_cover_art(
-                mbid,
-                _artwork_view(album, folder_cover=_folder_cover_policy(request)),
-                max_age=caa_cache.FRESH if reread or contradicted else None,
-            )
-            if artwork_watch.active(album.sidecar):
-                try:
-                    artwork_watch.prepare([album])
-                except cover_art.CoverArtError:
-                    log.exception("could not prepare artwork alternatives for %s", mbid)
-                artwork_updates.observe(mbid)
+            # An update the check turns up is recorded in Activity if it is
+            # news, as the background check's are (#1024).
+            with artwork_updates.recording(mbid, [album]):
+                _check_cover_art(
+                    mbid,
+                    _artwork_view(album, folder_cover=_folder_cover_policy(request)),
+                    max_age=caa_cache.FRESH if reread or contradicted else None,
+                )
+                if artwork_watch.active(album.sidecar):
+                    try:
+                        artwork_watch.prepare([album])
+                    except cover_art.CoverArtError:
+                        log.exception("could not prepare artwork alternatives for %s", mbid)
+                    artwork_updates.observe(mbid)
             if (
                 album.sidecar is not None
                 and album.sidecar.borrowed_artwork

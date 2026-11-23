@@ -142,10 +142,19 @@
 .update-routing__cell:has(input:checked) .update-routing__tick::before { content: "✓"; font-size: 1rem; font-weight: 700; color: var(--color-ink); }
 .update-routing__outcome { display: flex; align-items: center; padding: .5rem .75rem; border-left: 1px solid var(--color-line); }
 .update-routing__applied,
-.update-routing__inbox { display: none; }
+.update-routing__inbox,
+.update-routing__logged { display: none; }
 .update-routing__row:has(.update-routing__apply:checked) .update-routing__applied,
-.update-routing__row:has(.update-routing__review:checked) .update-routing__inbox { display: inline; }
+.update-routing__row:has(.update-routing__review:checked) .update-routing__inbox,
+.update-routing__row:has(.update-routing__log:checked, .update-routing__apply:checked) .update-routing__logged { display: inline; }
 .update-routing__row:has(.update-routing__apply:checked, .update-routing__review:checked) .update-routing__library { display: none; }
+/* An applied update is always logged, by its write (#1024): its Log cell shows
+   a fixed tick and can't be changed while the row is applied. Its own box stays
+   in the form, and keeps the column contiguous for the script. */
+.update-routing__row:has(.update-routing__apply:checked) .update-routing__cell--log { cursor: default; pointer-events: none; }
+.update-routing__row:has(.update-routing__apply:checked) .update-routing__cell--log:hover { background: none; }
+.update-routing__row:has(.update-routing__apply:checked) .update-routing__log { visibility: hidden; }
+.update-routing__row:has(.update-routing__apply:checked) .update-routing__cell--log .update-routing__tick::before { content: "✓"; font-size: 1rem; font-weight: 700; color: var(--color-muted); }
 @media (max-width: 639px) {
   .update-routing__head,
   .update-routing__row { grid-template-columns: minmax(0, 1fr) 3.5rem 3.5rem 3.5rem; }
