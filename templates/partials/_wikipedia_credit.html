@@ -1,8 +1,9 @@
 {# Where a biography's text came from (#1018): Wikipedia's text is CC BY-SA, so
    it is credited wherever Harmonist shows it as Wikipedia's, styled as the
    footer credits the other services. The revision is the one whose text was
-   written. Just the link, so it can sit beside the Biography label (#1025) or
-   under a History row.
+   written. Just the link, in the size of whatever holds it: the Biography
+   row's value (#1025), set like the rows above it so the rows stay evenly
+   spaced, or the small print under a History row.
 
    Expects `credit` (nfo_history.Credit). #}
-<a href="{{ credit.url }}" target="_blank" rel="noopener" title="Revision {{ credit.revision }}" class="text-xs text-accent hover:underline">From Wikipedia <span aria-hidden="true">↗</span></a>
+<a href="{{ credit.url }}" target="_blank" rel="noopener" title="Revision {{ credit.revision }}" class="text-accent hover:underline">From Wikipedia <span aria-hidden="true">↗</span></a>

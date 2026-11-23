@@ -607,6 +607,26 @@ def test_artist_identity_panel_and_title(browser_factory, artist_identity_server
             assert columns.last.bounding_box()["y"] == columns.first.bounding_box()["y"]
         else:
             assert columns.last.bounding_box()["y"] > columns.first.bounding_box()["y"]
+        # The Biography row keeps the rows' rhythm (#1025): the gap above it is
+        # the gap between any two rows, and its value lines up with theirs.
+        rhythm = info.evaluate(
+            """s => {
+                const rows = [...s.querySelectorAll('.album-identity__fields dt')].map(dt => {
+                    const a = dt.getBoundingClientRect();
+                    const b = dt.nextElementSibling.getBoundingClientRect();
+                    return {top: Math.min(a.top, b.top), bottom: Math.max(a.bottom, b.bottom),
+                            value: Math.round(b.left)};
+                });
+                const bio = rows.pop();
+                return {
+                    rowGap: Math.round(rows[1].top - rows[0].bottom),
+                    bioGap: Math.round(bio.top - Math.max(...rows.map(r => r.bottom))),
+                    valueOffset: bio.value - rows[0].value,
+                };
+            }"""
+        )
+        assert rhythm["bioGap"] == rhythm["rowGap"], rhythm
+        assert rhythm["valueOffset"] == 0, rhythm
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     finally:
         page.context.close()

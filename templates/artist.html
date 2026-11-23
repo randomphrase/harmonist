@@ -135,6 +135,9 @@
             <h2 id="artist-info-heading" class="text-sm font-bold text-ink uppercase tracking-widest">Artist info</h2>
             {% if profile.mbid %}{% with file_key = nfo_files[0][0] %}{% include 'partials/_artist_checked.html' %}{% endwith %}{% endif %}
         </div>
+        {# One rhythm for every row: the gap above Biography is the rows' own
+           row gap (.5rem), not the section's, which set it apart (#1025). #}
+        <div class="space-y-2">
         {% if profile.about or profile.genres or profile.sound %}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 items-start">
             {% if profile.about %}
@@ -191,6 +194,7 @@
             {% endif %}
         </div>
         {% endif %}
+        </div>
     </section>
     {% endif %}
     {% endwith %}

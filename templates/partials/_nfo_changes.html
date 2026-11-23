@@ -15,7 +15,7 @@
     <dt>{{ c.label }}</dt>
     {% if c.is_filled %}
     <dd><div class="line-clamp-3">{{ pair(c, c.before and biography_text(c.before), c.after and biography_text(c.after), none, none, removed_by='this write') }}</div>
-        {% if c.credit %}<p class="mt-1">{% with credit = c.credit %}{% include 'partials/_wikipedia_credit.html' %}{% endwith %}</p>{% endif %}</dd>
+        {% if c.credit %}<p class="mt-1 text-xs">{% with credit = c.credit %}{% include 'partials/_wikipedia_credit.html' %}{% endwith %}</p>{% endif %}</dd>
     {% else %}
     <dd>{{ pair(c, c.before, c.after, none, none, removed_by='this write') }}</dd>
     {% endif %}
