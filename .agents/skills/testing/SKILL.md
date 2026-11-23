@@ -138,7 +138,12 @@ runs: an old browser build or missing `static/vendor/` is a different environmen
 Run with `make e2e`. Use `browser_factory` and a fresh `browser.new_page(...)`
 context for each test. The fixture shares processes, closes contexts after failures,
 and preserves traces; opening another `sync_playwright()` session conflicts with
-the worker's existing driver.
+the worker's existing driver. Its browsers are offline: a request for anything but
+`127.0.0.1` fails at once (#1028), so a page waits only on the server under test.
+A test that needs an outside answer fulfils it with `page.route`. Text is drawn
+in the system's fallback font rather than Inter, and that font differs between
+the devcontainer and CI, so a layout check that depends on a label's width sets
+that width itself.
 
 CI runs them in its own `e2e` job, four workers wide (`-n 4 --dist
 loadscope`), so a red browser test there is a real failure, not noise to rerun
