@@ -101,6 +101,38 @@ def test_the_review_level_can_be_set_from_the_environment(tmp_path, monkeypatch)
     assert config.load().gardener.review_from == S.IDENTITY
 
 
+# ---- the Activity threshold (#1024) ---------------------------------------
+
+
+@pytest.mark.parametrize("threshold", [S.COSMETIC, S.ENRICHMENT, S.IDENTITY, S.STRUCTURE, "none"])
+def test_activity_records_the_chosen_level_and_every_level_above_it(threshold):
+    recorded = {level for level in owned.ORDER if gardener.records(level, threshold)}
+    expected = set() if threshold == "none" else set(owned.ORDER[owned.ORDER.index(threshold) :])
+    assert recorded == expected
+
+
+def test_activity_records_every_update_from_musicbrainz_unless_told_otherwise():
+    assert GardenerConfig().activity_from == S.COSMETIC
+
+
+def test_a_settings_update_is_never_recorded_in_activity():
+    """The user caused it on the Settings page a moment ago, so neither the
+    threshold nor the level can name it. The level is refused too because a
+    `model_copy` skips the threshold's validation."""
+    assert not gardener.records(S.SETTINGS, S.SETTINGS)
+    with pytest.raises(ValueError, match="never recorded"):
+        GardenerConfig.model_validate({"activity_from": "settings"})
+
+
+def test_the_activity_level_can_be_set_from_the_environment(tmp_path, monkeypatch):
+    from harmonist import config
+
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
+    monkeypatch.setenv("HARMONIST_GARDENER_ACTIVITY_FROM", "identity")
+    assert config.load().gardener.activity_from == S.IDENTITY
+
+
 # ---- the Inbox ------------------------------------------------------------
 
 
@@ -290,25 +322,109 @@ def test_the_grid_ticks_each_level_by_where_its_updates_go(
 # ---- the update check's digest -------------------------------------------
 
 
-def test_the_digest_names_only_updates_bound_for_the_inbox(cfg):
-    _make_tagged_album(cfg, "Renumbered", mbid="rel-a", tagged_at=datetime.now(UTC))
-    _make_tagged_album(cfg, "Enriched", mbid="rel-b", tagged_at=datetime.now(UTC))
+def _digest_of(cfg, levels: dict[str, owned.Significance]) -> dict[str, Album]:
+    """Record the digest of a pass that newly flagged an album per name, each
+    at its level, and return the albums by name."""
+    for i, name in enumerate(levels):
+        _make_tagged_album(cfg, name, mbid=f"rel-{i}", tagged_at=datetime.now(UTC))
     albums = {a.path.name: a for a in scanner.scan(cfg.paths.music_dir)}
-    albums["Renumbered"].update_significance = S.STRUCTURE
-    albums["Enriched"].update_significance = S.ENRICHMENT
+    for name, level in levels.items():
+        albums[name].update_significance = level
     activity_store.clear()
-
     gardener._record_digest(
         gardener.PassResult(
-            asked=2,
-            examined=2,
-            flagged=2,
-            newly_flagged=(albums["Renumbered"], albums["Enriched"]),
+            asked=len(albums),
+            examined=len(albums),
+            flagged=len(albums),
+            newly_flagged=tuple(albums.values()),
             gone=0,
             failed=0,
         )
     )
+    return albums
+
+
+def test_the_digest_records_an_update_left_in_the_library(cfg):
+    """#1024. The Inbox takes Structure alone by default, and the enrichment
+    stays in the Library — where nothing else records that it arrived, since
+    the flag is derived and never stored."""
+    albums = _digest_of(cfg, {"Renumbered": S.STRUCTURE, "Enriched": S.ENRICHMENT})
+
+    labels = [e.album_label for e in activity.recent(10)]
+    assert albums["Renumbered"].label in labels
+    assert albums["Enriched"].label in labels
+
+
+def test_the_digest_records_from_the_activity_level_whatever_the_inbox_takes(cfg):
+    """#1024. The two thresholds answer different questions: an enrichment can
+    wait in the Inbox without being recorded, and a structure change be
+    recorded with an Inbox that takes nothing."""
+    gardener.configure_routing(
+        lambda: GardenerConfig(review_from=S.SETTINGS, activity_from=S.IDENTITY)
+    )
+    albums = _digest_of(cfg, {"Renumbered": S.STRUCTURE, "Enriched": S.ENRICHMENT})
 
     labels = [e.album_label for e in activity.recent(10)]
     assert albums["Renumbered"].label in labels
     assert albums["Enriched"].label not in labels
+
+
+def test_the_digest_records_nothing_when_activity_takes_nothing(cfg):
+    gardener.configure_routing(lambda: GardenerConfig(activity_from="none"))
+    albums = _digest_of(cfg, {"Renumbered": S.STRUCTURE})
+
+    assert all(e.album_label != albums["Renumbered"].label for e in activity.recent(10))
+
+
+# ---- the Settings grid's Activity column (#1024) --------------------------
+
+
+def _activity_ticks(page: str) -> set[str]:
+    """The levels whose Activity box is ticked, read off each box's own tag
+    with attribute values blanked, so `checked` can only match the attribute."""
+    boxes = re.findall(r'<input[^>]*name="gardener_activity"[^>]*>', page)
+    return {
+        re.search(r'value="(\w+)"', box).group(1)
+        for box in boxes
+        if "checked" in re.sub(r'"[^"]*"', '""', box)
+    }
+
+
+@pytest.mark.parametrize(
+    ("activity_from", "ticked"),
+    [
+        (S.COSMETIC, {"cosmetic", "enrichment", "identity", "structure"}),
+        (S.IDENTITY, {"identity", "structure"}),
+        ("none", set()),
+    ],
+)
+def test_the_activity_column_ticks_the_chosen_level_and_above(client, activity_from, ticked):
+    client.app.state.cfg = client.app.state.cfg.model_copy(
+        update={"gardener": GardenerConfig(activity_from=activity_from)}
+    )
+
+    page = client.get("/settings").text
+
+    assert _activity_ticks(page) == ticked
+    # Settings has no box to tick at all.
+    assert not re.search(r'name="gardener_activity"[^>]*value="settings"', page)
+
+
+def test_saving_the_activity_ticks_keeps_the_narrowest_as_the_level(client, cfg):
+    form = {**_FORM, "gardener_routing": "1", "gardener_activity": ["structure", "identity"]}
+
+    assert client.post("/settings", data=form).status_code == 200
+
+    assert client.app.state.cfg.gardener.activity_from == S.IDENTITY
+    settings_file = (cfg.paths.config_dir / "harmonist.toml").read_text()
+    assert re.search(r'^activity_from\s*=\s*"identity"', settings_file, re.MULTILINE)
+
+
+def test_a_form_without_the_grid_keeps_the_saved_activity_level(client):
+    client.app.state.cfg = client.app.state.cfg.model_copy(
+        update={"gardener": GardenerConfig(activity_from=S.STRUCTURE)}
+    )
+
+    assert client.post("/settings", data=_FORM).status_code == 200
+
+    assert client.app.state.cfg.gardener.activity_from == S.STRUCTURE

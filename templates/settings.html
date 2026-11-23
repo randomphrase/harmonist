@@ -153,10 +153,12 @@
             {# Where each level's updates go (#273), widest first: a grid of tick
                cells, one checkbox each. Apply ticks run up from Settings, never
                to Structure; Inbox ticks run down from Structure; a row ticks at
-               most one. The script below keeps both columns contiguous as cells
-               are clicked, and the server reads each threshold off whatever is
-               ticked, so a form without the script still saves a sound pair.
-               The outcome column reads each row's own ticks. #}
+               most one of those two. Activity (#1024) runs down from Structure
+               too, never to Settings, independent of the other two. The script
+               below keeps every column contiguous as cells are clicked, and the
+               server reads each threshold off whatever is ticked, so a form
+               without the script still saves a sound set. The outcome column
+               reads each row's own Apply and Inbox ticks. #}
             <fieldset class="update-routing">
                 <legend class="block text-xs font-bold text-ink mb-1">When a tag update is found</legend>
                 <input type="hidden" name="gardener_routing" value="1">
@@ -166,6 +168,7 @@
                     <span></span>
                     <span class="update-routing__heading">Apply</span>
                     <span class="update-routing__heading">Inbox</span>
+                    <span class="update-routing__heading">Activity</span>
                 </div>
                 <ul class="divide-y divide-line border border-line rounded">
                     {% for level in update_levels %}
@@ -190,6 +193,16 @@
                                    {{ 'checked' if goes == 'review' }}>
                             <span class="update-routing__tick" aria-hidden="true"></span>
                         </label>
+                        {% if level.value == 'settings' %}
+                        <span class="update-routing__cell update-routing__cell--never text-xs text-muted">never</span>
+                        {% else %}
+                        <label class="update-routing__cell">
+                            <input type="checkbox" name="gardener_activity" value="{{ level.value }}" class="update-routing__activity sr-only"
+                                   aria-label="Record {{ level.value }} updates in Activity"
+                                   {{ 'checked' if update_recorded[level] }}>
+                            <span class="update-routing__tick" aria-hidden="true"></span>
+                        </label>
+                        {% endif %}
                         <span class="update-routing__outcome text-xs text-muted">
                             <span class="update-routing__applied">Applied automatically</span>
                             <span class="update-routing__inbox">Sent to the Inbox</span>
@@ -206,7 +219,8 @@
                     // Clicking a cell extends its column's range to that level, or
                     // shrinks it to just short of it. Apply runs up from the last
                     // row, the Inbox down from the first, and extending one moves
-                    // the other back, so no row is ticked twice.
+                    // the other back, so no row is ticked twice. Activity runs
+                    // down from the first row and moves nothing else.
                     document.addEventListener('change', function (e) {
                         const box = e.target;
                         const grid = box.closest && box.closest('.update-routing');
@@ -215,7 +229,14 @@
                         const at = rows.indexOf(box.closest('.update-routing__row'));
                         const apply = (row) => row.querySelector('.update-routing__apply');
                         const review = (row) => row.querySelector('.update-routing__review');
-                        if (box.classList.contains('update-routing__apply')) {
+                        const activity = (row) => row.querySelector('.update-routing__activity');
+                        if (box.classList.contains('update-routing__activity')) {
+                            rows.forEach(function (row, i) {
+                                const r = activity(row);
+                                if (r && box.checked && i <= at) r.checked = true;
+                                else if (r && !box.checked && i >= at) r.checked = false;
+                            });
+                        } else if (box.classList.contains('update-routing__apply')) {
                             rows.forEach(function (row, i) {
                                 const a = apply(row);
                                 if (box.checked && i >= at) {
@@ -253,6 +274,7 @@
                     <span></span>
                     <span class="update-routing__heading">Apply</span>
                     <span class="update-routing__heading">Inbox</span>
+                    <span class="update-routing__heading">Activity</span>
                 </div>
                 <ul class="divide-y divide-line border border-line rounded">
                     {% for op in artwork_operations %}
@@ -275,6 +297,12 @@
                             <input type="checkbox" name="gardener_artwork_review" value="{{ op.value }}" class="update-routing__review sr-only"
                                    aria-label="Review artwork {{ op.value }}s in the Inbox"
                                    {{ 'checked' if goes == 'review' }}>
+                            <span class="update-routing__tick" aria-hidden="true"></span>
+                        </label>
+                        <label class="update-routing__cell">
+                            <input type="checkbox" name="gardener_artwork_activity" value="{{ op.value }}" class="update-routing__activity sr-only"
+                                   aria-label="Record artwork {{ op.value }}s in Activity"
+                                   {{ 'checked' if artwork_recorded[op] }}>
                             <span class="update-routing__tick" aria-hidden="true"></span>
                         </label>
                         <span class="update-routing__outcome text-xs text-muted">

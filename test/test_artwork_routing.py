@@ -22,6 +22,7 @@ from harmonist import (
     activity_store,
     artwork,
     artwork_updates,
+    artwork_watch,
     caa_cache,
     cover_art,
     formats,
@@ -389,33 +390,119 @@ def unchecked(client, cfg, monkeypatch):
     return album
 
 
+@pytest.fixture
+def asked(unchecked):
+    """The same album, but the archive has been asked about it before and had
+    nothing, so the front it answers with now is new (#1024)."""
+    activity_store.store_cover_art(
+        MBID,
+        activity_store.CachedCoverArt(
+            fetched_at=datetime.now(UTC) - timedelta(days=30), source="release"
+        ),
+    )
+    artwork_updates.warm([unchecked])
+    assert artwork_updates.operation(unchecked) is None
+    return unchecked
+
+
 def _announced(album: Album) -> list[str]:
     return [e.message for e in activity.recent(20) if e.album_id == album.id]
 
 
-def test_the_check_announces_an_album_it_sends_to_the_inbox_once(unchecked, monkeypatch):
-    artwork_updates.configure(
-        lambda: artwork.FolderCoverPolicy.NEVER, lambda: _routing(review=A.ADDITION)
-    )
-    artwork_updates.warm([unchecked])
+def _check_under(album: Album, routing: GardenerConfig) -> list[str]:
+    artwork_updates.configure(lambda: artwork.FolderCoverPolicy.NEVER, lambda: routing)
+    artwork_updates.warm([album])
+    assert artwork_updates.sweep([album], limit=5) == 1
+    assert artwork_updates.operation(album) is A.ADDITION
+    return _announced(album)
 
-    assert artwork_updates.sweep([unchecked], limit=5) == 1
-    assert _announced(unchecked) == [
+
+def test_the_check_announces_an_album_it_sends_to_the_inbox_once(asked, monkeypatch):
+    assert _check_under(asked, _routing(review=A.ADDITION)) == [
         "Artwork update available from the Cover Art Archive (addition)"
     ]
 
     # Asked again, the archive says the same: still waiting, so not news.
     artwork_updates._attempted.clear()
     monkeypatch.setattr(caa_cache, "_ttl", timedelta(0))
-    assert artwork_updates.sweep([unchecked], limit=5) == 1
-    assert len(_announced(unchecked)) == 1
+    assert artwork_updates.sweep([asked], limit=5) == 1
+    assert len(_announced(asked)) == 1
 
 
-def test_the_check_does_not_announce_an_update_left_in_the_library(unchecked):
-    artwork_updates.configure(lambda: artwork.FolderCoverPolicy.NEVER, GardenerConfig)
-    artwork_updates.warm([unchecked])
+def test_the_check_records_an_update_left_in_the_library(asked):
+    """#1024. Nothing else records that it arrived: the Library's filter shows
+    that an update waits, never when it was found."""
+    assert _check_under(asked, GardenerConfig()) == [
+        "Artwork update available from the Cover Art Archive (addition)"
+    ]
 
-    assert artwork_updates.sweep([unchecked], limit=5) == 1
 
-    assert artwork_updates.operation(unchecked) is A.ADDITION
-    assert _announced(unchecked) == []
+def test_the_check_records_from_the_activity_level_whatever_the_inbox_takes(asked):
+    """#1024. An addition waiting in the Inbox is not recorded when Activity
+    takes replacements only: the two thresholds answer different questions."""
+    routing = GardenerConfig(artwork_review_from=A.ADDITION, artwork_activity_from=A.REPLACEMENT)
+
+    assert _check_under(asked, routing) == []
+
+
+def test_an_addition_about_to_be_applied_is_left_to_its_write(asked):
+    """The apply pass writes it within minutes, and the write records itself."""
+    assert _check_under(asked, _routing(apply=A.ADDITION)) == []
+
+
+def test_a_first_look_at_the_archive_is_not_news(unchecked):
+    """#1024. With nothing stored about the release, nothing says the archive
+    changed: an adopted library's first check would otherwise record every
+    album lacking good art, and so would the first check after the cache was
+    cleared. The update still waits; only the record is withheld, wherever the
+    update is bound."""
+    assert _check_under(unchecked, _routing(review=A.ADDITION)) == []
+
+
+def test_a_watched_album_is_recorded_whatever_the_threshold(asked, monkeypatch):
+    """The watch was a request to be told."""
+    # The watch's own listing fetches, which reach MusicBrainz, aren't what
+    # decides whether the update is recorded.
+    monkeypatch.setattr(artwork_watch, "check", lambda mbid, **kw: None)
+    monkeypatch.setattr(artwork_watch, "prepare", lambda albums: None)
+    assert asked.sidecar is not None
+    watched = replace(asked, sidecar=replace(asked.sidecar, artwork_watch=ArtworkWatch(MBID)))
+
+    assert _check_under(watched, GardenerConfig(artwork_activity_from="none")) == [
+        "Artwork update available from the Cover Art Archive (addition)"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("threshold", "ticked"),
+    [(A.ADDITION, {"addition", "replacement"}), (A.REPLACEMENT, {"replacement"}), ("none", set())],
+)
+def test_settings_ticks_the_artwork_activity_column_from_its_threshold(
+    client, library, threshold, ticked
+):
+    state = client.app.state
+    state.cfg = state.cfg.model_copy(
+        update={"gardener": GardenerConfig(artwork_activity_from=threshold)}
+    )
+
+    boxes = re.findall(
+        r'<input[^>]*name="gardener_artwork_activity"[^>]*>', client.get("/settings").text
+    )
+
+    assert {
+        re.search(r'value="(\w+)"', box).group(1)
+        for box in boxes
+        if "checked" in re.sub(r'"[^"]*"', '""', box)
+    } == ticked
+
+
+@pytest.mark.parametrize(
+    ("ticked", "saved"),
+    [(["replacement", "addition"], A.ADDITION), (["replacement"], A.REPLACEMENT), ([], "none")],
+)
+def test_saving_the_artwork_activity_ticks_keeps_the_least(client, ticked, saved):
+    form = {**_FORM, "gardener_artwork_routing": "1", "gardener_artwork_activity": ticked}
+
+    assert client.post("/settings", data=form).status_code == 200
+
+    assert client.app.state.cfg.gardener.artwork_activity_from == saved

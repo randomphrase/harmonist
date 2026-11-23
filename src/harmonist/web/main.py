@@ -5671,9 +5671,16 @@ def _register_routes(app: FastAPI) -> None:
             keep_per_album=cfg.artwork_store.keep_per_album,
             waiting_by_level=gardener.waiting_by_level(_albums(request), _ignored_updates()),
             update_outcome={level: gardener.outcome(level, cfg.gardener) for level in owned.ORDER},
+            update_recorded={
+                level: gardener.records(level, cfg.gardener.activity_from) for level in owned.ORDER
+            },
             artwork_waiting=artwork_updates.waiting_by_operation(_albums(request)),
             artwork_outcome={
                 op: artwork_updates.outcome(op, cfg.gardener) for op in artwork_updates.ORDER
+            },
+            artwork_recorded={
+                op: artwork_updates.records(op, cfg.gardener.artwork_activity_from)
+                for op in artwork_updates.ORDER
             },
             **_update_check_ctx(request),
             **extra,
@@ -5726,10 +5733,13 @@ def _register_routes(app: FastAPI) -> None:
         gardener_routing: str | None = Form(None),
         gardener_apply: list[str] = Form(default=[]),
         gardener_review: list[str] = Form(default=[]),
+        # The grid's Activity column (#1024), behind the same marker.
+        gardener_activity: list[str] = Form(default=[]),
         # The artwork grid (#852), posting the same way, with a marker of its own.
         gardener_artwork_routing: str | None = Form(None),
         gardener_artwork_review: list[str] = Form(default=[]),
         gardener_artwork_apply: list[str] = Form(default=[]),
+        gardener_artwork_activity: list[str] = Form(default=[]),
         folder_cover: str = Form(...),
         # Empty dropdown values and an omitted field both clear the list.
         transforms: list[str] = Form(default=[]),
@@ -5756,17 +5766,22 @@ def _register_routes(app: FastAPI) -> None:
             routing: dict[str, object] = {
                 "review_from": cfg.gardener.review_from,
                 "apply_up_to": cfg.gardener.apply_up_to,
+                "activity_from": cfg.gardener.activity_from,
                 "artwork_review_from": cfg.gardener.artwork_review_from,
                 "artwork_apply_up_to": cfg.gardener.artwork_apply_up_to,
+                "artwork_activity_from": cfg.gardener.artwork_activity_from,
             }
             if gardener_routing is not None:
                 routing |= {
                     "review_from": _narrowest(gardener_review),
                     "apply_up_to": _widest_level(gardener_apply),
+                    # The least far-reaching ticked level, as for the Inbox.
+                    "activity_from": _narrowest(gardener_activity),
                 }
             if gardener_artwork_routing is not None:
                 routing["artwork_review_from"] = _artwork_review_from(gardener_artwork_review)
                 routing["artwork_apply_up_to"] = _artwork_apply_up_to(gardener_artwork_apply)
+                routing["artwork_activity_from"] = _artwork_review_from(gardener_artwork_activity)
             new_gardener = config_mod.GardenerConfig.model_validate(
                 {"level": gardener_level.strip(), **routing}
             )
@@ -5802,8 +5817,10 @@ def _register_routes(app: FastAPI) -> None:
                 # A plain string for the reason `.value` is used below.
                 "gardener.review_from": str(new_gardener.review_from),
                 "gardener.apply_up_to": str(new_gardener.apply_up_to),
+                "gardener.activity_from": str(new_gardener.activity_from),
                 "gardener.artwork_review_from": str(new_gardener.artwork_review_from),
                 "gardener.artwork_apply_up_to": str(new_gardener.artwork_apply_up_to),
+                "gardener.artwork_activity_from": str(new_gardener.artwork_activity_from),
                 # `.value` so the file holds the plain string the loader
                 # parses, rather than relying on StrEnum's str-ness surviving
                 # tomlkit and every reader of the file after it.

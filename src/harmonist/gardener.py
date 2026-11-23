@@ -1077,10 +1077,13 @@ def _record_digest(result: PassResult) -> None:
     release at all — the same "narrating a state rather than a change" #272 took
     out of the tagger.
 
-    **Only updates bound for the Inbox** (#273). One below the review level is
-    the user's to look for through the Library's update filter, and naming it
-    here would be the notification they chose not to have. One in the apply range
-    is about to be written, and the write records itself.
+    **From the Activity level, not the Inbox's** (#1024). Activity is a record
+    the user reads when they choose to, and the Inbox is what needs them, so
+    an update left in the Library is recorded too: the flag is derived and
+    never stored, so nothing else says when it arrived. #273 recorded only what
+    the Inbox took, treating the feed as a notification the user had declined.
+    One in the apply range is still left out: it is about to be written, and
+    the write records itself.
 
     **Silence is a valid digest**, and the common one. Nothing else the pass can
     report belongs to the user:
@@ -1102,12 +1105,12 @@ def _record_digest(result: PassResult) -> None:
         a
         for a in result.newly_flagged
         if a.update_significance is not None
-        and _bound_for_review(owned.Significance(a.update_significance), routing)
+        and _recorded(owned.Significance(a.update_significance), routing)
     ]
     if len(albums) > NAMED_UPDATES_MAX:
-        activity.record(
-            f"Update check: {len(albums)} albums now have an update available — see the Inbox"
-        )
+        # No pointer to where they wait: some may be in the Inbox and some in
+        # the Library, and each album's own entry would say which.
+        activity.record(f"Update check: {len(albums)} albums now have an update available")
         return
     for album in albums:
         activity.record(
@@ -1207,6 +1210,21 @@ def applies(significance: owned.Significance, apply_up_to: ReviewFrom) -> bool:
     )
 
 
+def records(significance: owned.Significance, activity_from: ReviewFrom) -> bool:
+    """Whether a newly found update reaching `significance` is recorded in the
+    Activity feed (#1024).
+
+    The chosen level and everything ranked above it, as for the Inbox, and
+    never `SETTINGS`: the config refuses it as a threshold, and this refuses
+    it as a level, because the user caused those updates on the Settings page.
+    """
+    return (
+        activity_from != "none"
+        and significance != owned.Significance.SETTINGS
+        and owned.ranked(significance) >= owned.ranked(activity_from)
+    )
+
+
 def outcome(significance: owned.Significance, routing: GardenerConfig) -> str:
     """Where an update reaching `significance` goes: "apply", "review" or
     "library". What the Settings grid ticks for each level, from the same rules
@@ -1218,10 +1236,11 @@ def outcome(significance: owned.Significance, routing: GardenerConfig) -> str:
     return "library"
 
 
-def _bound_for_review(significance: owned.Significance, routing: GardenerConfig) -> bool:
-    """Reviewed and not applied: applying wins where the two ranges overlap,
-    because asking about an update that is about to be written is asking twice."""
-    return reviews(significance, routing.review_from) and not applies(
+def _recorded(significance: owned.Significance, routing: GardenerConfig) -> bool:
+    """Whether a newly found update is recorded in the Activity feed (#1024):
+    the Activity level takes it and it is not about to be applied, since the
+    write records itself."""
+    return records(significance, routing.activity_from) and not applies(
         significance, routing.apply_up_to
     )
 

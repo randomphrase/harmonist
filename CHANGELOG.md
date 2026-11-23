@@ -18,6 +18,9 @@ versions follow [semantic versioning](https://semver.org).
 - **An artist's biography shows its first lines**, with **Show all**, under a
   Biography row like the others; a missing Wikidata link offers a way to add
   it on MusicBrainz (#1025).
+- **Activity records tag and artwork updates left in the Library**, not only
+  those sent to the Inbox, from a new **Activity** column in Settings; every
+  level by default (#1024).
 
 ### Fixed
 

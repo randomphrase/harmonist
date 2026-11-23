@@ -256,3 +256,74 @@ def test_the_tag_update_grid_keeps_both_columns_contiguous_and_saves(
     with page.expect_response(lambda r: r.url.endswith("/settings") and r.request.method == "POST"):
         page.get_by_role("button", name="Save settings", exact=True).click()
     page.context.close()
+
+
+def test_the_activity_column_runs_down_from_structure_on_its_own_and_saves(
+    browser_factory, demo_server: str
+) -> None:
+    """#1024. The Activity column is kept contiguous by the same script as the
+    other two, but moves neither of them and is moved by neither; and its ticks
+    don't count as a destination in the outcome column."""
+    browser = browser_factory("chromium")
+    page = browser.new_page()
+    page.set_default_timeout(5000)
+    page.goto(f"{demo_server}/settings")
+
+    def cell(column: str, level: str):
+        return page.locator(
+            f'.update-routing__row[data-level="{level}"] label:has(.update-routing__{column})'
+        )
+
+    def recorded() -> list[str]:
+        return [
+            level
+            for level in _LEVELS[:-1]  # Settings has no box
+            if page.locator(
+                f'.update-routing__row[data-level="{level}"] .update-routing__activity'
+            ).is_checked()
+        ]
+
+    def outcome(level: str) -> str:
+        return (
+            page.locator(f'.update-routing__row[data-level="{level}"] .update-routing__outcome')
+            .inner_text()
+            .strip()
+        )
+
+    assert recorded() == ["structure", "identity", "enrichment", "cosmetic"]
+    settings_cells = page.locator(
+        '.update-routing__row[data-level="settings"] .update-routing__cell'
+    )
+    assert settings_cells.nth(2).inner_text() == "never"  # Apply, Inbox, then Activity
+    assert outcome("identity") == "Left in the Library"
+
+    cell("activity", "identity").click()  # shrink to just short of Identity
+    assert recorded() == ["structure"]
+
+    cell("review", "enrichment").click()  # the Inbox moves; Activity doesn't
+    cell("apply", "cosmetic").click()
+    assert recorded() == ["structure"]
+
+    cell("activity", "enrichment").click()  # extend down to Enrichment
+    assert recorded() == ["structure", "identity", "enrichment"]
+    assert page.locator(
+        '.update-routing__row[data-level="enrichment"] .update-routing__review'
+    ).is_checked()
+    assert outcome("cosmetic") == "Applied automatically"
+
+    with page.expect_response(
+        lambda r: r.url.endswith("/settings") and r.request.method == "POST"
+    ) as saved:
+        page.get_by_role("button", name="Save settings", exact=True).click()
+    assert saved.value.ok
+    page.reload()
+    assert recorded() == ["structure", "identity", "enrichment"]
+
+    # Back to the shipped levels for the module's other tests.
+    cell("activity", "cosmetic").click()
+    cell("apply", "settings").click()
+    cell("review", "identity").click()
+    assert recorded() == ["structure", "identity", "enrichment", "cosmetic"]
+    with page.expect_response(lambda r: r.url.endswith("/settings") and r.request.method == "POST"):
+        page.get_by_role("button", name="Save settings", exact=True).click()
+    page.context.close()

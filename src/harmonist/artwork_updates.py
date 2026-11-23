@@ -314,6 +314,13 @@ def applies(op: artwork.Operation, apply_up_to: ArtworkReviewFrom) -> bool:
     )
 
 
+def records(op: artwork.Operation, activity_from: ArtworkReviewFrom) -> bool:
+    """Whether a newly found artwork update doing `op` is recorded in the
+    Activity feed under the threshold `activity_from` (#1024): that operation
+    and every one after it."""
+    return activity_from != "none" and ORDER.index(op) >= ORDER.index(activity_from)
+
+
 def outcome(op: artwork.Operation, routing: GardenerConfig) -> str:
     """Where an artwork update doing `op` goes: "apply", "review" or "library",
     from the same rules the pass and the Inbox follow, for the Settings grid."""
@@ -628,8 +635,6 @@ def sweep(albums: Sequence[Album], *, limit: int | None = None) -> int:
     count = limit if limit is not None else math.ceil(len(due) * TICK / _WINDOW)
     deadline = time.monotonic() + TICK.total_seconds() / 2
     checked = 0
-    # Not counting held albums: one the apply pass is about to write is not
-    # news, and one it held was already waiting in the Inbox.
     routing = _routing()
     found: list[tuple[Album, artwork.Operation]] = []
     for _, mbid, width in due[:count]:
@@ -637,8 +642,10 @@ def sweep(albums: Sequence[Album], *, limit: int | None = None) -> int:
             break
         _attempted[mbid] = datetime.now(UTC)
         # Judged before anything this check learns reaches the plan, so the
-        # digest names only albums the check itself sent to the Inbox.
-        waited = {id(a) for a in groups[mbid] if routed(a, routing)}
+        # digest names only albums whose update this check itself found.
+        waited = {id(a) for a in groups[mbid] if _recorded(a, routing)}
+        # With nothing stored, nothing says the archive changed (#1024).
+        first_look = caa_cache.stored(mbid) is None
         release = mb_cache.stored_release(mbid)
         group = (release.get("release-group") or {}).get("id") if release else None
         try:
@@ -682,22 +689,45 @@ def sweep(albums: Sequence[Album], *, limit: int | None = None) -> int:
         observe(mbid)
         _failures.succeeded()
         checked += 1
+        if first_look:
+            continue
         found.extend(
             (a, op)
             for a in groups[mbid]
-            if id(a) not in waited and routed(a, routing) and (op := waiting(a)) is not None
+            if id(a) not in waited and _recorded(a, routing) and (op := waiting(a)) is not None
         )
     _record_digest(found)
     return checked
 
 
+def _recorded(album: Album, routing: GardenerConfig) -> bool:
+    """Whether this album's artwork update is one the Activity feed records
+    when it is found (#1024).
+
+    The Activity threshold takes it, less one in the apply range, which the
+    write records. A watched album's is recorded whatever the thresholds say,
+    because the watch was a request to be told. Independent of the Inbox
+    threshold.
+    """
+    op = waiting(album)
+    if op is None:
+        return False
+    if watched(album):
+        return True
+    return records(op, routing.artwork_activity_from) and not applies(
+        op, routing.artwork_apply_up_to
+    )
+
+
 def _record_digest(albums: Sequence[tuple[Album, artwork.Operation]]) -> None:
-    """Tell the Activity feed which albums this check sent to the Inbox (#852),
-    as the tag update check does (#274, #600).
+    """Tell the Activity feed which albums this check found an artwork update
+    for (#852), as the tag update check does (#274, #600).
 
     **Only the transition**: an album whose update was already waiting is not
-    news when the archive is asked about it again. **Only the Inbox**: an update
-    left to the Library filter is one the user chose not to be told about. One
+    news when the archive is asked about it again. **From the Activity level**
+    (#1024), not the Inbox's: an update left to the Library filter is recorded
+    too, since nothing else says when it arrived. **Not a first look**: with
+    nothing stored about the release, the update may have waited for years. One
     the startup warm-up rebuilds is not announced either, since it is not new.
 
     No action scope: nothing was changed, so there is nothing to correlate or
@@ -705,9 +735,7 @@ def _record_digest(albums: Sequence[tuple[Album, artwork.Operation]]) -> None:
     nothing that could move them.
     """
     if len(albums) > _NAMED_MAX:
-        activity.record(
-            f"Artwork check: {len(albums)} albums now have an artwork update — see the Inbox"
-        )
+        activity.record(f"Artwork check: {len(albums)} albums now have an artwork update")
         return
     for album, op in albums:
         activity.record(

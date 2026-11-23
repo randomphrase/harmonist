@@ -402,9 +402,22 @@ update to decide whether to take it, and refining what is taken (another image,
 a row kept, an image turned down) is the album page's, which shows every row and
 lists the release's images.
 
-**Only what the Inbox takes is announced**, and only when the check first sends
-it there, as for tag updates: an update left to the Library filter is one the
-user chose not to be told about, and one about to be applied records itself.
+**Activity records what the check finds by a threshold of its own**, as for
+tag updates and for the same reasons
+([staying current](staying-current.md#what-gets-recorded)): wherever the update
+waits, only when the check first finds it, and not when it's about to be
+applied, since the write records itself. A watched album's is recorded whatever
+the threshold says, because the watch asked to be told (#1024).
+
+**A first look at the archive isn't news.** With nothing stored about a
+release, nothing says the archive changed, so an update the check finds then
+may have been waiting for years. Before #1024 nothing needed this: the only
+threshold defaulted to none, so a fresh install recorded no artwork updates at
+all. With recording on by default, an adopted library's first check would
+record every album lacking good art, and the first check after the cover-art
+cache was cleared would do it again. It's the archive's equivalent of the tag
+check's rule that an update [seen for the first time](staying-current.md#what-decides-update-available)
+isn't announced.
 
 ## Applying artwork without asking
 

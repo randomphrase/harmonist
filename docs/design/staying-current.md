@@ -196,9 +196,6 @@ then never be reviewed at all.
 into question, so it is the one level that cannot sensibly wait to be looked
 for. Everything else is a fact the Library already shows on demand.
 
-**Only what the Inbox takes is announced.** An update left to the filter is one
-the user chose not to be told about, and an Activity entry would tell them.
-
 **Library albums only.** An album still in an Inbox state is listed under that
 state, which is the next thing to do about it, and listing it twice would
 suggest two separate jobs.
@@ -241,6 +238,33 @@ only a few albums per tick, a count that reset every tick could never reach the
 limit. Once reached, each tick stops at its first failure until something
 succeeds. A 404 isn't a failure, since it's an answer; otherwise a library with a
 few deleted releases would end every pass early.
+
+### What gets recorded
+
+**Activity has a threshold of its own** (#1024). The Inbox answers "does this
+need me?"; Activity answers "should this be on the record?" They're two
+questions, and answering both with the Inbox threshold was the mistake
+[significance and review](tagging.md#how-significant-a-change-is) had already
+made once. It treated Activity as a notification the user had declined by
+leaving an update in the Library. But Activity is a record, read when the user
+chooses, and the Inbox is the notification. An update left in the Library also
+has no other record of arriving: the flag is derived and never stored, so once
+the update is taken, nothing says MusicBrainz ever changed the album.
+
+**Every level from MusicBrainz by default.** Only transitions are recorded (see
+[above](#what-decides-update-available)), and real edits across a library are
+rare, so the feed stays quiet without being filtered. A burst, such as an artist
+renamed across a discography, arrives a few albums per tick over the week's
+schedule, and a pass that finds more than a handful still records one counted
+line. The threshold is there for a library where that judgement is wrong.
+
+**A threshold, like the Inbox's**, for the same reason: no level is treated as
+less worth recording than one below it. It never takes Settings, whose updates
+the user caused.
+
+**Not what's about to be applied.** The write records itself, with its changes
+and its Undo, within minutes; an entry for the update as well would record the
+same change twice.
 
 ### Ignoring an update
 

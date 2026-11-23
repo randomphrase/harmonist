@@ -246,13 +246,22 @@ class GardenerConfig(BaseModel):
     replacement, so nothing written with nobody watching overwrites an image,
     and never a watched album, whose watch asked to be shown what turned up.
     Nothing by default, since applying writes to somebody's files.
+
+    `activity_from` is where a newly found tag update starts being recorded in
+    the Activity feed (#1024), and `artwork_activity_from` the same for
+    artwork. Independent of the Inbox: the Inbox is what needs the user, and
+    Activity is a record they read when they choose to. Every level from
+    MusicBrainz by default, since only a transition is recorded and those are
+    rare. Never Settings, whose updates the user caused on the Settings page.
     """
 
     level: GardenerLevel = "off"
     review_from: ReviewFrom = Significance.STRUCTURE
     apply_up_to: ReviewFrom = "none"
+    activity_from: ReviewFrom = Significance.COSMETIC
     artwork_review_from: ArtworkReviewFrom = "none"
     artwork_apply_up_to: ArtworkReviewFrom = "none"
+    artwork_activity_from: ArtworkReviewFrom = Operation.ADDITION
 
     @field_validator("apply_up_to")
     @classmethod
@@ -261,6 +270,16 @@ class GardenerConfig(BaseModel):
             raise ValueError(
                 "structure updates are never applied automatically; choose settings, "
                 "cosmetic, enrichment, identity or none"
+            )
+        return value
+
+    @field_validator("activity_from")
+    @classmethod
+    def _never_settings(cls, value: ReviewFrom) -> ReviewFrom:
+        if value == Significance.SETTINGS:
+            raise ValueError(
+                "settings updates are never recorded in Activity; choose cosmetic, "
+                "enrichment, identity, structure or none"
             )
         return value
 
@@ -482,6 +501,12 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     if v := env.get("HARMONIST_GARDENER_APPLY_UP_TO"):
         # Unvalidated, for the reason the level is (above).
         gardener["apply_up_to"] = v.strip()
+    if v := env.get("HARMONIST_GARDENER_ACTIVITY_FROM"):
+        # Unvalidated, for the reason the level is (above).
+        gardener["activity_from"] = v.strip()
+    if v := env.get("HARMONIST_GARDENER_ARTWORK_ACTIVITY_FROM"):
+        # Unvalidated, for the reason the level is (above).
+        gardener["artwork_activity_from"] = v.strip()
     if v := env.get("HARMONIST_GARDENER_ARTWORK_REVIEW_FROM"):
         # Unvalidated, for the reason the level is (above).
         gardener["artwork_review_from"] = v.strip()

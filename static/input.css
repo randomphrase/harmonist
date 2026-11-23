@@ -129,7 +129,7 @@
    columns contiguous. On a phone the column headings say it, and the outcome
    column gives way. */
 .update-routing__head,
-.update-routing__row { display: grid; grid-template-columns: 7.5rem 5rem 4rem 4rem minmax(0, 1fr); }
+.update-routing__row { display: grid; grid-template-columns: 7.5rem 5rem 4rem 4rem 4rem minmax(0, 1fr); }
 .update-routing__head { border: 1px solid transparent; }
 .update-routing__heading { text-align: center; padding: 0 .25rem .25rem; }
 .update-routing__level { display: flex; align-items: center; justify-content: center; padding: .5rem; }
@@ -145,10 +145,16 @@
 .update-routing__inbox { display: none; }
 .update-routing__row:has(.update-routing__apply:checked) .update-routing__applied,
 .update-routing__row:has(.update-routing__review:checked) .update-routing__inbox { display: inline; }
-.update-routing__row:has(input:checked) .update-routing__library { display: none; }
+.update-routing__row:has(.update-routing__apply:checked, .update-routing__review:checked) .update-routing__library { display: none; }
 @media (max-width: 639px) {
   .update-routing__head,
-  .update-routing__row { grid-template-columns: 7rem minmax(0, 1fr) 3.5rem 3.5rem; }
+  .update-routing__row { grid-template-columns: minmax(0, 1fr) 3.5rem 3.5rem 3.5rem; }
+  /* Three tick columns leave no room for the count beside the level, so it
+     goes under it (#1024), and the heading row loses the count's spacer. */
+  .update-routing__head > :nth-child(2) { display: none; }
+  .update-routing__level { grid-column: 1; grid-row: 1; padding-bottom: 0; }
+  .update-routing__count { grid-column: 1; grid-row: 2; justify-content: center; padding-bottom: .5rem; }
+  .update-routing__cell { grid-row: 1 / span 2; }
   .update-routing__outcome { display: none; }
 }
 

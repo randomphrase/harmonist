@@ -275,8 +275,8 @@ Each update is labelled by how far it reaches:
 - **Settings**: tags that don't yet follow a tagging setting, such as an album
   title without the disambiguation the setting adds, or an artist written as
   credited on the release where the setting writes the artist's own name. These
-  come from Harmonist's settings, not MusicBrainz, so they're never announced and
-  can't be ignored; changing the setting back withdraws them.
+  come from Harmonist's settings, not MusicBrainz, so they're never recorded in
+  Activity and can't be ignored; changing the setting back withdraws them.
 - **Cosmetic**: a title that differs only in capitalisation or spacing.
 - **Enrichment**: details added or corrected, such as a catalogue number, a
   more precise date, or a collaboration's artists stored as one value
@@ -289,7 +289,7 @@ Each update is labelled by how far it reaches:
 An album's update takes the label of its furthest-reaching change, in the order
 above. **When a tag update is found** in Settings decides what happens to each
 level, beside the number of albums currently waiting at each. Each level is
-ticked in at most one column:
+ticked in at most one of **Apply** and **Inbox**:
 
 - **Apply**: ticks run up from Settings, never as far as
   Structure. Nothing is applied by default. Saving applies the updates already
@@ -307,7 +307,16 @@ ticked in at most one column:
 
 An update Harmonist was trusted to apply but couldn't, such as one needing its
 track assignments reviewed or an album missing tracks, waits in the Inbox with
-the reason. Only updates bound for the Inbox are announced in the Activity feed.
+the reason.
+
+**Activity**, the third column, is separate from the other two: its ticks run
+down from Structure, and by default cover every level except Settings. A newly
+found update at a ticked level is recorded in the Activity feed, linked to its
+album, wherever it waits. One about to be applied is recorded when it's written
+instead. An update isn't recorded again when MusicBrainz changes the release
+further before it's taken, and one found the first time Harmonist looks at a
+release, such as on a new install, isn't recorded at all, since it may have
+been waiting for years.
 
 An update that looks wrong is a problem with the release on MusicBrainz, and
 [the correction belongs there](#musicbrainz-is-the-source-of-truth). An edit can
@@ -354,11 +363,17 @@ album needs no changes. Ignoring a tag update does not hide an artwork proposal.
 - Anything ticked in neither stays in the Library under **Artwork updates**,
   which is where all of them stay by default.
 
+**Activity** works as it does for tag updates: a newly found artwork update
+is recorded in the Activity feed wherever it waits, additions and replacements
+by default. An addition about to be applied is recorded when it's written
+instead, and nothing found the first time Harmonist asks the Cover Art Archive
+about a release is recorded.
+
 An album whose update both adds and replaces artwork counts as a replacement,
 so none of it is applied automatically. An album with **Better artwork wanted**
-waits in the Inbox whatever is chosen. An addition Harmonist was trusted to
-apply but couldn't waits in the Inbox with the reason. Only updates bound for
-the Inbox are announced in the Activity feed.
+waits in the Inbox, and is recorded in Activity, whatever is chosen. An
+addition Harmonist was trusted to apply but couldn't waits in the Inbox with
+the reason.
 
 Album art lives in two places: **embedded** in each track, and as a
 **`cover.jpg`** (or `cover.png`) in the folder. Players differ in which they

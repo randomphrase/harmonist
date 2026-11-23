@@ -1623,7 +1623,8 @@ def test_a_pass_that_finds_more_than_it_can_name_leaves_one_summary(tmp_path, mo
 
     gardener.sweep(albums, limit=count)
 
-    expected = f"Update check: {count} albums now have an update available — see the Inbox"
+    # No pointer to the Inbox: since #1024 some of them may be in the Library.
+    expected = f"Update check: {count} albums now have an update available"
     assert _named_updates() == []
     assert _digest() == [expected]
 
