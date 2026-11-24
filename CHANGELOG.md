@@ -6,23 +6,24 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.35.0] - 2026-11-24
+
 ### Added
 
 - **Identifying an artist NFO fills in its biography from Wikipedia**, through
-  MusicBrainz's link, where the file has none (#1018).
+  MusicBrainz's link, where the file has none; `biography_languages` under
+  `[artists]` picks which Wikipedia (#1018).
 - **Artist info shows when MusicBrainz was last checked**, with a ↻ that fills
   in a missing biography, and says why an artist has none (#1022).
 
 ### Changed
 
+- **Activity Log records tag and artwork updates left in the Library**, not
+  only those sent to the Inbox — on by default, set by a new **Log** column in
+  Settings (#1024).
 - **Harmonist serves its own web fonts**, so its pages no longer load anything
   from Google (#1029).
-- **An artist's biography shows its first lines**, with **Show all**, under a
-  Biography row like the others; a missing Wikidata link offers a way to add
-  it on MusicBrainz (#1025).
-- **Activity Log records tag and artwork updates left in the Library**, and
-  those an album's page finds, not only those sent to the Inbox, from a new
-  **Log** column in Settings; every level but Settings by default (#1024).
+- **A long artist biography shows its first lines**, with **Show all** (#1025).
 
 ### Fixed
 
