@@ -333,6 +333,28 @@
             </div>
         </section>
 
+        {# The user's own fanart.tv key (#1038), optional: Harmonist's project
+           key is enough to ask, and this one gets newer pictures. It's theirs,
+           so it is shown here, on their own Settings page, and sent only to
+           fanart.tv. Laid out as Bandcamp's fields are, half the width. #}
+        <section aria-labelledby="fanart-heading" class="border border-line rounded-lg">
+            <h2 id="fanart-heading" class="rounded-t-lg px-4 py-2.5 bg-line/50 border-b border-line text-sm font-bold text-ink uppercase tracking-widest">fanart.tv</h2>
+            <div class="p-4">
+            {# An emptied field posts nothing a route can tell from no field, so
+               the section says it was there, as the update grid does. #}
+            <input type="hidden" name="fanart_tv" value="1">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label class="block min-w-0">
+                    <span class="block text-xs font-bold text-ink mb-1">Personal API key</span>
+                    <input type="text" name="fanart_tv_personal_key" value="{{ cfg.artists.fanart_tv_personal_key }}"
+                           autocomplete="off" spellcheck="false"
+                           class="w-full bg-white border border-line rounded px-3 py-2 text-sm font-mono text-ink focus:border-accent">
+                    <span class="block text-xs text-muted mt-1">Optional. Artist pictures arrive two days after fanart.tv approves them, not seven. <a href="https://fanart.tv/get-an-api-key/" target="_blank" rel="noopener" class="text-accent hover:underline">Get a key <span aria-hidden="true">↗</span></a></span>
+                </label>
+            </div>
+            </div>
+        </section>
+
         <section aria-labelledby="server-heading" class="border border-line rounded-lg">
             <h2 id="server-heading" class="rounded-t-lg px-4 py-2.5 bg-line/50 border-b border-line text-sm font-bold text-ink uppercase tracking-widest">Server</h2>
             <div class="p-4 space-y-3">

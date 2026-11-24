@@ -5837,6 +5837,11 @@ def _register_routes(app: FastAPI) -> None:
         # A checkbox, so an unticked one sends nothing and the default is "off".
         always_standardize_multivalue_artist: bool = Form(default=False),
         log_level: str = Form(...),
+        # The user's own fanart.tv key (#1038), empty to remove it. An empty
+        # field arrives as no field at all, so the section posts a marker, as
+        # the update grid does; a form that predates the section keeps the key.
+        fanart_tv: str | None = Form(None),
+        fanart_tv_personal_key: str | None = Form(None),
     ) -> Response:
         cfg: config_mod.Config = request.app.state.cfg
         # Re-validate by constructing fresh sub-models (model_copy does NOT
@@ -5883,12 +5888,23 @@ def _register_routes(app: FastAPI) -> None:
                     "always_standardize_multivalue_artist": always_standardize_multivalue_artist,
                 }
             )
+            new_artists = config_mod.ArtistsConfig.model_validate(
+                {
+                    **cfg.artists.model_dump(),
+                    **(
+                        {"fanart_tv_personal_key": fanart_tv_personal_key or ""}
+                        if fanart_tv is not None
+                        else {}
+                    ),
+                }
+            )
             new_cfg = cfg.model_copy(
                 update={
                     "bandcamp": new_bandcamp,
                     "musicbrainz": new_mb,
                     "gardener": new_gardener,
                     "tagging": new_tagging,
+                    "artists": new_artists,
                     "log_level": log_level.strip().lower(),
                 }
             )
@@ -5926,6 +5942,9 @@ def _register_routes(app: FastAPI) -> None:
                 "tagging.always_standardize_multivalue_artist": (
                     new_tagging.always_standardize_multivalue_artist
                 ),
+                # Always written, so emptying the field rewrites the key
+                # rather than leaving the old one to be read back at startup.
+                "artists.fanart_tv_personal_key": new_artists.fanart_tv_personal_key,
                 "log_level": new_cfg.log_level,
             },
         )

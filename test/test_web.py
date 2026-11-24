@@ -6444,6 +6444,76 @@ def test_settings_save_rejects_an_unknown_artist_names_value(client, cfg):
     assert client.app.state.cfg.tagging.standardize_artist_names is ArtistNames.VARIATIONS
 
 
+def test_the_fanart_tv_personal_key_has_a_section_beneath_bandcamp(client):
+    """#1038: the optional key #1020 added, holding the saved one."""
+    from bs4 import BeautifulSoup
+
+    client.app.state.cfg.artists.fanart_tv_personal_key = "abc123"
+
+    soup = BeautifulSoup(client.get("/settings").text, "html.parser")
+
+    headings = [h.get_text(strip=True) for h in soup.select("form section > h2")]
+    assert headings.index("fanart.tv") == headings.index("Bandcamp") + 1
+    section = soup.find(id="fanart-heading").parent
+    field = section.select_one('input[name="fanart_tv_personal_key"]')
+    assert field is not None and field["value"] == "abc123"
+    # What lets an emptied field remove the key: the posts below send it as a
+    # browser does.
+    assert section.select_one('input[type="hidden"][name="fanart_tv"]') is not None
+
+
+def _post_fanart_tv_key(client, key):
+    """The Settings form with the fanart.tv section's field as `key`, and the
+    marker the section always posts beside it."""
+    return _post_settings(client, fanart_tv="1", fanart_tv_personal_key=key)
+
+
+def test_settings_save_keeps_a_fanart_tv_personal_key_and_uses_it_at_once(client, cfg):
+    import tomllib
+
+    r = _post_fanart_tv_key(client, " abc123 ")
+
+    assert r.status_code == 200 and "Settings saved" in r.text
+    # Identifying an artist reads it off the live config, so the next one asks with it.
+    assert client.app.state.cfg.artists.fanart_tv_personal_key == "abc123"
+    saved = tomllib.loads((cfg.paths.config_dir / "harmonist.toml").read_text())
+    assert saved["artists"]["fanart_tv_personal_key"] == "abc123"
+
+
+def test_an_emptied_fanart_tv_personal_key_is_removed(client, cfg):
+    import tomllib
+
+    client.app.state.cfg.artists.fanart_tv_personal_key = "abc123"
+
+    # A browser posts an emptied field as nothing at all, beside the marker.
+    assert _post_settings(client, fanart_tv="1").status_code == 200
+
+    assert client.app.state.cfg.artists.fanart_tv_personal_key == ""
+    saved = tomllib.loads((cfg.paths.config_dir / "harmonist.toml").read_text())
+    assert saved["artists"]["fanart_tv_personal_key"] == ""
+
+
+def test_a_settings_form_from_before_the_fanart_tv_section_keeps_the_key(client):
+    """A Settings page left open across an upgrade posts no key at all, which
+    isn't asking for it to be removed."""
+    client.app.state.cfg.artists.fanart_tv_personal_key = "abc123"
+
+    assert _post_settings(client).status_code == 200
+
+    assert client.app.state.cfg.artists.fanart_tv_personal_key == "abc123"
+
+
+def test_settings_save_refuses_a_fanart_tv_key_that_isnt_one(client, cfg):
+    """It travels in a header, so it is refused with the reason, and nothing is
+    written, as it is at startup."""
+    r = _post_fanart_tv_key(client, "abc\r\nX-Other: 1")
+
+    assert "Couldn't save" in r.text and "letters and digits" in r.text
+    assert client.app.state.cfg.artists.fanart_tv_personal_key == ""
+    toml = cfg.paths.config_dir / "harmonist.toml"
+    assert not toml.exists() or "X-Other" not in toml.read_text()
+
+
 def test_the_settings_page_offers_picards_artist_name_choices(client):
     """Picard's labels for Picard's three values, the saved one selected, and
     Picard's checkbox ticked to match the config."""

@@ -9,7 +9,7 @@ versions follow [semantic versioning](https://semver.org).
 ### Added
 
 - **Identifying an artist fills in their picture**, from fanart.tv or Commons,
-  where the folder has none; `fanart_tv_personal_key` is optional (#1020).
+  where the folder has none; a fanart.tv key in Settings is optional (#1020, #1038).
 
 ### Changed
 
