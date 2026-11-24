@@ -14,7 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from . import activity_store, nfo_history, wikimedia
+from . import activity_store, artist_nfo, nfo_history, wikimedia
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +30,13 @@ class Filled:
 
     biography: wikimedia.Biography | None = None
     failed: bool = False
+
+    @property
+    def wanted(self) -> dict[str, str]:
+        """What to write into the file: the biography as HTML, the form the
+        players read it in."""
+        found = self.biography
+        return {"biography": artist_nfo.biography_html(found.text)} if found else {}
 
     @property
     def credits(self) -> dict[str, nfo_history.Credit]:

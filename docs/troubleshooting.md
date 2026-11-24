@@ -479,6 +479,16 @@ checked**):
 A file that already has a `<biography>`, even one written by Kodi or Jellyfin,
 keeps it. To have Wikipedia's instead, empty that element and press the ↻.
 
+### Navidrome shows an artist's biography as one block of text
+
+Navidrome reads a biography as HTML and turns its line breaks into spaces, so
+paragraphs written as plain text run together. A biography Harmonist fills in is
+written as HTML and keeps its paragraphs. One the file already had, from Kodi,
+Jellyfin or a person, is plain text, and Harmonist leaves it as it is. To have
+Wikipedia's instead, empty the `<biography>` element and press the ↻ beside
+**MB checked**. Navidrome reads the file again when it next refreshes the
+artist's information.
+
 ## Undoing things
 
 ### Undo a change

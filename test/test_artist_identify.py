@@ -416,7 +416,7 @@ WIKIDATA = {
     "direction": "forward",
 }
 BIOGRAPHY = wikimedia.Biography(
-    text="Carol are a band from Pawnee.\nThey formed in 1999.",
+    text="Carol are a band from Pawnee & Eagleton.\nThey formed in 1999.",
     language="en",
     url="https://en.wikipedia.org/wiki/Carol_(band)",
     revision="42",
@@ -453,16 +453,28 @@ def test_identify_fills_in_a_biography_from_the_linked_wikipedia_article(wikiped
     assert response.headers["HX-Redirect"] == f"/artist/{CAROL}"
     found.assert_called_once_with("Q123", languages=["en"], user_agent=mb_lookup_agent(client))
     written = path.read_text()
+    # HTML, escaped as XML: players show a biography as HTML, and Navidrome
+    # turns a newline into a space, so a line break keeps the paragraphs apart.
     assert (
-        "<formed>1999</formed>\n    <biography>Carol are a band from Pawnee.\n"
-        "They formed in 1999.</biography>\n</artist>"
+        "<formed>1999</formed>\n    <biography>Carol are a band from Pawnee &amp;amp; Eagleton."
+        "&lt;br&gt;&lt;br&gt;They formed in 1999.</biography>\n</artist>"
     ) in written
 
-    _page, events, writes = history(client, CAROL)
+    page, events, writes = history(client, CAROL)
     write = writes[next(e.id for e in events if e.message.startswith("Identified"))]
     (change,) = [c for c in write.changes if c.field == "biography"]
-    assert (change.before, change.after) == (None, BIOGRAPHY.text)
+    html = "Carol are a band from Pawnee &amp; Eagleton.<br><br>They formed in 1999."
+    assert (change.before, change.after) == (None, html)
     assert change.credit == nfo_history.Credit(BIOGRAPHY.url, BIOGRAPHY.revision)
+    # Harmonist reads it as HTML too: paragraphs, not markup, in Artist info
+    # and in History.
+    shown = "Carol are a band from Pawnee & Eagleton.\n\nThey formed in 1999."
+    soup = BeautifulSoup(page.text, "html.parser")
+    text = soup.select_one("#artist-biography .artist-bio__text")
+    assert text is not None and text.get_text() == shown
+    row = next(dt for dt in soup.select(".tag-changes dt") if dt.get_text() == "Biography")
+    after = row.find_next_sibling("dd").select_one(".tag-changes__after")
+    assert after is not None and after.get_text() == shown
     link = biography_link(client, CAROL)
     assert link is not None and link["href"] == BIOGRAPHY.url
     assert link.get_text(" ", strip=True) == "From Wikipedia ↗"
@@ -707,7 +719,11 @@ def test_reading_again_fills_in_a_biography_musicbrainz_now_links(identify, monk
     assert lookup.call_count == 2
     assert flash(response)["verb"] == "Filled in"
     assert response.headers["HX-Redirect"] == f"/artist/{CAROL}?artist_page=1"
-    assert "<biography>Carol are a band" in path.read_text()
+    # As Identify writes it: HTML, escaped as XML.
+    assert (
+        "<biography>Carol are a band from Pawnee &amp;amp; Eagleton."
+        "&lt;br&gt;&lt;br&gt;They formed in 1999.</biography>"
+    ) in path.read_text()
     _page, events, writes = history(client, CAROL)
     write = writes[next(e.id for e in events if e.message.startswith("Filled in"))]
     assert [c.field for c in write.changes] == ["biography"]

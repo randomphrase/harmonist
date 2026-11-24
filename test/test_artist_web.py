@@ -97,7 +97,10 @@ def test_list_and_artist_page_are_offline_and_share_the_album_tiles(artist_clien
     detail = client.get(f"/artist/{ALICE}?artist_q=Alice&artist_page=2")
     assert detail.status_code == 200
     assert {a.id for a in detail.context["rows"]} == {RELEASE, SOLO}
-    assert "&lt;script&gt;biography&lt;/script&gt;" in detail.text
+    # A biography is read as HTML, as players read it (#1018): its markup is
+    # left out and its text shown, never put into the page.
+    bio = BeautifulSoup(detail.text, "html.parser").select_one(".artist-bio__text")
+    assert bio is not None and bio.get_text() == "biography" and bio.find() is None
     assert "<script>biography</script>" not in detail.text
     assert f"https://musicbrainz.org/artist/{ALICE}" in detail.text
     assert f"/album/{RELEASE}?from_artist={ALICE}" in detail.text

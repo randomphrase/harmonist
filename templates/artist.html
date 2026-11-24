@@ -179,7 +179,7 @@
                 </dd>
             </dl>
             {% if profile.biography %}
-            {% set bio = profile.biography %}
+            {% set bio = biography_text(profile.biography) %}
             <p class="artist-bio__text mt-2 text-sm text-ink whitespace-pre-line break-words">{{ bio }}</p>
             {# Long: more than three lines even across a wide screen, so Show all
                always has something to show. #}

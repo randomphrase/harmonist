@@ -544,7 +544,19 @@ and the page asks nobody when it is drawn.
 Wikipedia's text is CC BY-SA, so the write records the article and revision it
 came from, and the artist page credits Wikipedia while the file still holds that
 text (see [history](history.md#what-an-artist-nfo-write-records)). The file
-holds only the text, since players show whatever is there.
+holds only the text, with no credit, since players show whatever is there.
+
+**A biography is written as HTML.** The players that read the file render a
+biography as HTML. Navidrome turns every newline into a space first, and
+Jellyfin reads the text as Markdown, where a lone newline is a space too, so
+Wikipedia's plain text, a paragraph to a line, reached both as one block. The
+paragraphs are escaped and kept apart by line breaks rather than paragraph
+elements, whose margin would push the first line down Navidrome's three-line
+preview. Kodi shows the markup as text, but Kodi's NFOs already part ways over
+the ID element (#971): no form suits every reader, so supporting Kodi is a
+choice of reader, not a better form (#1031). Harmonist's own pages read a
+biography as HTML too, so Artist info shows what the players show, except that
+a plain-text biography's newlines, Kodi's or a person's, still break its lines.
 
 **The row is the review.** The only decision is which artist, and the row that
 offers one already says who it is, with MusicBrainz a link away, so its

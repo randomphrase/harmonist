@@ -217,3 +217,28 @@ def test_incomplete_discovery_is_a_visible_error_not_a_unique_match(tmp_path):
     assert result.profile is not None
     assert result.errors
     assert inventory.profiles == (result.profile,)
+
+
+def test_a_biography_is_written_as_html_with_a_break_between_paragraphs():
+    """Navidrome turns newlines into spaces, so markup keeps paragraphs apart
+    (#1018); the text itself is escaped, since it's HTML now."""
+    text = "  Simon & Garfunkel <3\n\n\nWent solo.  \n"
+    assert artist_nfo.biography_html(text) == "Simon &amp; Garfunkel &lt;3<br><br>Went solo."
+
+
+@pytest.mark.parametrize(
+    ("value", "shown"),
+    [
+        # As Harmonist writes it.
+        ("Simon &amp; Garfunkel &lt;3<br><br>Went solo.", "Simon & Garfunkel <3\n\nWent solo."),
+        # As Kodi or a person writes it: plain text, a paragraph to a line.
+        ("Formed in 1999.\nSplit in 2004.", "Formed in 1999.\nSplit in 2004."),
+        # As other HTML writes it.
+        (
+            "<p>Formed in <i>1999</i>.</p>\n<p>Split.<br/>Reformed.</p>",
+            "Formed in 1999.\n\nSplit.\nReformed.",
+        ),
+    ],
+)
+def test_a_biography_is_shown_as_its_text_read_as_html(value, shown):
+    assert artist_nfo.biography_text(value) == shown

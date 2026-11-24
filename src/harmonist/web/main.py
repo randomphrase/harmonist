@@ -933,6 +933,8 @@ def create_app(
     # The album page's Additional info (#634), and the URLs inside a comment.
     templates.env.globals["additional_info"] = provenance.info
     templates.env.globals["link_parts"] = url_recovery.link_parts
+    # An artist NFO's biography is HTML, as the players read it (#1018).
+    templates.env.globals["biography_text"] = artist_nfo.biography_text
     # A single release named by its title and disambiguation (#635).
     templates.env.globals["release_title"] = _release_title
     templates.env.globals["suggested_row"] = _suggested_row
@@ -5229,8 +5231,7 @@ def _register_routes(app: FastAPI) -> None:
         try:
             wanted = nfo_writer.mapped(answer)
             filled = _fill_biography(answer, data, cfg)
-            if filled.biography is not None:
-                wanted["biography"] = filled.biography.text
+            wanted |= filled.wanted
             written = nfo_history.write(
                 profile.path,
                 root=root,
@@ -5319,7 +5320,7 @@ def _register_routes(app: FastAPI) -> None:
                 profile.path,
                 root=root,
                 expected=data,
-                wanted={"biography": filled.biography.text} if filled.biography else {},
+                wanted=filled.wanted,
                 credits=filled.credits,
             )
         except OSError as exc:

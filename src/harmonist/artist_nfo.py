@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import codecs
 import hashlib
+import html
 import logging
 import os
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property, lru_cache
+from html.parser import HTMLParser
 from pathlib import Path
 from stat import S_ISREG
 from threading import Lock
@@ -44,6 +47,50 @@ _SPANS = (("Born", "Died", "Lived"), ("Formed", "Disbanded", "Active"))
 
 class NfoError(ValueError):
     """Metadata exists but could not be read safely; distinct from absence."""
+
+
+def biography_html(text: str) -> str:
+    """Plain text, one paragraph to a line, as a biography for the file: HTML,
+    with a blank line's worth of break between paragraphs (#1018).
+
+    The players that read the file show a biography as HTML. Navidrome turns
+    every newline into a space before it does, and Jellyfin reads the text as
+    Markdown, where a lone newline is a space too, so only markup keeps the
+    paragraphs apart. Breaks rather than `<p>`: Navidrome sets the biography
+    inside a paragraph of its own, where a paragraph's margin would push the
+    first line down its three-line preview."""
+    paragraphs = (line.strip() for line in text.splitlines())
+    return "<br><br>".join(html.escape(p, quote=False) for p in paragraphs if p)
+
+
+def biography_text(value: str) -> str:
+    """A file's biography as text to show, read as the players read it: as
+    HTML, with a line break for `<br>`, a blank line around a paragraph, and
+    any other markup left out (#1018). Its newlines are kept as well, since a
+    biography Kodi or a person wrote is plain text with a paragraph to a line."""
+    reader = _BiographyReader()
+    reader.feed(value)
+    reader.close()
+    return re.sub(r"\n{3,}", "\n\n", "".join(reader.parts)).strip()
+
+
+class _BiographyReader(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "br":
+            self.parts.append("\n")
+        elif tag == "p":
+            self.parts.append("\n\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "p":
+            self.parts.append("\n\n")
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
 
 
 def _span(said: dict[str, str], begin: str, end: str, both: str) -> tuple[str, str]:

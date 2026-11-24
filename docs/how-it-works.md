@@ -115,7 +115,9 @@ name, type, gender, disambiguation and dates (`born` and `died` for a person,
 removed. Where the file has no biography, Identify also fills one in from
 Wikipedia: the introduction of the article that the artist's Wikidata item,
 linked from MusicBrainz, leads to, in the first of the
-[biography languages](configuration.md#artists) that has one. A biography the file already has is left as it is, and nothing else
+[biography languages](configuration.md#artists) that has one. It's written as
+HTML, the form Navidrome and Jellyfin show a biography in, so its paragraphs
+survive there; Kodi shows the markup as text. A biography the file already has is left as it is, and nothing else
 in the file is touched. The artist page credits Wikipedia beside the biography
 while it is still the text that was written. Where the file has none, its
 Biography row says why, as of when MusicBrainz was last read: the
