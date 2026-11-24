@@ -3,7 +3,8 @@
 Harmonist asks two services about a release. Their costs are different in kind,
 and the caching in front of each follows from that difference. For an artist's
 biography it also asks [Wikidata and Wikipedia](#wikidata-and-wikipedia), and
-only when the user identifies the artist.
+for their picture [fanart.tv and Wikimedia Commons](#fanarttv-and-wikimedia-commons),
+only when the user identifies the artist or reads it again.
 
 ## MusicBrainz
 
@@ -170,3 +171,58 @@ browser check, so Harmonist asks Wikimedia itself.
 - **Wikimedia asks every client to identify itself** with a way to reach its
   operator, which the MusicBrainz user agent already does, so the same one is
   sent.
+
+## fanart.tv and Wikimedia Commons
+
+An artist's picture (#1020) comes from outside MusicBrainz because there is
+nowhere inside it: MusicBrainz keeps no artist images, as it keeps covers in the
+Cover Art Archive. That is the difference from an album's artwork, which comes
+from the archive alone. A missing album cover is put right there, where it
+reaches everyone, and fanart.tv's album covers aren't used, since they are
+images the archive could hold (#909).
+
+- **Found by identity, never by name.** fanart.tv files its artist thumbnails
+  under the artist's MBID, and the first of them is the picture. Without one,
+  the picture is the image Wikidata gives the item MusicBrainz links the artist
+  to (P18), the best-ranked claim, and only when there is exactly one.
+  MusicBrainz's own "image" links aren't used, since an artist often has
+  several and choosing one would be a guess.
+- **fanart.tv first**, because its thumbnails are made for players: square, and
+  usually 1000 pixels a side. Commons holds photographs of any shape, fetched as
+  a rendition 960 pixels wide, since an original can be forty megapixels.
+  Commons renders only standard widths and gives the next one up for any
+  other, so 960 is the widest within fanart.tv's 1000.
+- **A failure at fanart.tv takes nothing from Commons.** A picture is filled in
+  only where there is none, so Commons' picture in fanart.tv's place would stand
+  for good. The identification is written all the same, the answer warns, and
+  reading the artist again retries.
+- **fanart.tv is asked while MusicBrainz is.** It needs only the artist's ID, so
+  it doesn't wait for MusicBrainz's answer; the biography and the Commons
+  picture follow that answer, and are asked side by side. MusicBrainz is still
+  asked one request at a time, whatever else is in flight. If MusicBrainz
+  answers with another artist, the one the ID was merged into, fanart.tv is
+  asked about that one instead.
+- **fanart.tv needs a key, and Harmonist's is in its source.** A project key
+  says which program is asking. It opens nothing that isn't public, and can't be
+  kept secret anyway: every copy of Harmonist has to carry it, as every copy of
+  Kodi and Jellyfin carries theirs. Moving it out of the source would only leave
+  checkouts and forks without one. A user's own personal key is optional, and
+  gets them newer images: two days after approval rather than seven. Both go in
+  headers rather than the address, so neither appears where an address is
+  logged.
+- **fanart.tv's terms.** A program that is publicly available has to tell its
+  users about fanart.tv and the images it uses, so the docs name it and the
+  artist page credits it under its picture. Bulk downloading isn't allowed, so
+  each lookup is one the user asked for, and nothing looks for pictures in the
+  background.
+- **Commons' pictures carry their own terms**: CC BY or CC BY-SA, or free of
+  copyright. The first two ask for the author and the licence, so the write
+  records both with the file's page, and the artist page shows them under the
+  picture while the file is still the one written.
+- **Nothing is cached.** The picture is written beside the NFO, which is then
+  where it lives. What the lookup found is kept with the stored artist, so the
+  page can say why an identified artist has no picture.
+- **Every address a service gives is checked before it is asked.** A picture
+  must be on fanart.tv's or Wikimedia's own image host, and a redirect isn't
+  followed. A licence's address is linked only when it is a web address, since
+  whoever wrote the file's page on Commons wrote it.

@@ -1,13 +1,15 @@
-"""An artist's biography from Wikipedia, found through MusicBrainz (#1018).
+"""An artist's biography from Wikipedia (#1018), and their picture from
+Wikimedia Commons (#1020), found through MusicBrainz.
 
-The article is reached only by following links: MusicBrainz's link from the
-artist to its Wikidata item, then that item's link to an article in each
-Wikipedia. Nothing is matched by name, so a biography is about whoever
-MusicBrainz says the artist is, and a wrong one is put right on MusicBrainz or
-on Wikipedia rather than here.
+Each is reached only by following links: MusicBrainz's link from the artist to
+its Wikidata item, then that item's link to an article in each Wikipedia, or
+its image (P18) on Commons. Nothing is matched by name, so a biography or a
+picture is about whoever MusicBrainz says the artist is, and a wrong one is put
+right on MusicBrainz or on Wikidata rather than here.
 
-Nothing is cached. A biography is fetched only when the user identifies an
-artist, which writes it into the file, and the file is then where it lives.
+Nothing is cached. Each is fetched only when the user identifies an artist or
+reads it again, which writes it into the file or beside it, and the folder is
+then where it lives.
 
 Wikimedia asks every client to identify itself with a contact address
 (https://meta.wikimedia.org/wiki/User-Agent_policy), which the MusicBrainz user
@@ -19,6 +21,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -30,8 +33,20 @@ import httpx
 TIMEOUT = httpx.Timeout(10.0)
 
 _WIKIDATA_API = "https://www.wikidata.org/w/api.php"
+_COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 _ITEM_URL_RE = re.compile(r"https?://(?:www\.|m\.)?wikidata\.org/wiki/(Q[1-9][0-9]*)/?$")
 _WIKIPEDIA_HOST_RE = re.compile(r"[a-z][a-z0-9-]*\.wikipedia\.org")
+#: Where Commons keeps its files: originals on the first, renditions on the
+#: second.
+_IMAGE_HOSTS = frozenset({"upload.wikimedia.org", "thumb.wikimedia.org"})
+_COMMONS_HOST = "commons.wikimedia.org"
+
+#: How wide a rendition of a Commons picture is fetched. An original can be a
+#: forty-megapixel photograph, and no player draws an artist wider than
+#: fanart.tv's thumbnails, 1000 pixels. Commons renders only standard widths and
+#: gives the next one up for any other, so 1000 would fetch 1280; 960 is the
+#: widest of them within 1000.
+PICTURE_WIDTH = 960
 
 
 class WikimediaError(Exception):
@@ -47,6 +62,20 @@ class Biography:
     language: str
     url: str
     revision: str
+
+
+@dataclass(frozen=True)
+class CommonsPicture:
+    """A Wikidata item's image on Commons, as a rendition to fetch, and what
+    its credit needs: Commons pictures are CC BY or CC BY-SA, or free of
+    copyright, and the first two ask for the author and the licence."""
+
+    url: str
+    #: The file's page on Commons, which the credit links to.
+    page: str
+    author: str
+    licence: str
+    licence_url: str
 
 
 def wikidata_item(artist: Mapping[str, Any]) -> str | None:
@@ -143,6 +172,123 @@ def biography(
     return Biography(text=text, language=sites[site], url=url, revision=str(revisions[0]["revid"]))
 
 
+def picture(
+    item: str, *, user_agent: str, client: httpx.Client | None = None
+) -> CommonsPicture | None:
+    """The image Wikidata gives `item` (P18), as Commons' rendition
+    `PICTURE_WIDTH` pixels wide, with its author and licence.
+
+    The best-ranked claim, and only when there is exactly one: an item with
+    two preferred images, or two normal ones and no preferred, has no picture
+    rather than a guess. None also when the item, or the file it names, isn't
+    there. Raises `WikimediaError` when either service can't be asked or
+    answers something unreadable, including a rendition that isn't on one of
+    Wikimedia's own image hosts.
+    """
+    if client is None:
+        with httpx.Client(timeout=TIMEOUT, follow_redirects=True) as owned:
+            return picture(item, user_agent=user_agent, client=owned)
+    headers = {"User-Agent": user_agent}
+    claims = _ask(
+        client,
+        _WIKIDATA_API,
+        {"action": "wbgetclaims", "entity": item, "property": "P18", "format": "json"},
+        headers,
+        empty=("no-such-entity",),
+    ).get("claims")
+    name = _best_value((claims or {}).get("P18") if isinstance(claims, dict) else None)
+    if name is None:
+        return None
+    query = _ask(
+        client,
+        _COMMONS_API,
+        {
+            "action": "query",
+            "titles": f"File:{name}",
+            "prop": "imageinfo",
+            "iiprop": "url|extmetadata",
+            "iiurlwidth": str(PICTURE_WIDTH),
+            "iiextmetadatafilter": "Artist|LicenseShortName|LicenseUrl",
+            "format": "json",
+            "formatversion": "2",
+        },
+        headers,
+    ).get("query")
+    pages = query.get("pages") if isinstance(query, dict) else None
+    if not isinstance(pages, list) or not pages or not isinstance(pages[0], dict):
+        raise WikimediaError(f"Commons answered with no page for {name!r}")
+    page = pages[0]
+    infos = page.get("imageinfo")
+    if page.get("missing") or not isinstance(infos, list) or not infos:
+        return None
+    info = infos[0] if isinstance(infos[0], dict) else {}
+    url = str(info.get("thumburl") or info.get("url") or "")
+    parts = urlsplit(url)
+    # The rendition's address is Commons' answer, so it must be on one of
+    # Wikimedia's image hosts before anything is sent there.
+    if parts.scheme != "https" or parts.hostname not in _IMAGE_HOSTS:
+        raise WikimediaError(f"Commons gave {url!r} for {name!r}, which isn't Wikimedia's")
+    page_url = str(info.get("descriptionurl") or "")
+    page_parts = urlsplit(page_url)
+    # The credit links to the file's page, so it must be Commons' own.
+    if page_parts.scheme != "https" or page_parts.hostname != _COMMONS_HOST:
+        raise WikimediaError(f"Commons gave {page_url!r} as the page for {name!r}")
+    metadata = info.get("extmetadata")
+    said = metadata if isinstance(metadata, dict) else {}
+
+    def value_of(key: str) -> str:
+        entry = said.get(key)
+        return str(entry.get("value") or "") if isinstance(entry, dict) else ""
+
+    licence_url = value_of("LicenseUrl").strip()
+    return CommonsPicture(
+        url=url,
+        page=page_url,
+        author=_plain(value_of("Artist")),
+        licence=_plain(value_of("LicenseShortName")),
+        # Whoever wrote the file's page wrote this, and the credit links it:
+        # an address of any other kind is no licence's.
+        licence_url=licence_url if urlsplit(licence_url).scheme in ("http", "https") else "",
+    )
+
+
+def _best_value(statements: object) -> str | None:
+    """The one value among the best-ranked of a property's statements, or
+    None when there isn't exactly one. Wikidata ranks a statement preferred,
+    normal or deprecated: a deprecated one is known to be wrong, and a
+    preferred one outranks the normal ones."""
+    if not isinstance(statements, list):
+        return None
+    current = [s for s in statements if isinstance(s, dict) and s.get("rank") != "deprecated"]
+    best = [s for s in current if s.get("rank") == "preferred"] or current
+    values = []
+    for statement in best:
+        snak = statement.get("mainsnak")
+        datavalue = snak.get("datavalue") if isinstance(snak, dict) else None
+        value = datavalue.get("value") if isinstance(datavalue, dict) else None
+        if isinstance(value, str) and value:
+            values.append(value)
+    return values[0] if len(best) == 1 and len(values) == 1 else None
+
+
+def _plain(markup: str) -> str:
+    """Commons' metadata is HTML (an author is often a link to their user
+    page): its text, on one line."""
+    reader = _TextReader()
+    reader.feed(markup)
+    reader.close()
+    return " ".join("".join(reader.parts).split())
+
+
+class _TextReader(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+
 def _site(language: str) -> str:
     """Wikidata's name for a language's Wikipedia: `en` -> `enwiki`, `zh-yue`
     -> `zh_yuewiki`."""
@@ -150,8 +296,16 @@ def _site(language: str) -> str:
 
 
 def _ask(
-    client: httpx.Client, url: str, params: Mapping[str, str], headers: Mapping[str, str]
+    client: httpx.Client,
+    url: str,
+    params: Mapping[str, str],
+    headers: Mapping[str, str],
+    *,
+    empty: Sequence[str] = (),
 ) -> dict[str, Any]:
+    """The service's answer, raising `WikimediaError` for an error it gives,
+    except one whose code is in `empty`: an answer of nothing, read as an empty
+    one."""
     try:
         response = client.get(url, params=params, headers=headers)
         response.raise_for_status()
@@ -163,5 +317,8 @@ def _ask(
     if not isinstance(answer, dict):
         raise WikimediaError(f"{urlsplit(url).hostname} answered with no object")
     if "error" in answer:
-        raise WikimediaError(f"{urlsplit(url).hostname}: {answer['error']}")
+        error = answer["error"]
+        if isinstance(error, dict) and error.get("code") in empty:
+            return {}
+        raise WikimediaError(f"{urlsplit(url).hostname}: {error}")
     return answer

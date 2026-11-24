@@ -6,6 +6,13 @@ in each track and as a `cover.jpg` (or `cover.png`) in the folder, and players
 differ in which they read. So artwork is handled as a whole: every image the
 album carries, and every place it could go.
 
+**An album's images come from two places only**: what the album already
+carries, and the Cover Art Archive. When the archive has no suitable cover, the
+correction belongs there, where it helps every MusicBrainz user and every tagger
+rather than one library (#909). An artist's picture is the exception, because
+MusicBrainz keeps no artist images to correct (see
+[external services](external-services.md#fanarttv-and-wikimedia-commons)).
+
 ## One plan decides everything
 
 A single **artwork plan** is built from what the album carries (each track's

@@ -431,6 +431,26 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
             biography  TEXT
         )""",
     ),
+    # 15 -> 16: an artist's picture (#1020).
+    #
+    # `nfo_changes.picture` is the picture a write put beside the NFO, or the
+    # one an Undo took away, as JSON {"file", "digest", "added", and where an
+    # added one came from}. A picture is a file, not one of the NFO's elements,
+    # so it isn't in `changes`, whose keys every reader takes for elements; but
+    # it is part of the write that fetched it, so undoing a wrong
+    # identification takes the wrong artist's picture with it. The digest is
+    # what Undo and the artist page's credit check the file against, since a
+    # picture replaced since isn't the one written. NULL for a write with no
+    # picture, and for every write before this.
+    #
+    # `mb_artist_cache.picture` is what the last picture lookup found, as
+    # `biography` is for the biography: JSON {"status", and "service" for a
+    # failure or "item" for none found}, NULL until one is made. The artist
+    # page reads it to say why an identified artist has no picture.
+    (
+        "ALTER TABLE nfo_changes ADD COLUMN picture TEXT",
+        "ALTER TABLE mb_artist_cache ADD COLUMN picture TEXT",
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)  # the version this build expects/creates
@@ -793,6 +813,9 @@ class NfoChanges:
     key_before: str
     changes: dict[str, list[str | None]]
     sources: dict[str, dict[str, str]] = field(default_factory=dict)
+    #: The picture the write put beside the file or took away (#1020), as the
+    #: 15->16 migration describes it, or None.
+    picture: dict[str, Any] | None = None
 
 
 def record_nfo_changes(
@@ -802,22 +825,24 @@ def record_nfo_changes(
     key_before: str,
     changes: Mapping[str, Sequence[str | None]],
     sources: Mapping[str, Mapping[str, str]] | None = None,
+    picture: Mapping[str, Any] | None = None,
 ) -> None:
     """Attach one NFO write's per-field before/after to its `nfo.write` audit
-    row `event_id` (#981), with where any field came from (#1018).
+    row `event_id` (#981), with where any field came from (#1018), and the
+    picture it put beside the file or took away (#1020).
 
     Best-effort, like `record_tag_changes`: the write has happened and its audit
     line is committed, so losing this row costs the History detail and the
     Undo, never the record that the write took place.
     """
-    if not changes:
+    if not changes and not picture:
         return
     try:
         with _LOCK:
             conn = _ensure()
             conn.execute(
-                "INSERT INTO nfo_changes (event_id, file, key_before, changes, sources) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO nfo_changes (event_id, file, key_before, changes, sources, picture) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     event_id,
                     file,
@@ -833,6 +858,9 @@ def record_nfo_changes(
                         sort_keys=True,
                     )
                     if sources
+                    else None,
+                    json.dumps(dict(picture), ensure_ascii=False, sort_keys=True)
+                    if picture
                     else None,
                 ),
             )
@@ -856,7 +884,7 @@ def nfo_changes_for(event_ids: Sequence[int]) -> dict[int, NfoChanges]:
         with _LOCK:
             conn = _ensure()
             rows = conn.execute(
-                "SELECT event_id, file, key_before, changes, sources "
+                "SELECT event_id, file, key_before, changes, sources, picture "
                 f"FROM nfo_changes WHERE event_id IN ({placeholders})",
                 list(event_ids),
             ).fetchall()
@@ -864,7 +892,7 @@ def nfo_changes_for(event_ids: Sequence[int]) -> dict[int, NfoChanges]:
         log.exception("activity_store nfo_changes_for failed", extra=_QUIET_MIRROR)
         raise StoreUnavailableError("could not read the artist NFO changes") from exc
     out: dict[int, NfoChanges] = {}
-    for event_id, file, key_before, payload, sourced in rows:
+    for event_id, file, key_before, payload, sourced, pictured in rows:
         try:
             parsed = json.loads(payload)
         except TypeError, ValueError:
@@ -876,8 +904,26 @@ def nfo_changes_for(event_ids: Sequence[int]) -> dict[int, NfoChanges]:
                 key_before=str(key_before),
                 changes={str(k): list(v) for k, v in parsed.items() if isinstance(v, list)},
                 sources=_nfo_sources(event_id, sourced),
+                picture=_nfo_picture(event_id, pictured),
             )
     return out
+
+
+def _nfo_picture(event_id: int, pictured: str | None) -> dict[str, Any] | None:
+    """A write's picture as stored. One that won't parse costs that picture's
+    History line, credit and Undo, not the write's fields, so it is skipped
+    and said."""
+    if pictured is None:
+        return None
+    try:
+        parsed = json.loads(pictured)
+    except ValueError:
+        log.warning("nfo_changes row %s has an unreadable picture — skipping it", event_id)
+        return None
+    if not isinstance(parsed, dict) or not parsed.get("file") or not parsed.get("digest"):
+        log.warning("nfo_changes row %s has an incomplete picture — skipping it", event_id)
+        return None
+    return parsed
 
 
 def _nfo_sources(event_id: int, sourced: str | None) -> dict[str, dict[str, str]]:
@@ -1625,11 +1671,12 @@ def store_release(mbid: str, inc: str, payload: Mapping[str, Any]) -> None:
 @dataclass(frozen=True)
 class CachedArtist:
     """An artist's last answer from MusicBrainz, when it was read, and what the
-    last biography lookup for it found (#1022)."""
+    last biography lookup (#1022) and picture lookup (#1020) for it found."""
 
     payload: dict[str, Any]
     fetched_at: datetime
     biography: dict[str, Any] | None
+    picture: dict[str, Any] | None = None
 
 
 def cached_artist(mbid: str) -> CachedArtist | None:
@@ -1645,7 +1692,8 @@ def cached_artist(mbid: str) -> CachedArtist | None:
         with _LOCK:
             conn = _ensure()
             row = conn.execute(
-                "SELECT payload, fetched_at, biography FROM mb_artist_cache WHERE mbid = ?",
+                "SELECT payload, fetched_at, biography, picture "
+                "FROM mb_artist_cache WHERE mbid = ?",
                 (mbid,),
             ).fetchone()
     except sqlite3.Error as exc:
@@ -1653,11 +1701,12 @@ def cached_artist(mbid: str) -> CachedArtist | None:
         raise StoreUnavailableError("could not read the stored artist") from exc
     if row is None:
         return None
-    blob, stamp, lookup = row
+    blob, stamp, lookup, pictured = row
     try:
         payload = json.loads(blob)
         fetched_at = datetime.fromisoformat(stamp)
         biography = json.loads(lookup) if lookup is not None else None
+        picture = json.loads(pictured) if pictured is not None else None
     except ValueError, TypeError:
         log.warning(
             "mb_artist_cache row %s is unreadable — reading it as never read",
@@ -1671,6 +1720,7 @@ def cached_artist(mbid: str) -> CachedArtist | None:
         payload=payload,
         fetched_at=fetched_at,
         biography=biography if isinstance(biography, dict) else None,
+        picture=picture if isinstance(picture, dict) else None,
     )
 
 
@@ -1716,6 +1766,21 @@ def store_artist_biography(mbid: str, lookup: Mapping[str, Any]) -> None:
             conn.commit()
     except sqlite3.Error, TypeError, ValueError:
         log.exception("activity_store store_artist_biography(%s) failed", mbid, extra=_QUIET_MIRROR)
+
+
+def store_artist_picture(mbid: str, lookup: Mapping[str, Any]) -> None:
+    """Keep what a picture lookup for the stored artist `mbid` found (#1020).
+    Best-effort, as `store_artist` is; the artist has been stored first."""
+    try:
+        with _LOCK:
+            conn = _ensure()
+            conn.execute(
+                "UPDATE mb_artist_cache SET picture = ? WHERE mbid = ?",
+                (json.dumps(dict(lookup), sort_keys=True), mbid),
+            )
+            conn.commit()
+    except sqlite3.Error, TypeError, ValueError:
+        log.exception("activity_store store_artist_picture(%s) failed", mbid, extra=_QUIET_MIRROR)
 
 
 def release_fetch_times(inc: str) -> dict[str, datetime]:

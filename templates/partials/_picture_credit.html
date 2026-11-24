@@ -1,0 +1,15 @@
+{# Where an artist's picture came from (#1020), wherever Harmonist shows it as
+   that source's: under the picture on the artist page while it is the file
+   Harmonist wrote, and under the History row of the write that put it there.
+   fanart.tv asks to be named with the images used from it, and names the
+   copyright holder where it has one recorded; a Commons picture is CC BY or
+   CC BY-SA, which ask for the author and the licence. Styled as the
+   Wikipedia credit is, in the size of whatever holds it.
+
+   Expects `credit` (nfo_history.PictureCredit). #}
+<a href="{{ credit.url }}" target="_blank" rel="noopener" class="text-accent hover:underline">From {{ credit.source }} <span aria-hidden="true">↗</span></a>
+{%- if credit.author %}<span class="text-muted"> · {{ credit.author }}</span>{% endif %}
+{%- if credit.licence %}<span class="text-muted"> · </span>
+{%- if credit.licence_url %}<a href="{{ credit.licence_url }}" target="_blank" rel="noopener" class="text-accent hover:underline">{{ credit.licence }}</a>
+{%- else %}<span class="text-muted">{{ credit.licence }}</span>{% endif %}
+{%- endif %}

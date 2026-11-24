@@ -203,3 +203,171 @@ def test_an_article_somewhere_other_than_wikipedia_is_not_asked():
         pytest.raises(wikimedia.WikimediaError),
     ):
         wikimedia.biography(ITEM, languages=["en"], user_agent=AGENT, client=client)
+
+
+# The picture: the image Wikidata gives the item (P18), on Commons (#1020).
+
+FILE = "Radiohead 2016.jpg"
+# As Commons gave a rendition on 2026-11-24: its own host, and a query.
+RENDITION = (
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Radiohead_2016.jpg/"
+    "960px-Radiohead_2016.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo"
+    "&utm_content=thumbnail"
+)
+FILE_PAGE = "https://commons.wikimedia.org/wiki/File:Radiohead_2016.jpg"
+
+
+def p18(value: str, rank: str = "normal") -> dict[str, Any]:
+    return {
+        "mainsnak": {"snaktype": "value", "datavalue": {"value": value, "type": "string"}},
+        "rank": rank,
+    }
+
+
+def imageinfo(**info: Any) -> dict[str, Any]:
+    found = {
+        "thumburl": RENDITION,
+        "url": "https://upload.wikimedia.org/wikipedia/commons/a/ab/Radiohead_2016.jpg",
+        "descriptionurl": FILE_PAGE,
+        "extmetadata": {
+            "Artist": {"value": '<a href="//commons.wikimedia.org/wiki/User:Jo">Jo\n Bloggs</a>'},
+            "LicenseShortName": {"value": "CC BY-SA 4.0"},
+            "LicenseUrl": {"value": "https://creativecommons.org/licenses/by-sa/4.0"},
+        },
+    }
+    return {**found, **info}
+
+
+def commons(claims: list[dict[str, Any]] | None, page: dict[str, Any] | None = None):
+    """Wikidata answering with `claims` for P18, and Commons with `page`."""
+    asked: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        asked.append(request)
+        if request.url.host == "www.wikidata.org":
+            if claims is None:
+                body: dict[str, Any] = {"error": {"code": "no-such-entity", "info": "gone"}}
+            else:
+                body = {"claims": {"P18": claims} if claims else {}}
+            return httpx.Response(200, json=body)
+        if request.url.host == "commons.wikimedia.org":
+            found = (
+                page if page is not None else {"title": f"File:{FILE}", "imageinfo": [imageinfo()]}
+            )
+            return httpx.Response(200, json={"query": {"pages": [found]}})
+        raise AssertionError(f"asked {request.url.host}")
+
+    return answer, asked
+
+
+def picture(answer):
+    with httpx.Client(transport=httpx.MockTransport(answer)) as client:
+        return wikimedia.picture(ITEM, user_agent=AGENT, client=client)
+
+
+def test_the_items_image_is_fetched_as_a_rendition_with_its_author_and_licence():
+    answer, asked = commons([p18(FILE)])
+    assert picture(answer) == wikimedia.CommonsPicture(
+        url=RENDITION,
+        page=FILE_PAGE,
+        author="Jo Bloggs",
+        licence="CC BY-SA 4.0",
+        licence_url="https://creativecommons.org/licenses/by-sa/4.0",
+    )
+    claims, info = asked
+    assert dict(claims.url.params) == {
+        "action": "wbgetclaims",
+        "entity": ITEM,
+        "property": "P18",
+        "format": "json",
+    }
+    assert info.url.params["titles"] == f"File:{FILE}"
+    assert info.url.params["iiurlwidth"] == str(wikimedia.PICTURE_WIDTH)
+    assert {r.headers["User-Agent"] for r in asked} == {AGENT}
+
+
+@pytest.mark.parametrize(
+    ("claims", "expected"),
+    [
+        ([p18("A.jpg", "preferred"), p18("B.jpg")], "A.jpg"),
+        ([p18("A.jpg", "deprecated"), p18("B.jpg")], "B.jpg"),
+        ([p18("A.jpg"), p18("B.jpg")], None),
+        ([p18("A.jpg", "preferred"), p18("B.jpg", "preferred")], None),
+        ([p18("A.jpg", "deprecated")], None),
+        ([{"mainsnak": {"snaktype": "novalue"}, "rank": "normal"}], None),
+    ],
+)
+def test_only_one_best_ranked_image_is_the_artists(claims, expected):
+    """Wikidata's ranks say which image is the artist's: a deprecated one is
+    known to be wrong, a preferred one outranks the rest, and two of equal
+    rank are no picture rather than a guess."""
+    answer, asked = commons(claims)
+    found = picture(answer)
+    if expected is None:
+        assert found is None
+        assert len(asked) == 1  # Commons isn't asked
+    else:
+        assert found is not None
+        assert asked[1].url.params["titles"] == f"File:{expected}"
+
+
+@pytest.mark.parametrize("claims", [[], None])
+def test_an_item_with_no_image_or_no_item_at_all_has_no_picture(claims):
+    answer, asked = commons(claims)
+    assert picture(answer) is None
+    assert len(asked) == 1
+
+
+def test_a_file_commons_doesnt_have_is_no_picture():
+    answer, _ = commons([p18(FILE)], page={"title": f"File:{FILE}", "missing": True})
+    assert picture(answer) is None
+
+
+def test_an_original_narrower_than_the_rendition_is_fetched_from_where_originals_are():
+    """Commons doesn't enlarge, so a small original is its own rendition."""
+    original = "https://upload.wikimedia.org/wikipedia/commons/a/ab/Radiohead_2016.jpg"
+    answer, _ = commons(
+        [p18(FILE)],
+        page={"title": f"File:{FILE}", "imageinfo": [imageinfo(thumburl=original)]},
+    )
+    found = picture(answer)
+    assert found is not None and found.url == original
+
+
+@pytest.mark.parametrize(
+    "info",
+    [
+        {"thumburl": "https://example.com/x.jpg"},
+        {"thumburl": "https://thumb.wikimedia.org.example.com/x.jpg"},
+        {"thumburl": "http://upload.wikimedia.org/x.jpg"},
+        {"descriptionurl": "https://example.com/File:X.jpg"},
+    ],
+)
+def test_an_address_off_wikimedias_own_hosts_is_refused(info):
+    """The rendition is fetched and the file's page linked from the credit,
+    so both have to be where Wikimedia keeps them."""
+    answer, _ = commons(
+        [p18(FILE)], page={"title": f"File:{FILE}", "imageinfo": [imageinfo(**info)]}
+    )
+    with pytest.raises(wikimedia.WikimediaError):
+        picture(answer)
+
+
+def test_a_licence_address_that_isnt_a_web_address_isnt_linked():
+    """Whoever wrote the file's page wrote its licence's address, and the
+    credit links it."""
+    metadata = imageinfo()["extmetadata"] | {"LicenseUrl": {"value": "javascript:alert(1)"}}
+    answer, _ = commons(
+        [p18(FILE)],
+        page={"title": f"File:{FILE}", "imageinfo": [imageinfo(extmetadata=metadata)]},
+    )
+    found = picture(answer)
+    assert found is not None and found.licence == "CC BY-SA 4.0" and found.licence_url == ""
+
+
+def test_a_wikidata_error_other_than_no_such_item_is_a_failure():
+    def answer(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"error": {"code": "maxlag", "info": "busy"}})
+
+    with pytest.raises(wikimedia.WikimediaError, match="maxlag"):
+        picture(answer)

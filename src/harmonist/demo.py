@@ -42,8 +42,10 @@ from mutagen.mp4 import MP4
 from . import (
     activity,
     activity_store,
+    artist_fill,
     audit,
     cover_art,
+    fanart_tv,
     formats,
     id_registry,
     images,
@@ -177,6 +179,18 @@ WIKIPEDIA: dict[str, tuple[str, str]] = {
         "The Unplayed Satellites are a band known chiefly for the albums they have yet to release.",
     ),
 }
+
+
+#: The demo's artist pictures (#1020): fanart.tv has Wyld Stallion, whose
+#: empty NFO gets one when identified, and Commons has the image Wikidata gives
+#: The Unplayed Satellites, whose NFO gets one when read again. Mouse Rat is
+#: on neither, and its MusicBrainz links no Wikidata item.
+FANART_TV: dict[str, str] = {"Wyld Stallion": "wyld.png"}
+COMMONS: dict[str, tuple[str, str]] = {
+    "Q900000002": ("Unplayed Satellites live.jpg", "cover-5.jpg")
+}
+_DEMO_FANART_ASSETS = "https://assets.fanart.tv/fanart/music/demo/"
+_DEMO_COMMONS_UPLOADS = "https://upload.wikimedia.org/wikipedia/commons/demo/"
 
 
 def _credited_artist(artist_id: str, name: str) -> dict[str, str]:
@@ -1186,6 +1200,43 @@ def wikipedia_biography(
     )
 
 
+def fanart_thumb(
+    mbid: str, *, personal_key: str, user_agent: str, client: object = None
+) -> fanart_tv.Thumb | None:
+    """Demo counterpart of fanart.tv's artist thumbnails (#1020)."""
+    asset = FANART_TV.get(_known_artists().get(mbid, ""))
+    if asset is None:
+        return None
+    return fanart_tv.Thumb(
+        url=_DEMO_FANART_ASSETS + asset, page=f"https://fanart.tv/artist/{mbid}/"
+    )
+
+
+def commons_picture(
+    item: str, *, user_agent: str, client: object = None
+) -> wikimedia.CommonsPicture | None:
+    """Demo counterpart of the image Wikidata gives an item, on Commons (#1020)."""
+    if item not in COMMONS:
+        return None
+    title, asset = COMMONS[item]
+    return wikimedia.CommonsPicture(
+        url=_DEMO_COMMONS_UPLOADS + asset,
+        page=f"https://commons.wikimedia.org/wiki/File:{title.replace(' ', '_')}",
+        author="A. Demo Photographer",
+        licence="CC BY-SA 4.0",
+        licence_url="https://creativecommons.org/licenses/by-sa/4.0",
+    )
+
+
+def download_picture(url: str, *, user_agent: str, client: object = None) -> bytes | None:
+    """Demo counterpart of fetching a picture fanart.tv or Commons named: the
+    demo's own image of that name."""
+    for prefix in (_DEMO_FANART_ASSETS, _DEMO_COMMONS_UPLOADS):
+        if url.startswith(prefix):
+            return (ASSETS_DIR / url.removeprefix(prefix)).read_bytes()
+    raise artist_fill.PictureFetchError(f"demo: no picture at {url}")
+
+
 def search_artists(name: str, limit: int = 10) -> tuple[list[dict[str, Any]], int]:
     """Demo counterpart of the artist search (#981): the artists the demo knows
     whose names contain `name`, ignoring case, by name."""
@@ -1461,10 +1512,16 @@ def install() -> None:
     cover_art.fetch_listing = fetch_listing
     cover_art.fetch_bytes = fetch_bytes
     cover_art.fetch_head = fetch_head
-    # Wikipedia is only ever asked for a biography, so this is the whole of it.
+    # Wikimedia is asked for a biography and a picture, and fanart.tv for a
+    # picture, so these are the whole of them. The demo's fanart.tv answers
+    # without a key.
     wikimedia.biography = wikipedia_biography
+    wikimedia.picture = commons_picture
+    fanart_tv.artist_thumb = fanart_thumb
+    fanart_tv.available = lambda personal_key: True
+    artist_fill.download_picture = download_picture
     formats.write_tags = _paced_write_tags
-    log.info("demo mode: monkey-patched mb_lookup, mb_search, cover_art, wikimedia")
+    log.info("demo mode: monkey-patched mb_lookup, mb_search, cover_art, wikimedia, fanart_tv")
 
 
 # ---------------------------------------------------------------------------

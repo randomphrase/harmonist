@@ -12,7 +12,17 @@ from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
-from harmonist import formats, live_counts, mb_cache, mb_lookup, scanner, sidecar
+from harmonist import (
+    artist_fill,
+    fanart_tv,
+    formats,
+    live_counts,
+    mb_cache,
+    mb_lookup,
+    scanner,
+    sidecar,
+    wikimedia,
+)
 from harmonist.config import Config, PathsConfig
 from harmonist.formats.m4a import ATOM_ALBUM_ARTISTS, ATOM_MB_ALBUM_ARTIST_ID
 from harmonist.formats.types import TagSet
@@ -76,6 +86,12 @@ def artist_client(tmp_path, monkeypatch):
     )
     network = Mock(side_effect=AssertionError("Artist browsing must stay offline"))
     monkeypatch.setattr(mb_lookup, "fetch_release", network)
+    # Identifying an artist looks for a picture where the folder has none
+    # (#1020). Neither fanart.tv nor Commons has one unless a test says so,
+    # and neither is ever really asked.
+    monkeypatch.setattr(fanart_tv, "artist_thumb", Mock(return_value=None))
+    monkeypatch.setattr(wikimedia, "picture", Mock(return_value=None))
+    monkeypatch.setattr(artist_fill, "download_picture", network)
     return TestClient(create_app(cfg), headers={"HX-Request": "true"}), cfg, network
 
 
@@ -217,6 +233,9 @@ def test_the_panel_holds_identity_and_artist_info_holds_what_the_nfo_says(artist
     assert _fields(panel) == {
         "MB artist": f"{ALICE} ↗",
         "Path": "ArtistInfo/Different directory name/artist.nfo",
+        # Identified with no picture, and not read since pictures were looked
+        # up, so nothing says why (#1020).
+        "Picture": "None",
     }
     dates = panel.select_one(".album-identity__dates")
     assert dates.dt.get_text() == "Modified"
@@ -291,7 +310,7 @@ def test_artist_identity_without_a_unique_nfo_name_keeps_tag_identity(artist_cli
         }
         assert panel.select_one('[role="alert"]') is not None
     if profile_state == "nameless":
-        assert list(_fields(panel)) == ["MB artist", "Path"]
+        assert list(_fields(panel)) == ["MB artist", "Path", "Picture"]
         assert _fields(soup.select_one("#artist-info")) == {"Born": "1980", "Biography": ""}
     else:
         # Nothing to read the artist's details from: one file, or none, has to

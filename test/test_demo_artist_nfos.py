@@ -1,8 +1,19 @@
 """The public demo exercises the real artist inventory and exclusion rules."""
 
+from functools import partial
+
 import pytest
 
-from harmonist import artist_nfo, artists, demo, mb_lookup, nfo_writer, scanner, wikimedia
+from harmonist import (
+    artist_fill,
+    artist_nfo,
+    artists,
+    demo,
+    mb_lookup,
+    nfo_writer,
+    scanner,
+    wikimedia,
+)
 from harmonist.models import AlbumState
 
 VARIOUS = "89ad4ac3-39f7-470e-963a-56509c546377"
@@ -111,3 +122,31 @@ def test_the_demos_wikipedia_has_a_biography_for_wyld_stallion_and_is_never_aske
     found = wikimedia.biography(item, languages=["en"], user_agent="demo")
     assert found is not None and found.text.startswith("Wyld Stallion are a rock duo")
     assert wikimedia.biography(item, languages=["pt"], user_agent="demo") is None
+
+
+def test_the_demos_pictures_come_from_each_source_and_never_for_real(tmp_path):
+    """Identifying Wyld Stallion fills in fanart.tv's picture, reading The
+    Unplayed Satellites again fills in Commons', and Mouse Rat is on neither
+    (#1020), without the demo ever contacting fanart.tv or Wikimedia."""
+    demo.install()
+    asking = artist_fill.Asking(languages=["en"], user_agent="demo")
+    wyld = demo.MB_RELEASES["demo-rel-wyld"]["artist-credit"][0]["artist"]["id"]
+    satellites = demo._demo_mbid("art", "demo-unplayed-satellites")
+    mouse_rat = demo.MB_RELEASES["demo-rel-mouserat"]["artist-credit"][0]["artist"]["id"]
+    found = {
+        mbid: artist_fill.fill(
+            mbid,
+            partial(demo.fetch_artist, mbid),
+            lacks_biography=False,
+            lacks_picture=True,
+            asking=asking,
+        )[1]
+        for mbid in (wyld, satellites, mouse_rat)
+    }
+    assert found[wyld].picture is not None
+    assert found[wyld].picture.name == "artist.png"
+    assert found[wyld].picture.credit.source == "fanart.tv"
+    assert found[satellites].picture is not None
+    assert found[satellites].picture.name == "artist.jpg"
+    assert found[satellites].picture.credit.source == "Wikimedia Commons"
+    assert found[mouse_rat].picture is None and found[mouse_rat].picture_failed is None

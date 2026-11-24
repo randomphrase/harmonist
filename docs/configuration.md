@@ -99,6 +99,7 @@ release's own comment; missing or identical comments can leave titles identical.
 | Key | Env | Default | |
 |---|---|---|---|
 | `biography_languages` | `HARMONIST_ARTISTS_BIOGRAPHY_LANGUAGES` | `["en"]` | The Wikipedias an artist NFO's biography comes from, by language code, most wanted first: `["pt", "en"]` takes the Portuguese article, or the English one where there's no Portuguese. The env var is comma-separated. |
+| `fanart_tv_personal_key` | `HARMONIST_ARTISTS_FANART_TV_PERSONAL_KEY` | `""` | Your own [fanart.tv API key](https://fanart.tv/get-an-api-key/), optional. Without it, a picture reaches Harmonist a week after fanart.tv approves it; with it, after two days, and at once for a fanart.tv VIP member. It's sent only to fanart.tv. |
 
 ## `[server]`
 

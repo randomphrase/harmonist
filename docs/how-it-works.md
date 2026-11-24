@@ -122,16 +122,32 @@ survive there; Kodi shows the markup as text. A biography the file already has i
 in the file is touched. The artist page credits Wikipedia beside the biography
 while it is still the text that was written. Where the file has none, its
 Biography row says why, as of when MusicBrainz was last read: the
-**MB checked** time at the top of Artist info. The ↻ beside it reads the artist
-from MusicBrainz again and fills in a biography that is missing, so one linked
-on MusicBrainz since arrives without identifying the artist again. It writes
-nothing else MusicBrainz has changed. An identified NFO has the same finder
+**MB checked** time at the top of Artist info.
+
+Where the NFO's folder has no picture of the artist, Identify also puts one
+beside it, as `artist.jpg` (or `artist.png`), the name Navidrome and Plex read.
+It is the first of the artist's thumbnails on [fanart.tv](https://fanart.tv),
+found by the artist's MusicBrainz ID, or failing that the image Wikidata gives
+the artist's item, from Wikimedia Commons. A folder already holding an
+`artist`, `folder`, `cover`, `poster` or `thumb` image, or an NFO whose
+`<thumb>` names a local file, keeps what it has. The artist page credits the
+picture's source under it while it is still the file that was written, and an
+identified artist without one says why on its Picture row. Kodi reads `folder.jpg` and
+Jellyfin `folder.jpg` or `poster.jpg` instead, so their users can copy the file
+to one of those names. A [personal fanart.tv key](configuration.md#artists)
+gets newer pictures.
+
+The ↻ beside **MB checked** reads the artist from MusicBrainz again and fills in
+a biography or picture that is missing, so one linked on MusicBrainz since
+arrives without identifying the artist again. It writes nothing else
+MusicBrainz has changed. An identified NFO has the same finder
 behind the edit button beside its MusicBrainz artist, with its own ID already
 filled in: for an artist that turns out to be the wrong one, or to fill in what
 the file lacks. Where an artist has two NFOs, each is identified on its own.
 Harmonist only fills in files that exist: an empty `artist.nfo` is how to ask
 for an artist to be filled in. Each write is listed in the artist's
-**History**, field by field, with **Undo NFO changes**.
+**History**, field by field, with **Undo NFO changes**, which also removes a
+picture the write added while it is still that file.
 
 An incomplete NFO scan keeps readable profiles, biographies and local pictures
 available, with the affected paths and a warning that other matching files may

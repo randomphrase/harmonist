@@ -512,8 +512,8 @@ value is removed.
 An `artist.nfo` gets the owned-set promise too (#981). Its **mapped fields** are
 the ones MusicBrainz decides: the artist ID, name, sort name, type, gender,
 disambiguation, and the dates the type uses. Everything else, the genres, style,
-mood, pictures and discography, is the file's, and a write leaves it alone, as
-it does a biography the file already has. A mapped field MusicBrainz has no
+mood, `<thumb>` and discography, is the file's, and a write leaves it alone, as
+it does a biography the file already has, or a picture beside it. A mapped field MusicBrainz has no
 value for is removed, as an owned tag is. There is no choosing fields one by
 one: MusicBrainz is canonical, so a value that's wrong there is corrected there.
 
@@ -557,6 +557,30 @@ the ID element (#971): no form suits every reader, so supporting Kodi is a
 choice of reader, not a better form (#1031). Harmonist's own pages read a
 biography as HTML too, so Artist info shows what the players show, except that
 a plain-text biography's newlines, Kodi's or a person's, still break its lines.
+
+**A picture is filled in beside the file, never replaced** (#1020), by the
+biography's rule: written where the folder has none, and otherwise left alone.
+"None" means no local `<thumb>` and no `artist`, `folder`, `cover`, `poster` or
+`thumb` image in the NFO's folder. Each of those is a picture some player
+already shows, so it isn't second-guessed, even where Harmonist's own page
+doesn't show it; the page says which file stopped the lookup instead. The
+picture comes from fanart.tv, or else Wikimedia Commons, both reached through
+the artist's MusicBrainz identity (see
+[external services](external-services.md#fanarttv-and-wikimedia-commons)), and
+is written as it comes, whatever its shape: players crop to their own, and
+Harmonist crops nothing anywhere else. Only a JPEG or a PNG is written.
+
+**The picture is `artist.jpg`, or `artist.png` for a PNG.** No one name works
+for every reader. Navidrome reads `artist.*` in the artist's folder or up to
+three folders above it, and Plex reads `artist` among others; those are
+Harmonist's destinations, and its own page reads `artist.*` too. Kodi reads
+`folder`, `cover` or `thumb`, and Jellyfin `folder`, `poster` or `cover`, so
+their users can copy the file under one of those names, which then counts as
+the folder's picture. `<thumb>` isn't written: the element is the file's, and a
+local file lets every player show the picture offline. Navidrome's artist-NFO
+plugin reads only an address in `<thumb>`, so it shows no picture from an NFO
+kept in a separate artist information folder, while Navidrome itself finds
+`artist.jpg` in an artist's own folder.
 
 **The row is the review.** The only decision is which artist, and the row that
 offers one already says who it is, with MusicBrainz a link away, so its

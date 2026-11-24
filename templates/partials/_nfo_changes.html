@@ -8,6 +8,10 @@
    stays under the row, so History still says where the text came from once
    the file's text has changed since.
 
+   A picture put beside the file, or an Undo's taking it away (#1020), is a
+   row of its own after the fields, by its file's name, with its source's
+   credit under it as a biography's is.
+
    Expects `write` (nfo_history.HistoryWrite) and `several_files`. #}
 {% from 'partials/_change_pair.html' import pair %}
 <dl class="tag-changes">
@@ -20,5 +24,10 @@
     <dd>{{ pair(c, c.before, c.after, none, none, removed_by='this write') }}</dd>
     {% endif %}
     {% endfor %}
+    {% with p = write.picture %}{% if p %}
+    <dt>Picture</dt>
+    <dd><div class="w-full">{{ pair(p, none if p.added else p.file, p.file if p.added else none, none, none, removed_by='this write') }}</div>
+        {% if p.credit %}<p class="mt-1 text-xs">{% with credit = p.credit %}{% include 'partials/_picture_credit.html' %}{% endwith %}</p>{% endif %}</dd>
+    {% endif %}{% endwith %}
 </dl>
 {% if several_files %}<p class="text-2xs text-muted break-all">{{ write.file }}</p>{% endif %}

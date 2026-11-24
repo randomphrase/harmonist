@@ -184,6 +184,21 @@ class ArtistsConfig(BaseModel):
     #: part of an address Harmonist asks, so anything that isn't one stops
     #: startup rather than being sent.
     biography_languages: list[str] = Field(default_factory=lambda: ["en"], min_length=1)
+    #: The user's own fanart.tv API key (#1020), optional: fanart.tv then
+    #: gives them pictures two days after they're approved rather than seven,
+    #: and at once for a VIP member. It is theirs, so it is sent only to
+    #: fanart.tv, in a header, and never shown or logged.
+    fanart_tv_personal_key: str = Field(default="", repr=False)
+
+    @field_validator("fanart_tv_personal_key")
+    @classmethod
+    def _key(cls, value: str) -> str:
+        key = value.strip()
+        # It goes in a header, where a line break would end it and start
+        # another.
+        if key and not key.isalnum():
+            raise ValueError("a fanart.tv personal key is letters and digits only")
+        return key
 
     @field_validator("biography_languages")
     @classmethod
@@ -526,6 +541,9 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     if v := env.get("HARMONIST_ARTISTS_BIOGRAPHY_LANGUAGES"):
         # Comma-separated, like HARMONIST_ALLOWED_HOSTS; validated with the rest.
         artists["biography_languages"] = [c.strip() for c in v.split(",") if c.strip()]
+    if v := env.get("HARMONIST_ARTISTS_FANART_TV_PERSONAL_KEY"):
+        # A secret, so an environment variable is often where it's kept.
+        artists["fanart_tv_personal_key"] = v
     if v := env.get("HARMONIST_DEMO_MODE"):
         data["demo_mode"] = v.strip() not in ("", "0", "false", "False", "no")
     return data

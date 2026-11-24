@@ -12,8 +12,8 @@ reversible.**
   to review and apply.
 - **Fill missing covers and upgrade your artwork** from your files and the Cover
   Art Archive.
-- **Fill in [artist biographies and related data](docs/how-it-works.md#artists-and-local-metadata)**
-  *(preliminary)* from MusicBrainz and Wikipedia.
+- **Fill in [artist biographies, pictures and related data](docs/how-it-works.md#artists-and-local-metadata)**
+  *(preliminary)* from MusicBrainz, Wikipedia and fanart.tv.
 - **Satisfy your inner perfectionist** with [focused library filters](docs/how-it-works.md#the-library)
   that find the gaps in your collection.
 - **Undo tag, artwork and artist changes**, seeing exactly what changed.

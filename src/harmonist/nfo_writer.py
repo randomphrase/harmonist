@@ -485,15 +485,28 @@ def _read(path: Path) -> bytes:
 _TEMPORARY_SUFFIX = ".tmp"
 
 
+#: The temporary files writes go through: an NFO's, and the picture's beside
+#: it (#1020).
+_TEMPORARIES = frozenset(
+    name + _TEMPORARY_SUFFIX for name in ("artist.nfo", "artist.jpg", "artist.png")
+)
+
+
 def is_temporary(path: Path) -> bool:
-    """Whether `path` is the file a write goes through on its way to an NFO."""
-    return path.name.lower() == "artist.nfo" + _TEMPORARY_SUFFIX
+    """Whether `path` is the file a write goes through on its way to an NFO,
+    or to the picture beside one."""
+    return path.name.lower() in _TEMPORARIES
+
+
+def temporary_for(path: Path) -> Path:
+    """The file a write to `path` goes through, beside it."""
+    return path.with_name(path.name + _TEMPORARY_SUFFIX)
 
 
 def _replace(path: Path, data: bytes) -> None:
     """Replace `path` with `data` through a temporary file beside it, keeping
     its permissions: another program, a media server perhaps, reads it too."""
-    temporary = path.with_name(path.name + _TEMPORARY_SUFFIX)
+    temporary = temporary_for(path)
     try:
         mode = stat.S_IMODE(path.stat().st_mode)
         with open(temporary, "wb") as stream:

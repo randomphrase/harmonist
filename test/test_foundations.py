@@ -133,6 +133,33 @@ def test_biography_languages_that_name_no_wikipedia_stop_startup(monkeypatch, tm
         config_mod.load()
 
 
+def test_a_fanart_tv_personal_key_comes_from_the_file_or_the_environment(monkeypatch, tmp_path):
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
+    monkeypatch.delenv("HARMONIST_ARTISTS_FANART_TV_PERSONAL_KEY", raising=False)
+    assert config_mod.load().artists.fanart_tv_personal_key == ""
+    (cfg_dir / "harmonist.toml").write_text('[artists]\nfanart_tv_personal_key = " abc123 "\n')
+    cfg = config_mod.load()
+    assert cfg.artists.fanart_tv_personal_key == "abc123"
+    # It's the user's, so it isn't shown where the settings are printed.
+    assert "abc123" not in repr(cfg)
+    monkeypatch.setenv("HARMONIST_ARTISTS_FANART_TV_PERSONAL_KEY", "def456")
+    assert config_mod.load().artists.fanart_tv_personal_key == "def456"
+
+
+def test_a_fanart_tv_personal_key_that_could_break_its_header_stops_startup(monkeypatch, tmp_path):
+    """It's sent as a header, where a line break would end it."""
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("HARMONIST_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setenv("HARMONIST_MUSIC_DIR", str(tmp_path / "music"))
+    monkeypatch.setenv("HARMONIST_ARTISTS_FANART_TV_PERSONAL_KEY", "abc\r\nX-Other: 1")
+    with pytest.raises(ValidationError, match="fanart_tv_personal_key"):
+        config_mod.load()
+
+
 def test_every_download_format_arrives_as_files_harmonist_can_tag():
     """The choices are the formats Harmonist can READ, not the ones Bandcamp
     offers (#627). WAV and AIFF are Bandcamp's too, and an album downloaded as

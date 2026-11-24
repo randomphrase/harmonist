@@ -479,6 +479,41 @@ checked**):
 A file that already has a `<biography>`, even one written by Kodi or Jellyfin,
 keeps it. To have Wikipedia's instead, empty that element and press the ↻.
 
+### An identified artist has no picture
+
+A picture is only filled in where the NFO's folder has none, from fanart.tv or
+else the image Wikidata gives the artist. The Picture row, beside the artist's
+MusicBrainz link, says which of these happened:
+
+- **"None fetched, since cover.jpg is here"** (or another name): the folder
+  already has a picture some player reads as the artist's, though Harmonist's
+  page doesn't show it. To have one fetched instead, rename or remove that file
+  and press the ↻ beside **MB checked**.
+- **"None fetched, since the NFO names thumb.jpg"**: the NFO's `<thumb>` names
+  a local file, and that is the artist's picture as far as the NFO is concerned.
+  Empty the `<thumb>` element and press the ↻.
+- **"None on fanart.tv or Wikimedia Commons"**: fanart.tv has no thumbnail for
+  the artist's MBID, and their Wikidata item has no image, or more than one of
+  equal rank. A picture added to either is filled in by the ↻. A new fanart.tv
+  image is visible to Harmonist a week after it's approved, or two days with a
+  [personal key](configuration.md#artists).
+- **"None on fanart.tv, and MusicBrainz links no Wikidata item"**: as above,
+  and Commons can't be looked in without the link. **Add link on MB**, on the
+  Biography row, opens the artist's edit page.
+- **"fanart.tv couldn't be reached"** or **"Wikimedia Commons couldn't be
+  reached"**: the service didn't answer, or answered something unusable. The ↻
+  tries again. A failure at fanart.tv doesn't fall back on Commons, since the
+  picture fanart.tv has would then never be filled in.
+- **"None"**: the artist hasn't been read since Harmonist started looking for
+  pictures. The ↻ reads it.
+
+### Kodi or Jellyfin doesn't show the artist picture
+
+Harmonist writes `artist.jpg`, which Navidrome and Plex read. Kodi reads
+`folder.jpg` or `thumb.jpg` in the artist's folder, and Jellyfin `folder.jpg` or
+`poster.jpg`. Copy `artist.jpg` to one of those names; Harmonist treats it as the
+folder's picture from then on.
+
 ### Navidrome shows an artist's biography as one block of text
 
 Navidrome reads a biography as HTML and turns its line breaks into spaces, so

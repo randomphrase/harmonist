@@ -94,16 +94,17 @@ belongs in a music folder.
 - **Tag changes**: per-file before-and-after values for every tagging, which is
   what makes undo possible.
 - **NFO changes**: the same for every write into an artist NFO, with the artist
-  page each write moved the file away from, and the article a biography it
-  filled in came from (see
-  [history](history.md#what-an-artist-nfo-write-records)).
+  page each write moved the file away from, the article a biography it filled
+  in came from, and the picture it put beside the file, by name and digest, with
+  its source (see [history](history.md#what-an-artist-nfo-write-records)).
 - **Album aliases**: old ID to new ID, recorded when an album is re-identified
   (see [the model](model.md#identity)).
 - **The MusicBrainz and Cover Art Archive caches** (see
   [external services](external-services.md)).
 - **Artists as MusicBrainz last answered**, with when, and what the last
-  biography lookup found (#1022). Never served in place of asking: it dates the
-  artist page's MB checked and says why an NFO has no biography (see
+  biography and picture lookups found (#1022, #1020). Never served in place of
+  asking: it dates the artist page's MB checked and says why an NFO has no
+  biography, or its artist no picture (see
   [external services](external-services.md#the-cache)). Harmonist's record of
   what it read, so not the NFO's to hold.
 - **Ignored updates**: which albums the user muted, and against which version of

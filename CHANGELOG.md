@@ -6,6 +6,13 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- **Identifying an artist fills in their picture**, from fanart.tv or Commons,
+  where the folder has none; `fanart_tv_personal_key` is optional (#1020).
+
+### Changed
+
 - **A track's work has a column in the track list** when the other tags leave
   one free, rather than a line under the track (#1035).
 

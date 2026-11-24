@@ -1541,6 +1541,65 @@ def test_migrates_a_v14_database_in_place_with_no_artists_stored(tmp_path):
     assert stored is not None and stored.payload == {"id": "art-1", "name": "Carol"}
 
 
+def test_migrates_a_v15_database_in_place_keeping_its_nfo_writes_and_artists(tmp_path):
+    """The 15 -> 16 upgrade (#1020): a write and an artist stored before it
+    read back as they were, with no picture, and a picture is kept after."""
+    db = tmp_path / "v15.db"
+    conn = sqlite3.connect(db, isolation_level=None)
+    for statements in activity_store._MIGRATIONS[:15]:
+        for sql in statements:
+            conn.execute(sql)
+    conn.execute(
+        "INSERT INTO events (ts, level, source, message, artist_id) VALUES (?, ?, ?, ?, ?)",
+        ("2026-11-01T00:00:00+00:00", "info", "audit", "nfo.write", "art-1"),
+    )
+    (event,) = conn.execute("SELECT max(id) FROM events").fetchone()
+    conn.execute(
+        "INSERT INTO nfo_changes (event_id, file, key_before, changes, sources) "
+        "VALUES (?, ?, ?, ?, NULL)",
+        (event, "Carol/artist.nfo", "path-1", '{"name": [null, "Carol"]}'),
+    )
+    conn.execute(
+        "INSERT INTO mb_artist_cache (mbid, fetched_at, payload, biography) VALUES (?, ?, ?, NULL)",
+        ("art-1", "2026-11-01T00:00:00+00:00", '{"id": "art-1"}'),
+    )
+    conn.execute("PRAGMA user_version = 15")
+    conn.close()
+
+    activity_store.init(db)
+
+    assert _user_version(db) == activity_store.SCHEMA_VERSION
+    record = activity_store.nfo_changes_for([event])[event]
+    assert record.changes == {"name": [None, "Carol"]}
+    assert record.picture is None
+    stored = activity_store.cached_artist("art-1")
+    assert stored is not None and stored.payload == {"id": "art-1"} and stored.picture is None
+    activity_store.store_artist_picture("art-1", {"status": "missing", "item": None})
+    stored = activity_store.cached_artist("art-1")
+    assert stored is not None and stored.picture == {"status": "missing", "item": None}
+
+
+def test_a_write_that_only_put_a_picture_beside_the_file_is_recorded():
+    """A picture is part of the write that fetched it (#1020), and recorded
+    with it even when no field of the file changed."""
+    picture = {
+        "file": "artist.jpg",
+        "digest": "abc",
+        "added": True,
+        "source": "fanart.tv",
+        "url": "https://fanart.tv/artist/art-1/",
+    }
+    with activity_store.action():
+        event = audit.record("nfo.write", artist_id="art-1", file="Carol/artist.nfo")
+        assert event is not None
+        activity_store.record_nfo_changes(
+            event, file="Carol/artist.nfo", key_before="art-1", changes={}, picture=picture
+        )
+    record = activity_store.nfo_changes_for([event])[event]
+    assert record.changes == {}
+    assert record.picture == picture
+
+
 def test_an_artist_is_stored_with_when_it_was_read_and_what_its_biography_lookup_found():
     activity_store.store_artist("art-1", {"id": "art-1", "name": "Carol"})
     first = activity_store.cached_artist("art-1")

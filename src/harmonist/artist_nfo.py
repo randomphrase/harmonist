@@ -39,6 +39,17 @@ _BOMS = (
     codecs.BOM_UTF16_BE,
 )
 _IMAGES = {".jpg", ".jpeg", ".png", ".webp"}
+#: The largest artist picture Harmonist shows or writes (#1020): Navidrome's
+#: default `MaxImageSize`, the largest image a player is known to read.
+IMAGE_LIMIT = 20 * 1024 * 1024
+#: The names some player reads as an artist's picture in their folder (#1020):
+#: Navidrome's `artist.*`, Plex's `artist`, `folder`, `poster` and `cover`, and
+#: Kodi's `folder`, `cover` and `thumb`. A folder holding any of them, whatever
+#: Harmonist itself shows, already has a picture someone chose.
+_PICTURE_NAMES = frozenset({"artist", "folder", "cover", "poster", "thumb"})
+_PICTURE_TYPES = frozenset(
+    {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".avif"}
+)
 # The dates a file gives, as the pair each begins and ends and what the two
 # together are called: a person's, then a group's. Kodi's scraper writes one
 # pair or the other by the artist's type.
@@ -386,6 +397,30 @@ def local_image(
     return None
 
 
+def picture_in(folder: Path, image_ref: str = "") -> str | None:
+    """What already serves as the artist's picture in an NFO's `folder`, if
+    anything does (#1020): the file the NFO's `<thumb>` names, when it names a
+    local one, or else any file there with a name a player reads as the
+    artist's picture. None when there is no such thing, which is the only
+    case a picture is filled in.
+
+    A `<thumb>` counts whether or not its file is there: it is the NFO's
+    choice, and the element is the file's. Raises `OSError` when the folder
+    can't be listed, since "couldn't look" isn't "nothing there"."""
+    if image_ref and ":" not in image_ref and not image_ref.startswith("\\"):
+        return image_ref
+    with os.scandir(folder) as entries:
+        for entry in sorted(entries, key=lambda e: e.name):
+            name = Path(entry.name)
+            if (
+                name.stem.lower() in _PICTURE_NAMES
+                and name.suffix.lower() in _PICTURE_TYPES
+                and not entry.is_dir()
+            ):
+                return entry.name
+    return None
+
+
 def _path_key(path: Path) -> str:
     """Compact filesystem keys, preserving Windows' case-insensitive lookup."""
     return os.path.normcase(str(path))
@@ -407,7 +442,7 @@ def _resolve_image(
         image = local_image(profile, root=root, artist_dirs=generic, candidates=candidates)
         if image is not None:
             info = image.stat()
-            if info.st_size > 20 * 1024 * 1024:
+            if info.st_size > IMAGE_LIMIT:
                 raise NfoError(f"{image}: artist artwork exceeds 20 MiB")
             profile = replace(
                 profile,

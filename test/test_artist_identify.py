@@ -9,7 +9,18 @@ from unittest.mock import Mock
 import pytest
 from bs4 import BeautifulSoup
 
-from harmonist import activity_store, id_registry, mb_lookup, mb_search, nfo_history, wikimedia
+from harmonist import (
+    activity_store,
+    artist_fill,
+    fanart_tv,
+    id_registry,
+    images,
+    mb_lookup,
+    mb_search,
+    nfo_history,
+    nfo_writer,
+    wikimedia,
+)
 from harmonist.activity_store import Level, Source
 from test.test_artist_web import ALICE, artist_client
 
@@ -782,6 +793,200 @@ def test_only_an_identified_artist_is_read_again(identify):
     client, _path, key, lookup = identify
     assert refresh(client, key, key).status_code == 404
     lookup.assert_not_called()
+
+
+# The artist's picture, filled in beside the NFO where its folder has none (#1020).
+
+JPEG = b"\xff\xd8\xff\xe0" + b"jpeg" * 8
+THUMB = fanart_tv.Thumb(
+    url=f"https://assets.fanart.tv/fanart/music/{CAROL}/artistthumb/carol.jpg",
+    page=f"https://fanart.tv/artist/{CAROL}/",
+    copyright="Carol Records",
+)
+ON_COMMONS = wikimedia.CommonsPicture(
+    url="https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Carol.jpg/1000px-Carol.jpg",
+    page="https://commons.wikimedia.org/wiki/File:Carol.jpg",
+    author="Jo Bloggs",
+    licence="CC BY-SA 4.0",
+    licence_url="https://creativecommons.org/licenses/by-sa/4.0",
+)
+
+
+@pytest.fixture
+def fanart(identify, monkeypatch):
+    """fanart.tv with a key and a picture of Carol, which fetches as a JPEG."""
+    client, path, key, _lookup = identify
+    monkeypatch.setattr(fanart_tv, "PROJECT_KEY", "project")
+    thumb = Mock(return_value=THUMB)
+    monkeypatch.setattr(fanart_tv, "artist_thumb", thumb)
+    monkeypatch.setattr(artist_fill, "download_picture", Mock(return_value=JPEG))
+    return client, path, key, thumb
+
+
+def picture_credit(client, key):
+    page = BeautifulSoup(client.get(f"/artist/{key}").text, "html.parser")
+    return page.select_one("#artist-picture-credit")
+
+
+def picture_note(client, key):
+    page = BeautifulSoup(client.get(f"/artist/{key}").text, "html.parser")
+    note = page.select_one("#artist-picture-note")
+    return note.get_text(" ", strip=True) if note is not None else None
+
+
+def test_identify_puts_fanart_tvs_picture_beside_the_nfo_and_credits_it(fanart):
+    client, path, key, thumb = fanart
+    response = identify_as(client, key, key)
+    picture = path.parent / "artist.jpg"
+    assert picture.read_bytes() == JPEG
+    thumb.assert_called_once_with(CAROL, personal_key="", user_agent=mb_lookup_agent(client))
+    status = flash(response)
+    assert (status["verb"], status["level"]) == ("Identified", Level.INFO)
+    assert status["details"] == "Carol/artist.nfo; added artist.jpg"
+
+    _page, events, writes = history(client, CAROL)
+    write = writes[next(e.id for e in events if e.message.startswith("Identified"))]
+    credit = nfo_history.PictureCredit("fanart.tv", THUMB.page, author="Carol Records")
+    assert write.picture == nfo_history.PictureChange(
+        "artist.jpg", images.digest(JPEG), True, credit
+    )
+    # The page shows the picture, and credits fanart.tv beneath it.
+    caption = picture_credit(client, CAROL)
+    assert caption is not None
+    link = caption.find("a")
+    assert link["href"] == THUMB.page
+    assert caption.get_text(" ", strip=True) == "From fanart.tv ↗ · Carol Records"
+    assert picture_note(client, CAROL) is None
+
+
+def test_a_commons_picture_is_credited_with_its_author_and_licence(wikipedia, monkeypatch):
+    client, path, key, _found = wikipedia
+    monkeypatch.setattr(wikimedia, "picture", Mock(return_value=ON_COMMONS))
+    monkeypatch.setattr(artist_fill, "download_picture", Mock(return_value=JPEG))
+    identify_as(client, key, key)
+    assert (path.parent / "artist.jpg").read_bytes() == JPEG
+    caption = picture_credit(client, CAROL)
+    assert caption is not None
+    assert caption.get_text(" ", strip=True) == (
+        "From Wikimedia Commons ↗ · Jo Bloggs · CC BY-SA 4.0"
+    )
+    assert [a["href"] for a in caption.find_all("a")] == [ON_COMMONS.page, ON_COMMONS.licence_url]
+
+
+def test_a_folder_with_a_picture_asks_for_none_and_says_why(fanart):
+    """Any picture a player reads counts, whether or not Harmonist shows it."""
+    client, path, key, thumb = fanart
+    (path.parent / "Cover.JPG").write_bytes(JPEG)
+    identify_as(client, key, key)
+    thumb.assert_not_called()
+    assert not (path.parent / "artist.jpg").exists()
+    assert picture_note(client, CAROL) == "None fetched, since Cover.JPG is here"
+
+
+def test_a_picture_that_cant_be_fetched_doesnt_stop_the_identification(fanart):
+    client, path, key, thumb = fanart
+    thumb.side_effect = fanart_tv.FanartError("503")
+    response = identify_as(client, key, key)
+    assert "<name>Carol</name>" in path.read_text()
+    assert not (path.parent / "artist.jpg").exists()
+    status = flash(response)
+    assert (status["verb"], status["level"]) == ("Identified", Level.WARNING)
+    assert status["details"] == "Carol/artist.nfo; couldn't fetch a picture from fanart.tv"
+    assert picture_note(client, CAROL) == "fanart.tv couldn't be reached"
+
+
+def test_undo_takes_the_picture_away_with_the_identification(fanart):
+    """A wrong identification's picture is of the wrong artist."""
+    client, path, key, _thumb = fanart
+    identify_as(client, key, key)
+    _page, events, writes = history(client, CAROL)
+    write = writes[next(e.id for e in events if e.message.startswith("Identified"))]
+    assert write.undoable
+
+    response = client.post(f"/artist/{CAROL}/undo", data={"event_id": write.event_id})
+    assert flash(response)["details"] == "Carol/artist.nfo; removed artist.jpg"
+    assert not (path.parent / "artist.jpg").exists()
+    assert "<musicbrainzartistid>" not in path.read_text()
+    _page, events, writes = history(client, key)
+    undo = writes[next(e.id for e in events if e.message.startswith("NFO fields put back"))]
+    assert undo.picture == nfo_history.PictureChange("artist.jpg", images.digest(JPEG), False)
+
+
+def test_undo_leaves_a_picture_replaced_since(fanart):
+    client, path, key, _thumb = fanart
+    identify_as(client, key, key)
+    picture = path.parent / "artist.jpg"
+    picture.write_bytes(JPEG + b"edited")
+    # No longer the picture fanart.tv gave, so no longer credited to it.
+    assert picture_credit(client, CAROL) is None
+    _page, events, writes = history(client, CAROL)
+    write = writes[next(e.id for e in events if e.message.startswith("Identified"))]
+
+    response = client.post(f"/artist/{CAROL}/undo", data={"event_id": write.event_id})
+    assert flash(response)["details"] == "left alone, changed since: artist.jpg"
+    assert picture.read_bytes() == JPEG + b"edited"
+    assert "<musicbrainzartistid>" not in path.read_text()
+
+
+def test_undoing_a_write_that_only_added_a_picture_removes_it(fanart, monkeypatch):
+    client, path, key, thumb = fanart
+    thumb.return_value = None
+    identify_as(client, key, key)
+    thumb.return_value = THUMB
+    response = refresh(client, CAROL, key)
+    assert flash(response)["details"] == "Carol/artist.nfo; added artist.jpg"
+    _page, events, writes = history(client, CAROL)
+    write = writes[next(e.id for e in events if e.message.startswith("Filled in"))]
+    assert write.changes == () and write.picture is not None
+
+    response = client.post(f"/artist/{CAROL}/undo", data={"event_id": write.event_id})
+    assert flash(response)["verb"] == "Removed artist.jpg"
+    assert not (path.parent / "artist.jpg").exists()
+    assert "<name>Carol</name>" in path.read_text()
+
+
+def test_reading_again_fills_in_a_missing_picture_once(fanart):
+    """Artists identified before pictures were looked up get one this way."""
+    client, path, key, thumb = fanart
+    thumb.return_value = None
+    identify_as(client, key, key)
+    assert picture_note(client, CAROL) == (
+        "None on fanart.tv, and MusicBrainz links no Wikidata item"
+    )
+    thumb.return_value = THUMB
+    response = refresh(client, CAROL, key)
+    assert flash(response)["verb"] == "Filled in"
+    assert (path.parent / "artist.jpg").read_bytes() == JPEG
+
+    # Again: the folder has its picture, so nobody is asked and nothing written.
+    thumb.reset_mock()
+    recorded = activity_store.artist_history(CAROL)
+    refresh(client, CAROL, key)
+    thumb.assert_not_called()
+    assert activity_store.artist_history(CAROL) == recorded
+
+
+def test_a_picture_that_cant_be_written_is_said_beside_what_was(fanart, monkeypatch):
+    client, path, key, _thumb = fanart
+    temporary_for = nfo_writer.temporary_for
+
+    def nowhere(target):
+        """The picture's way in leads nowhere; the NFO's still works."""
+        return (
+            target.parent / "gone" / target.name
+            if target.suffix == ".jpg"
+            else temporary_for(target)
+        )
+
+    monkeypatch.setattr(nfo_writer, "temporary_for", nowhere)
+    response = identify_as(client, key, key)
+    assert "<name>Carol</name>" in path.read_text()
+    assert not (path.parent / "artist.jpg").exists()
+    status = flash(response)
+    assert status["level"] == Level.WARNING
+    assert status["details"] == (
+        "Carol/artist.nfo; couldn't write artist.jpg: No such file or directory"
+    )
 
 
 def test_a_store_that_cannot_be_read_says_so_rather_than_not_yet(identify, monkeypatch):

@@ -176,6 +176,15 @@ credits Wikipedia only while the file holds exactly the text that write put
 there. An edit since, by hand or by a media server, makes the text no longer
 Wikipedia's as written, and the credit goes with it.
 
+**A picture is part of the write that fetched it** (#1020). It is a file beside
+the NFO, not one of its elements, so it is recorded beside the fields rather than
+among them: its name, its digest, and where it came from. It belongs to that
+write all the same, because it came from the identity the write recorded: a wrong
+identification's picture is of the wrong artist, and undoing the one should take
+the other. The artist page credits the picture's source under it while the file
+is still the one written, by digest, as the biography's credit lasts while the
+text does.
+
 ## Undoing an NFO write
 
 The same rules as a tagging's undo, for the same reasons. **The write is the
@@ -186,6 +195,12 @@ removes the MBID, and the file is Not identified again. An undo is itself a
 write, recorded the same way, so it can be undone; one with nothing left to put
 back records nothing. Undo isn't offered once the file has gone, or when it
 can't be written safely, since a button that would only fail is worse than none.
+
+**A picture the write added is removed while it is still that file**, by digest,
+as an album's artwork addition is: an addition needs no backup, since removing it
+loses nothing that was there before. A picture replaced since is left alone and
+named, as a field changed since is. Undoing that Undo puts its fields back but
+not the picture, since nothing kept a copy; reading the artist again fills it in.
 
 As for albums, a request names a History entry and never a file: the file and
 the values are worked out from the stored record, and only from an entry in
