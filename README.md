@@ -4,27 +4,27 @@
 using [MusicBrainz](https://musicbrainz.org/), with changes previewed, logged, and
 reversible.**
 
-- **Tag all your music.** CD rips, Bandcamp purchases, and downloads from other
-  stores get [Picard](https://picard.musicbrainz.org)-compatible metadata.
-- **Your folders, your formats.** Keep your own directory layout and your choice
-  of FLAC, MP3, AAC, ALAC, Ogg Vorbis, and Opus.
-- **Link your albums to MusicBrainz** for canonical release metadata.
-- **Keep your tags current.** Harmonist continually finds metadata updates on
-  MusicBrainz for you to review and apply.
-- **Fill missing covers and upgrade your artwork.** Compare images from your
-  files and the Cover Art Archive, then apply the covers you choose.
-- **Satisfy your inner perfectionist.** Find the gaps and inconsistencies hiding
-  in your collection with [focused library filters](docs/how-it-works.md#the-library).
-- **Undo tag and artwork changes.** See exactly what changed, restore previous
-  tags, and recover saved covers.
-- **Give back to MusicBrainz.** Find opportunities in your collection to improve
-  the metadata everyone shares.
-- **Download and tag your Bandcamp purchases.** Sync new albums, or re-download
-  favourites to upgrade audio quality or pick up newly added tracks.
+- **Tag all your music**, from CD rips to store downloads, with
+  [Picard](https://picard.musicbrainz.org)-compatible metadata.
+- **Keep your own folders and formats**: FLAC, MP3, AAC, ALAC, Ogg Vorbis or Opus.
+- **Link your albums to MusicBrainz** by store link, barcode or CD disc ID.
+- **Keep your tags current** as Harmonist finds updates on MusicBrainz for you
+  to review and apply.
+- **Fill missing covers and upgrade your artwork** from your files and the Cover
+  Art Archive.
+- **Fill in [artist biographies and related data](docs/how-it-works.md#artists-and-local-metadata)**
+  *(preliminary)* from MusicBrainz and Wikipedia.
+- **Satisfy your inner perfectionist** with [focused library filters](docs/how-it-works.md#the-library)
+  that find the gaps in your collection.
+- **Undo tag, artwork and artist changes**, seeing exactly what changed.
+- **Give back to MusicBrainz** where your collection can improve the metadata
+  everyone shares.
+- **Download and tag your Bandcamp purchases**, re-downloading to upgrade audio
+  quality or pick up new tracks.
 
-Manage everything from your browser, with an **Inbox** for albums that need
-attention, a **Library** to browse your collection, and an **Activity** feed to
-see what's changed.
+Manage everything from your browser, with an **Inbox** for albums and artists
+that need attention, a **Library** and an **Artists** page to browse your
+collection, and an **Activity** feed to see what's changed.
 
 ## Demo
 
@@ -118,13 +118,13 @@ doesn't manage.
 
 Some ideas for where it could go next:
 
-- Kodi-style `artist.nfo` files, identified and kept up to date
+- Artist biographies and related data kept current, with pictures
 - Genres from MusicBrainz, without churning the genres already in your files
 - Lyrics, including synchronized lyrics, from a source other than MusicBrainz
   (which doesn't carry them), reviewed before they're written
 - Picard-compatible file renaming
 - Purchase sync from more stores
-- More metadata sources, such as Discogs, AllMusic and Wikipedia
+- More metadata sources, such as Discogs and AllMusic
 - More file-based metadata standards
 
 ## Human-Designed, Built With AI Assistance

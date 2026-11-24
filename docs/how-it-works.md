@@ -81,11 +81,12 @@ album whose artist IDs are missing or out of date with MusicBrainz is brought
 up to date by that album's own tag update, and browsing does not write them.
 
 Existing Kodi/Jellyfin `artist.nfo` files can supply a biography, dates, sort
-name and other artist information. An NFO belongs to the artist whose ID it
-carries in `<musicbrainzartistid>`, the spelling Jellyfin, Lidarr and
-Navidrome's artist-NFO plugin use. Kodi and MediaElch write
-`<musicBrainzArtistID>` instead, which Harmonist doesn't read. One whose
-artist no album credits is still listed, with no albums.
+name and other artist information. Navidrome reads them only through its
+[artist-NFO plugin](https://github.com/metalheim/navidrome-plugin-artist-nfo-metadata).
+An NFO belongs to the artist whose ID it carries in `<musicbrainzartistid>`,
+the spelling Jellyfin, Lidarr and Navidrome's artist-NFO plugin use. Kodi and
+MediaElch write `<musicBrainzArtistID>` instead, which Harmonist doesn't read.
+One whose artist no album credits is still listed, with no albums.
 An artist with an NFO is named by its `<name>` on the Artists page and the
 artist's own page; one without is named by the album credits. Each album keeps
 its own credit's spelling, and its link to the artist names them in full on
