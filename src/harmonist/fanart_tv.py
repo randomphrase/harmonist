@@ -29,7 +29,7 @@ import httpx
 #: every copy of Kodi and Jellyfin carries theirs. It says which project asked,
 #: and opens nothing that isn't public. Moving it out of the source would hide
 #: it from nobody.
-PROJECT_KEY: Final = ""
+PROJECT_KEY: Final = "995a4425378642b9355bd248421f9623"
 
 #: How long one request may take. A picture is fetched while the user waits
 #: for an identification, so a slow answer has to end in an error they can
