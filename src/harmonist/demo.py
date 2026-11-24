@@ -411,8 +411,8 @@ LIBRARY: list[dict[str, Any]] = [
         "art": "gaps",
         # Each song written by different members, and the files tagged before
         # Harmonist wrote credits (#680): every credit arrives on a re-tag, so
-        # the album page draws one linked column per credit, and the writer that
-        # doesn't fit on a line under its track (#863).
+        # the album page draws the works in a column (#1035) and the people
+        # credited on each on lines under its track (#948).
         "works": [
             {"title": "Pavlov's Bell", "composer": ["Devon MacLeish"], "lyricist": ["Oz Osbourne"]},
             {

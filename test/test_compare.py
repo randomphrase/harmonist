@@ -1697,8 +1697,9 @@ def test_a_credits_sort_names_and_ids_ride_on_its_names_line():
 
     Composer sort and Composer IDs are the same people as Composer, spelled for
     sorting and for MusicBrainz, and Work IDs is the same work as Work. Each
-    changes exactly where its name changes, so the name's line states it: the
-    names are links to the ids, and three lines say what seven tags do.
+    changes exactly where its name changes, so the name's line or column states
+    it: the names are links to the ids, and three places say what seven tags do.
+    Work has a column, since a slot is free (#1035).
     """
     tl = tracklist(
         [_file(1, "Overture"), _file(2, "Aria"), _file(3, "Finale")],
@@ -1709,9 +1710,8 @@ def test_a_credits_sort_names_and_ids_ride_on_its_names_line():
         ],
     )
 
-    assert _headings(tl) == ["#", "Title", "Length"], "credits take no columns"
+    assert _headings(tl) == ["#", "Title", "Work", "Length"], "the people take no columns"
     assert _credits(tl)[1] == [
-        ("Work", None, "Aria"),
         ("Composer", None, "Cy Fox; Ann Lee"),
         ("Lyricist", None, "Di Ray"),
     ]
@@ -1789,7 +1789,8 @@ def test_a_tracks_credits_are_listed_under_it():
     the MusicBrainz line and the line under the track.
 
     Listed under each track instead, as MusicBrainz lists them: a line per tag
-    the track has, and none for a tag it doesn't."""
+    the track has, and none for a tag it doesn't. The work they are credited
+    on has a column, since a slot is free (#1035)."""
     tl = _credit_album(
         [
             {"writers": ["Robert Del Naja", "Grant Marshall"]},
@@ -1797,14 +1798,12 @@ def test_a_tracks_credits_are_listed_under_it():
         ]
     )
 
-    assert _headings(tl) == ["#", "Title", "Length"]
+    assert _headings(tl) == ["#", "Title", "Work", "Length"]
     assert _credits(tl) == [
         [
-            ("Work", "Protection", "Protection"),
             ("Writer", "Robert Del Naja; Grant Marshall", "Robert Del Naja; Grant Marshall"),
         ],
         [
-            ("Work", "Karmacoma", "Karmacoma"),
             ("Composer", "Craig Armstrong", "Craig Armstrong"),
             ("Writer", "Bob Locke", "Bob Locke"),
         ],
@@ -1819,7 +1818,7 @@ def test_a_credit_the_same_on_every_track_is_stated_once_below_the_table():
     bach = {"composers": ["Johann Sebastian Bach"]}
     tl = _credit_album([bach, bach])
 
-    assert [[label for label, *_ in lines] for lines in _credits(tl)] == [["Work"], ["Work"]]
+    assert _credits(tl) == [[], []]
     assert "Composer" in {c.label for c in tl.collapsed}
 
 
@@ -1846,7 +1845,8 @@ def test_a_credit_musicbrainz_lacks_is_listed_as_a_removal():
 def test_credits_take_no_column_slot():
     """Three columns are earned at most (`MAX_EARNED_COLUMNS`), and credits used
     to spend them, pushing the track's other tags onto the line under it (#863).
-    Listed, they compete for nothing."""
+    Listed, they compete for nothing; Work takes the slot the others leave
+    (#1035)."""
     tl = _credit_album(
         [
             {"artist": "Massive Attack", "writers": ["Robert Del Naja"]},
@@ -1854,7 +1854,7 @@ def test_credits_take_no_column_slot():
         ]
     )
 
-    assert _headings(tl) == ["#", "Title", "Artist", "Length"]
+    assert _headings(tl) == ["#", "Title", "Artist", "Work", "Length"]
     assert not tl.overflowed
 
 
@@ -1867,7 +1867,7 @@ def test_a_track_nobody_ripped_lists_no_credits():
         missing=[{"composers": ["Cy Fox"]}],
     )
 
-    assert [len(t.credits) for t in tl.tracks] == [2, 2, 0]
+    assert [len(t.credits) for t in tl.tracks] == [1, 1, 0]
     assert tl.tracks[2].state is TrackState.MISSING
 
 
@@ -1880,6 +1880,85 @@ def test_the_disk_only_view_lists_credits_as_the_files_have_them():
 
     assert _credits(tl) == [[("Writer", "Ann Lee", None)], [("Writer", "Bo Day", None)]]
     assert not any(f.differs for t in tl.tracks for f in t.credits)
+
+
+# ---------- Work, in a column while one is free (#1035) ----------
+
+
+def test_work_takes_a_column_while_one_is_free():
+    """#1035. Work is often a track's only credit, and listed under the track
+    every track was two rows, its title and its work, with the table's width
+    empty beside them. While a column slot is free, Work is a column beside the
+    title, drawn quiet so the title still leads (#942). The people credited on
+    the work stay listed under the track."""
+    tl = _credit_album([{"writers": ["Robert Del Naja"]}, {"composers": ["Craig Armstrong"]}])
+
+    assert _headings(tl) == ["#", "Title", "Work", "Length"]
+    assert [t.fields[2].disk for t in tl.tracks] == ["Protection", "Karmacoma"]
+    assert [c.label for c in tl.columns if c.quiet] == ["Work"]
+    assert _credits(tl) == [
+        [("Writer", "Robert Del Naja", "Robert Del Naja")],
+        [("Composer", "Craig Armstrong", "Craig Armstrong")],
+    ]
+
+
+def _works_beside(tags: list[dict]):
+    """Two tracks, each performing its own work, with `tags` agreeing on both
+    sides."""
+    specs = ((1, "Nightcall"), (2, "Rampage"))
+    return tracklist(
+        [_file(n, t, works=[t], **f) for (n, t), f in zip(specs, tags, strict=True)],
+        [_mb_track(n, t, works=[t], **f) for (n, t), f in zip(specs, tags, strict=True)],
+    )
+
+
+def test_work_never_takes_a_column_another_tag_needs():
+    """#1035. Work takes a slot only once every other tag has had its column:
+    beside two earned columns it is the third, and beside three it is listed
+    under each track, as it was before, rather than push a tag that answers
+    "which track" onto the line under it (#863)."""
+    two = [{"artist": a, "artist_sort": f"{a},"} for a in "AB"]
+    three = [{**t, "disc_subtitle": f"Side {a}"} for t, a in zip(two, "AB", strict=True)]
+
+    beside_two = _works_beside(two)
+    assert _headings(beside_two) == ["#", "Title", "Artist", "Artist sort", "Work", "Length"]
+    assert not any(t.credits for t in beside_two.tracks)
+
+    beside_three = _works_beside(three)
+    assert _headings(beside_three) == [
+        "#",
+        "Title",
+        "Artist",
+        "Artist sort",
+        "Disc subtitle",
+        "Length",
+    ]
+    assert _credits(beside_three) == [
+        [("Work", "Nightcall", "Nightcall")],
+        [("Work", "Rampage", "Rampage")],
+    ]
+    assert not beside_three.overflowed
+
+
+def test_a_work_id_that_changes_on_its_own_keeps_an_identifier_column():
+    """#1035, and the guard `artists` has (#319). A work MusicBrainz merged
+    into another of the same name keeps its name and changes its id, so the
+    Work column has no change on that row to stand in for, and Work IDs is a
+    column of its own, behind Show identifiers like the other ids."""
+    tl = tracklist(
+        [
+            _file(n, t, works=[t], mb_work_ids=[f"old-{n}"])
+            for n, t in ((1, "Overture"), (2, "Aria"))
+        ],
+        [
+            _mb_track(1, "Overture", works=["Overture"], mb_work_ids=["new-1"]),
+            _mb_track(2, "Aria", works=["Aria"], mb_work_ids=["old-2"]),
+        ],
+    )
+
+    assert "Work" in _headings(tl)
+    assert [c.label for c in tl.identifier_columns] == ["Work IDs"]
+    assert not any(t.credits for t in tl.tracks)
 
 
 def test_a_tag_musicbrainz_does_not_have_is_stated_as_a_removal():

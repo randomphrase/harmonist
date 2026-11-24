@@ -7811,13 +7811,13 @@ def test_a_tracks_credits_are_listed_under_it_one_line_per_tag(client):
     )
     first, second = _credit_lists(client, tl)
 
-    assert list(first) == ["Work", "Composer", "Writer"]
+    assert list(first) == ["Composer", "Writer"]
     composer = first["Composer"].get_text(" ", strip=True)
     assert composer.startswith("Robert Del Naja") and composer.endswith("removed")
     writer = first["Writer"].select_one(".tag-fields__mb")
     assert writer.get_text(strip=True) == "Robert Del Naja", "MusicBrainz's, and only that"
     assert writer.select_one(".mb-mark"), "marked as MusicBrainz's, not by colour alone"
-    assert list(second) == ["Work", "Composer"]
+    assert list(second) == ["Composer"]
 
 
 def test_a_credit_is_quiet_beside_the_title_until_it_differs(client):
@@ -7840,6 +7840,33 @@ def test_a_credit_is_quiet_beside_the_title_until_it_differs(client):
     assert re.search(r'<td class="[^"]*track-diff__lead[^"]*"', html), "the title leads"
 
 
+def test_the_work_column_is_quiet_beside_the_title_until_it_differs(client):
+    """#942, #1035. A Work column is muted as the listed credits are, so the
+    title leads the row, and a work that differs from MusicBrainz keeps the
+    full colour."""
+    from bs4 import BeautifulSoup
+
+    from harmonist.compare import tracklist
+    from test.test_compare import _file, _mb_track
+
+    tl = tracklist(
+        [_file(1, "Nightcall", works=["Nightcall"]), _file(2, "Odd Look", works=["Odd"])],
+        [
+            _mb_track(1, "Nightcall", works=["Nightcall"]),
+            _mb_track(2, "Odd Look", works=["Odd Look"]),
+        ],
+    )
+    html = client.app.state.templates.env.get_template("partials/_track_list.html").render(
+        tracklist=tl, mb_names={}, mb_credits={}, album={"id": "a1"}
+    )
+    work = [c.label for c in tl.columns].index("Work")
+    rows = BeautifulSoup(html, "html.parser").select("tbody.track-diff__track > tr:first-child")
+    cells = [row.find_all("td", recursive=False)[work] for row in rows]
+
+    assert [c.get_text(strip=True) for c in cells] == ["Nightcall", "Odd"]
+    assert ["track-diff__quiet" in c.get_attribute_list("class") for c in cells] == [True, False]
+
+
 def test_the_pregap_note_leaves_a_row_beside_its_musicbrainz_line(client):
     """#953. A file that includes an accepted pregap says so on a row of its
     own, and that row was drawn straight under the track's, splitting the
@@ -7851,13 +7878,13 @@ def test_the_pregap_note_leaves_a_row_beside_its_musicbrainz_line(client):
     from test.test_compare import _file, _mb_track
 
     files = [
-        _file(1, "Nightcall", length=240_000, mb_release_track_id="first", works=["Nightcall"]),
-        _file(2, "Odd Look", mb_release_track_id="second", works=["Odd Look"]),
+        _file(1, "Nightcall", length=240_000, mb_release_track_id="first", writers=["Ann Lee"]),
+        _file(2, "Odd Look", mb_release_track_id="second", writers=["Bo Day"]),
     ]
     mb = [
         _mb_track(0, "Prelude", length=60_000, mb_release_track_id="gap"),
-        _mb_track(1, "Nightcall (new title)", mb_release_track_id="first", works=["Nightcall"]),
-        _mb_track(2, "Odd Look", mb_release_track_id="second", works=["Odd Look"]),
+        _mb_track(1, "Nightcall (new title)", mb_release_track_id="first", writers=["Ann Lee"]),
+        _mb_track(2, "Odd Look", mb_release_track_id="second", writers=["Bo Day"]),
     ]
     tl = tracklist(files, mb, included_pregaps={"gap": "first"})
     html = client.app.state.templates.env.get_template("partials/_track_list.html").render(

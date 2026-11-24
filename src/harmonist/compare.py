@@ -1100,9 +1100,10 @@ class ComparedTrack:
     #: rather than cells in it, since there are no columns for them to sit in.
     overflow: tuple[FieldComparison, ...] = ()
     #: This track's credits, listed under it (#948): a line for each tag in
-    #: `_LISTED` the track has on either side, matching or not, and a line for a
-    #: companion only where it changes and its credit doesn't. Empty for a track
-    #: with no file, whose row already says the whole of it.
+    #: `_LISTED` without a column (#1035) the track has on either side, matching
+    #: or not, and a line for a companion only where it changes and its credit
+    #: doesn't. Empty for a track with no file, whose row already says the
+    #: whole of it.
     credits: tuple[FieldComparison, ...] = ()
 
     @property
@@ -1873,10 +1874,12 @@ _MEDIUM_DERIVED: tuple[Owned, ...] = (Owned.DISC_SUBTITLE, Owned.MEDIA, Owned.TR
 #:
 #: The work and composer ids are here too (#863), though they are usually not a
 #: column at all: `Work` and `Composer` state them as links (`_SUBSUMED_BY`).
-#: They get a column only when an id changes under an unchanged name — a
-#: composer merged into another artist of the same name — and that column is
-#: the files' old id in hex over the new one's name, an identifier like the
-#: rest. A row whose only change it is reveals it anyway (#339).
+#: They get a column only when an id changes under an unchanged name in a
+#: column — a work merged into another of the same name, under Work (#1035);
+#: under a credit listed beneath its track, it is a line of its own (#948) —
+#: and that column is the files' old id in hex over the new one's name, an
+#: identifier like the rest. A row whose only change it is reveals it anyway
+#: (#339).
 _IDENTIFIERS: frozenset[Owned] = frozenset(
     {
         Owned.ISRCS,
@@ -1933,9 +1936,32 @@ _SUBSUMED_BY: dict[Owned, Owned] = {
 #:
 #: A credit that reads the same on every track is still collapsed into the
 #: band under the table: a classical album says its composer once.
+#:
+#: Work is a column instead while a slot is free (`_COLUMN_IF_FREE`).
 _LISTED: frozenset[Owned] = frozenset(
     {Owned.WORKS, Owned.COMPOSERS, Owned.LYRICISTS, Owned.WRITERS}
 )
+
+
+#: The listed credits that are a column instead while a slot is free (#1035).
+#:
+#: Work is often a track's only credit, and listed, it made every track two
+#: rows, its title and its work, with the table's width empty beside them. A
+#: track performs one work, as a rule, so unlike the people credited on it, a
+#: column of works has a value on most rows.
+#:
+#: It takes a slot only once every other tag has had its column, so it never
+#: puts a tag that answers "which track" onto the line under its track (#863).
+#: Without a slot it is listed, as it was. The people credited stay listed
+#: either way: a track can have several of each, and an album credits some
+#: works to their composers and some to their writers, the columns #948 took
+#: out.
+_COLUMN_IF_FREE: frozenset[Owned] = frozenset({Owned.WORKS})
+
+
+#: The columns drawn muted beside the title (#942): the work, a run of linked
+#: names, against a title with none. See `TrackColumn.quiet`.
+_QUIET: frozenset[Owned] = frozenset({Owned.WORKS})
 
 
 #: The album-level tag each per-track tag is measured against for rule 3.
@@ -1979,6 +2005,10 @@ class TrackColumn:
     #: one: nothing writes a duration into a file, so its column is evidence
     #: beside the file's own figure rather than a change waiting to be applied.
     advisory: bool = False
+    #: A column of credits, drawn muted so the title leads the row (#942,
+    #: #1035). A cell that differs from MusicBrainz keeps the full colour, so
+    #: the muting never makes a difference quieter.
+    quiet: bool = False
 
 
 @dataclass(frozen=True)
@@ -2257,6 +2287,13 @@ class _Choice:
             for f in (c.owned.value, *self.absorbed.get(c.owned.value, ()))
         )
 
+    @property
+    def earned(self) -> int:
+        """The columns `MAX_EARNED_COLUMNS` counts: all but the pinned and the ids."""
+        return sum(
+            c.owned not in _PINNED_COLUMNS and c.owned not in _IDENTIFIERS for c in self.kept
+        )
+
 
 def _choose_columns(
     present: Sequence[_Present], multi_disc: bool, rolled_up: bool = False
@@ -2279,10 +2316,27 @@ def _choose_columns(
 
     What OVERFLOWED earned a column and lost to `MAX_EARNED_COLUMNS`, and each
     row states it on a line of its own (#863).
+
+    Decided twice where Work earns (#1035): first with it listed, to see whether
+    the other tags leave a column slot free, then with it a column if they do.
+    Each pass is the whole decision, so Work IDs (`_SUBSUMED_BY`) is absorbed
+    by, or kept apart from, whichever of the two Work ends up as. The second
+    pass loses nothing to the cap: the first overflowed nothing and had a slot
+    to spare, and Work takes only that one.
     """
+    choice = _place(present, multi_disc, rolled_up, frozenset())
+    promoted = frozenset(c.owned for c in choice.listed) & _COLUMN_IF_FREE
+    if promoted and choice.earned + len(promoted) <= MAX_EARNED_COLUMNS:
+        return _place(present, multi_disc, rolled_up, promoted)
+    return choice
+
+
+def _place(
+    present: Sequence[_Present], multi_disc: bool, rolled_up: bool, columned: frozenset[Owned]
+) -> _Choice:
+    """One pass of `_choose_columns`, with the listed credits in `columned` columns."""
     choice = _Choice()
     kept, absorbed = choice.kept, choice.absorbed
-    earned = 0
     for candidate in _CANDIDATES:
         if multi_disc and candidate.owned is Owned.DISC_NUM:
             continue  # the number column already states it
@@ -2329,7 +2383,7 @@ def _choose_columns(
                 # a composer merged into another artist of the same name.
                 choice.riders.append(candidate)
                 continue
-        if candidate.owned in _LISTED:
+        if candidate.owned in _LISTED and candidate.owned not in columned:
             # Under each track, taking no slot (#948).
             choice.listed.append(candidate)
             continue
@@ -2337,9 +2391,8 @@ def _choose_columns(
             # Off the cap (#319): hidden by default, so it competes with nothing.
             kept.append(candidate)
             continue
-        if earned < MAX_EARNED_COLUMNS:
+        if choice.earned < MAX_EARNED_COLUMNS:
             kept.append(candidate)
-            earned += 1
             continue
         # Over the cap: stated under each track it changes on (#863). Deliberately
         # NOT collapsed — the collapsed set claims every track reads the same,
@@ -3087,6 +3140,7 @@ def _columns(
                 c.label,
                 (c.owned.value, *absorbed.get(c.owned.value, ())),
                 identifier=c.owned in _IDENTIFIERS,
+                quiet=c.owned in _QUIET,
             )
             for c in kept
         ),

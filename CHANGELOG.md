@@ -6,6 +6,9 @@ versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
+- **A track's work has a column in the track list** when the other tags leave
+  one free, rather than a line under the track (#1035).
+
 ## [1.35.0] - 2026-11-24
 
 ### Added

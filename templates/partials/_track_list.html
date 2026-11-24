@@ -22,7 +22,8 @@
    The relationship credits — work, composer, lyricist, writer — earn no
    column: each track lists its own under it, one line per tag, as MusicBrainz
    lists a recording's (#948). A credit's sort name and ids ride on its line,
-   drawn as links.
+   drawn as links. Work is the exception while a column slot is free (#1035):
+   a column then, drawn quiet beside the title until it differs.
 
    The medium-derived three — disc subtitle, media, track total — are a fourth
    case, and they go to the DISC HEADING (#320). They vary per track only in the
@@ -216,8 +217,9 @@
             <tr>
                 {% for f in t.fields %}
                 {%- set col = tracklist.columns[loop.index0] -%}
-                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}{{ ' track-diff__lead' if col.label == 'Title' }}"{#
-                    The title leads the row (#942).
+                <td class="{{ 'track-diff__num' if loop.first else ('track-diff__len' if col.numeric else '') }}{{ ' track-diff__id' if col.identifier }}{{ ' track-diff__advisory' if col.advisory }}{{ ' track-diff__lead' if col.label == 'Title' }}{{ ' track-diff__quiet' if col.quiet and not f.differs }}"{#
+                    The title leads the row, and a Work column beside it is
+                    quiet unless it differs (#942, #1035).
 
                     The explanation is on the FIGURE as well as on the heading.
                     The heading alone was where this started and it is the wrong
