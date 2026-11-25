@@ -9,8 +9,9 @@ cheap, and dropping the ring buffer trims memory.
 A *separate* store, not sidecar fields — consistent with sidecar-minimalism.
 
 Thread-safe: the sync / reconcile / scan runners append from worker threads while
-request handlers read. One shared connection (`check_same_thread=False`) guarded by
-a lock; WAL mode so a reader never blocks a writer at the SQLite level.
+request handlers read. Synchronous callers share a locked connection; the artist
+runtime has an aiosqlite-owned connection to the same database. File-backed stores
+use WAL mode so a reader never blocks a writer at the SQLite level.
 
 Until `init()` points it at a file (done once at app start), the store falls back to
 an in-memory database so `record()` still works in unit tests and non-web contexts —
@@ -81,6 +82,9 @@ class Level(StrEnum):
 
 _LOCK = threading.Lock()
 _conn: sqlite3.Connection | None = None
+# A distinct, RAM-only database per initialization, shareable with aiosqlite.
+# The memdb VFS has ordinary SQLite locking, without shared-cache table locks.
+_database = f"file:/harmonist-{uuid.uuid4().hex}?vfs=memdb"
 
 # Forward-only schema migrations, applied via SQLite's built-in `PRAGMA
 # user_version`. Entry i takes the DB from user_version i to i+1. On open, every
@@ -575,7 +579,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
 def _open(db: str) -> sqlite3.Connection:
     # autocommit (isolation_level=None) so single appends persist immediately and
     # _migrate can drive its own BEGIN/COMMIT explicitly.
-    conn = sqlite3.connect(db, check_same_thread=False, isolation_level=None)
+    conn = sqlite3.connect(db, uri=True, check_same_thread=False, isolation_level=None)
     conn.execute("PRAGMA journal_mode=WAL")
     _migrate(conn)
     return conn
@@ -586,10 +590,12 @@ def init_memory() -> None:
     sandboxes the music dir but shares the real config dir, so opening the
     on-disk DB there would append demo events to the user's genuine history —
     the same reason demo never writes to the configured music_dir."""
-    global _conn
-    conn = _open(":memory:")
+    global _conn, _database
+    database = f"file:/harmonist-{uuid.uuid4().hex}?vfs=memdb"
+    conn = _open(database)
     with _LOCK:
         old, _conn = _conn, conn
+        _database = database
         _close_quietly(old)
 
 
@@ -608,20 +614,27 @@ def init(db_path: Path | str) -> None:
     be opened/migrated (e.g. a newer schema after a downgrade), degrade to an
     in-memory store and log loudly — the app still starts, just without durable
     history — rather than crash or corrupt the file."""
-    global _conn
+    global _conn, _database
+    if str(db_path) == ":memory:":
+        init_memory()
+        return
     try:
         path = Path(db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        conn = _open(str(path))
+        # An absolute path cannot be mistaken for a SQLite file: URI.
+        database = str(path.absolute())
+        conn = _open(database)
     except Exception:
         log.exception(
             "activity store: could not open %s — falling back to in-memory (history "
             "will not persist)",
             db_path,
         )
-        conn = _open(":memory:")
+        database = f"file:/harmonist-{uuid.uuid4().hex}?vfs=memdb"
+        conn = _open(database)
     with _LOCK:
         old, _conn = _conn, conn
+        _database = database
         _close_quietly(old)
 
 
@@ -631,8 +644,21 @@ def _ensure() -> sqlite3.Connection:
     if _conn is None:
         # No app has initialised a file-backed store — fall back to an ephemeral
         # in-memory DB so record() never fails (matches the old ring buffer).
-        _conn = _open(":memory:")
+        _conn = _open(_database)
     return _conn
+
+
+def open_artist_connection() -> sqlite3.Connection:
+    """Connect on aiosqlite's worker to the already-initialized store (#1045).
+
+    Initialization owns migrations and downgrade fallback. Using its actual
+    target keeps async artist observations in that same store even in demo mode
+    or after a failed disk open. The artist runtime closes this connection before
+    the next app can replace the store; it never owns the synchronous connection.
+    """
+    with _LOCK:
+        _ensure()
+        return sqlite3.connect(_database, uri=True, isolation_level=None)
 
 
 def append(
@@ -1725,6 +1751,15 @@ def cached_artist(mbid: str) -> CachedArtist | None:
     )
 
 
+ARTIST_UPSERT = (
+    "INSERT INTO mb_artist_cache (mbid, fetched_at, payload) VALUES (?, ?, ?) "
+    "ON CONFLICT (mbid) DO UPDATE SET "
+    "fetched_at = excluded.fetched_at, payload = excluded.payload"
+)
+ARTIST_BIOGRAPHY_UPDATE = "UPDATE mb_artist_cache SET biography = ? WHERE mbid = ?"
+ARTIST_PICTURE_UPDATE = "UPDATE mb_artist_cache SET picture = ? WHERE mbid = ?"
+
+
 def store_artist(mbid: str, payload: Mapping[str, Any]) -> None:
     """Keep a freshly read MusicBrainz artist, and when it was read (#1022).
 
@@ -1744,9 +1779,7 @@ def store_artist(mbid: str, payload: Mapping[str, Any]) -> None:
         with _LOCK:
             conn = _ensure()
             conn.execute(
-                "INSERT INTO mb_artist_cache (mbid, fetched_at, payload) VALUES (?, ?, ?) "
-                "ON CONFLICT (mbid) DO UPDATE SET "
-                "fetched_at = excluded.fetched_at, payload = excluded.payload",
+                ARTIST_UPSERT,
                 (mbid, datetime.now(UTC).isoformat(), blob),
             )
             conn.commit()
@@ -1761,7 +1794,7 @@ def store_artist_biography(mbid: str, lookup: Mapping[str, Any]) -> None:
         with _LOCK:
             conn = _ensure()
             conn.execute(
-                "UPDATE mb_artist_cache SET biography = ? WHERE mbid = ?",
+                ARTIST_BIOGRAPHY_UPDATE,
                 (json.dumps(dict(lookup), sort_keys=True), mbid),
             )
             conn.commit()
@@ -1776,7 +1809,7 @@ def store_artist_picture(mbid: str, lookup: Mapping[str, Any]) -> None:
         with _LOCK:
             conn = _ensure()
             conn.execute(
-                "UPDATE mb_artist_cache SET picture = ? WHERE mbid = ?",
+                ARTIST_PICTURE_UPDATE,
                 (json.dumps(dict(lookup), sort_keys=True), mbid),
             )
             conn.commit()

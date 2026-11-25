@@ -89,6 +89,14 @@ One SQLite file holds several stores with one thing in common: they're
 Harmonist's own record and cache, not the user's data, so nothing about them
 belongs in a music folder.
 
+Async artist lookups and synchronous file writers share that database. Separate
+connections let a SQLite wait release the request's event loop without holding
+a file or MusicBrainz worker. They also share the same RAM-only database in
+demo mode or after startup falls back from an unavailable store: an observation
+written into a private second database would be invisible to the page reading
+it. Accepted work finishes before its async connection closes, keeping lookup
+notes and the write they explain together through request cancellation.
+
 - **Events**: the Activity feed and the audit log, append-only (see
   [history](history.md)).
 - **Tag changes**: per-file before-and-after values for every tagging, which is

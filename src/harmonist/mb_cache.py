@@ -50,6 +50,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from . import activity_store, library_titles, mb_lookup, timing
+from .artist_store import ArtistStore
+from .async_workers import Workers
 from .models import Release
 
 log = logging.getLogger(__name__)
@@ -284,10 +286,25 @@ def fetch_artist(mbid: str) -> dict[str, Any]:
     the file: MusicBrainz answers a merged artist's old ID with the artist it
     became, and a page keyed by the new ID has to find what was read.
     """
-    with timing.warn_if_slow("MusicBrainz artist lookup", _SLOW_FETCH, mbid=mbid):
-        artist = mb_lookup.fetch_artist(mbid)
+    artist = _live_artist(mbid)
     activity_store.store_artist(str(artist.get("id") or mbid), artist)
     return artist
+
+
+async def fetch_artist_async(mbid: str, workers: Workers, store: ArtistStore) -> dict[str, Any]:
+    """The same always-live artist policy, with persistence owned by aiosqlite.
+
+    The synchronous MB client still uses the shared request limiter. Its worker
+    is free before SQLite waits or writes, and a failure never becomes a cache row.
+    """
+    artist = await workers.run(lambda: _live_artist(mbid))
+    await store.store_artist(str(artist.get("id") or mbid), artist)
+    return artist
+
+
+def _live_artist(mbid: str) -> dict[str, Any]:
+    with timing.warn_if_slow("MusicBrainz artist lookup", _SLOW_FETCH, mbid=mbid):
+        return mb_lookup.fetch_artist(mbid)
 
 
 def stored_artist(mbid: str) -> activity_store.CachedArtist | None:

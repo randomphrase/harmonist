@@ -11,12 +11,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import weakref
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from harmonist.artist_store import ArtistStore
 from harmonist.async_workers import Workers
 
 log = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ class ArtistWork:
         self.http = httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=True)
         self.io = Workers(4, "artist-files")
         self.musicbrainz = Workers(2, "artist-musicbrainz")
+        self.store = ArtistStore()
         self._writes = Workers(2, "artist-write")
         self._write_slots = asyncio.Semaphore(2)
         self._paths: weakref.WeakValueDictionary[Path, asyncio.Lock] = weakref.WeakValueDictionary()
@@ -50,8 +52,18 @@ class ArtistWork:
         finally:
             self._lookups.discard(task)
 
-    async def write[T](self, path: Path, fn: Callable[[], T]) -> T:
-        """Resolve path aliases off-loop before entering the write queue."""
+    async def write[T](
+        self,
+        path: Path,
+        fn: Callable[[], T],
+        *,
+        prepare: Callable[[], Awaitable[None]] | None = None,
+    ) -> T:
+        """Resolve aliases off-loop, then accept preparation and writing together.
+
+        Async preparation records completed lookup observations without occupying
+        a file worker. It has the same cancellation protection as the file write.
+        """
         if self._stopping:
             raise Stopping
         waiter = asyncio.current_task()
@@ -75,7 +87,7 @@ class ArtistWork:
             # proposal, even when acquiring uncontended locks didn't suspend.
             if waiter.cancelling():
                 raise asyncio.CancelledError
-            task = asyncio.create_task(self._complete(fn, lock))
+            task = asyncio.create_task(self._complete(fn, lock, prepare))
             self._accepted.add(task)
             task.add_done_callback(self._completed)
         except BaseException:
@@ -88,8 +100,15 @@ class ArtistWork:
             self._waiting.discard(waiter)
         return await asyncio.shield(task)
 
-    async def _complete[T](self, fn: Callable[[], T], lock: asyncio.Lock) -> T:
+    async def _complete[T](
+        self,
+        fn: Callable[[], T],
+        lock: asyncio.Lock,
+        prepare: Callable[[], Awaitable[None]] | None,
+    ) -> T:
         try:
+            if prepare is not None:
+                await prepare()
             return await self._writes.run(fn)
         finally:
             self._write_slots.release()
@@ -116,4 +135,5 @@ class ArtistWork:
         await self.musicbrainz.close()
         await self.io.close()
         await self._writes.close()
+        await self.store.close()
         await self.http.aclose()

@@ -3393,6 +3393,17 @@ def _fetch_artist(mbid: str) -> Mapping[str, Any]:
         raise _NoArtist("Couldn't read MusicBrainz. Try again later.") from exc
 
 
+async def _fetch_artist_async(mbid: str, work: artist_work.ArtistWork) -> Mapping[str, Any]:
+    """The same live lookup, with its cache write on aiosqlite's worker."""
+    try:
+        return await mb_cache.fetch_artist_async(mbid, work.musicbrainz, work.store)
+    except mb_lookup.ArtistNotFoundError as exc:
+        raise _NoArtist("MusicBrainz has no artist with this ID.") from exc
+    except mb_lookup.MBError as exc:
+        log.warning("could not read MusicBrainz artist %s: %s", mbid, exc, extra=_LOG_ONLY)
+        raise _NoArtist("Couldn't read MusicBrainz. Try again later.") from exc
+
+
 #: What an answer says when a biography lookup failed rather than found none.
 #: Why there is none otherwise is the Biography row's to say (#1022).
 _BIOGRAPHY_FAILED = "couldn't fetch a biography from Wikipedia"
@@ -3456,7 +3467,7 @@ async def _gather_artist(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "this NFO isn't identified")
     answer, filled = await artist_fill.fill(
         mbid,
-        lambda: work.musicbrainz.run(lambda: _fetch_artist(mbid)),
+        lambda: _fetch_artist_async(mbid, work),
         lacks_biography=lacks_biography,
         lacks_picture=lacks_picture,
         asking=_asking(request.app.state.cfg),
@@ -5340,6 +5351,9 @@ def _register_routes(app: FastAPI) -> None:
                         profile.path,
                         lambda: _identify_complete(request, profile, data, answer, filled),
                     ),
+                    prepare=lambda: filled.keep(
+                        str(answer.get("id") or profile.mbid or ""), work.store
+                    ),
                 )
             except _NoArtist as exc:
                 return _identify_problem(str(exc))
@@ -5372,7 +5386,6 @@ def _register_routes(app: FastAPI) -> None:
         cfg = request.app.state.cfg
         root = cfg.paths.music_dir
         try:
-            filled.keep(str(answer.get("id") or profile.mbid or ""))
             written = nfo_history.write(
                 profile.path,
                 root=root,
@@ -5433,6 +5446,7 @@ def _register_routes(app: FastAPI) -> None:
                         profile.path,
                         lambda: _refresh_complete(request, profile, data, _answer, filled),
                     ),
+                    prepare=lambda: filled.keep(str(_answer.get("id") or profile.mbid), work.store),
                 )
             except artist_work.Stopping:
                 return _flash_response(
@@ -5480,7 +5494,6 @@ def _register_routes(app: FastAPI) -> None:
         cfg = request.app.state.cfg
         root = cfg.paths.music_dir
         try:
-            filled.keep(str(answer.get("id") or mbid))
             written = nfo_history.write(
                 profile.path,
                 root=root,

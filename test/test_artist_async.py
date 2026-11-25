@@ -493,3 +493,79 @@ def test_lifespan_drains_cancelled_request_through_audit_history_and_inventory(
         assert inventory is not None and inventory.by_key[MBID][0].path == path
 
     asyncio.run(run())
+
+
+def test_cancelled_request_drains_a_queued_sqlite_observation_before_its_write(
+    artist_client, monkeypatch
+):
+    """A real SQLite write held on its worker survives cancellation and shutdown."""
+    client, cfg, _network = artist_client
+    app = client.app
+    path = cfg.paths.music_dir / "Carol" / "artist.nfo"
+    path.parent.mkdir()
+    path.write_bytes(b"")
+    key = id_registry.get_or_mint(path)
+    monkeypatch.setattr(mb_lookup, "fetch_artist", Mock(return_value=LINKED))
+    monkeypatch.setattr(wikimedia, "biography", AsyncMock(return_value=FOUND))
+
+    async def run():
+        loop = asyncio.get_running_loop()
+        entered = asyncio.Event()
+        release = threading.Event()
+        work = artist_work.ArtistWork()
+        app.state.artist_work = work
+        conn = await work.store._connect()
+
+        def hold():
+            loop.call_soon_threadsafe(entered.set)
+            assert release.wait(5), "shutdown did not release the SQLite write"
+            return 0
+
+        await conn.create_function("hold_observation", 0, hold)
+        async with conn.execute(
+            "CREATE TEMP TRIGGER hold_observation BEFORE UPDATE OF biography ON mb_artist_cache "
+            "BEGIN SELECT hold_observation(); END"
+        ):
+            pass
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://127.0.0.1",
+                headers={"HX-Request": "true"},
+            ) as browser:
+                request = asyncio.create_task(
+                    browser.post(f"/artist/{key}/identify", data={"file": key, "artist": MBID})
+                )
+                await wait(entered)
+                # Neither the event loop nor a MusicBrainz worker is occupied by SQLite.
+                assert (await browser.get("/healthz")).status_code == 200
+                assert await work.musicbrainz.run(lambda: "free") == "free"
+                request.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await request
+                shutdown = asyncio.create_task(work.close())
+                await checkpoint()
+                assert not shutdown.done()
+                assert path.read_bytes() == b""
+                release.set()
+                await asyncio.wait_for(shutdown, 5)
+        finally:
+            release.set()
+            await work.close()
+            del app.state.artist_work
+        assert MBID.encode() in path.read_bytes()
+        saved = activity_store.cached_artist(MBID)
+        assert saved is not None and saved.biography is not None
+        assert saved.biography["status"] == "found"
+        events = activity_store.artist_history(MBID)
+        audit = [
+            e for e in events if e.source is Source.AUDIT and e.message.startswith("nfo.write")
+        ]
+        outcomes = [
+            e for e in events if e.source is Source.ACTIVITY and e.message.startswith("Identified")
+        ]
+        assert len(audit) == len(outcomes) == 1
+        assert audit[0].action_id == outcomes[0].action_id is not None
+        assert activity_store.nfo_changes_for([audit[0].id])[audit[0].id].changes
+
+    asyncio.run(run())

@@ -23,6 +23,7 @@ from typing import Any
 import httpx
 
 from . import activity_store, artist_nfo, fanart_tv, images, nfo_history, wikimedia
+from .artist_store import ArtistStore
 
 log = logging.getLogger(__name__)
 
@@ -62,16 +63,13 @@ class Filled:
     biography_lookup: Mapping[str, Any] | None = None
     picture_lookup: Mapping[str, Any] | None = None
 
-    def keep(self, mbid: str) -> None:
-        """Publish lookup observations off-loop with the accepted completion.
+    async def keep(self, mbid: str, store: ArtistStore) -> None:
+        """Publish lookup observations through SQLite with the accepted completion.
 
         Gathering inputs has a deadline; recording their explanation must not
         make a completed optional result disappear when that deadline expires.
         """
-        if self.biography_lookup is not None:
-            activity_store.store_artist_biography(mbid, dict(self.biography_lookup))
-        if self.picture_lookup is not None:
-            activity_store.store_artist_picture(mbid, dict(self.picture_lookup))
+        await store.keep_lookups(mbid, biography=self.biography_lookup, picture=self.picture_lookup)
 
     @property
     def wanted(self) -> dict[str, str]:

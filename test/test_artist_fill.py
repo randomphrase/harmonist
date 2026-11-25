@@ -57,7 +57,7 @@ def look_up(answer, found, languages=("en",)):
                 client=work.http,
                 deadline=asyncio.get_running_loop().time() + 5,
             )
-            await work.io.run(lambda: filled.keep(MBID))
+            await filled.keep(MBID, work.store)
             return filled
         finally:
             await work.close()
@@ -174,7 +174,7 @@ def fill(read, *, lacks_biography=False, lacks_picture=True):
                 client=work.http,
                 deadline=asyncio.get_running_loop().time() + 5,
             )
-            await work.io.run(lambda: filled.keep(str(answer["id"])))
+            await filled.keep(str(answer["id"]), work.store)
             return answer, filled
         finally:
             await work.close()
