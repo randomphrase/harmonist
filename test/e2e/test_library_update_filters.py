@@ -61,9 +61,20 @@ def test_update_menu_survives_navigation(browser_factory, demo_server, htmx_read
     page.get_by_role("searchbox", name="Search the library").fill("Rural")
     htmx_ready(page.get_by_role("button", name="Search", exact=True)).click()
     pw.expect(page).to_have_url(re.compile(r"filter=update-structure&q=Rural"))
+    # The URL moves before the swap settles. Wait for the search's new view,
+    # rather than a control whose previous copy could still be on screen.
+    htmx_ready(page.locator('[data-library-refresh][hx-get*="q=Rural"]')).wait_for(state="attached")
     htmx_ready(trigger).wait_for(state="visible")
-    with page.expect_response(lambda r: "/library?" in r.url and "update-structure" in r.url):
-        page.evaluate("document.body.dispatchEvent(new Event('library-refresh'))")
+    # A status poll may already have a refresh in flight. HTMX drops a second
+    # refresh, so observe the replacement even if its response headers arrived
+    # before this point. The completed search cannot satisfy this marker.
+    library = page.locator("#library-page")
+    library.evaluate("""element => {
+        element.dataset.beforeRefresh = 'yes';
+        document.body.dispatchEvent(new Event('library-refresh'));
+    }""")
+    pw.expect(library).not_to_have_attribute("data-before-refresh", "yes")
+    htmx_ready(trigger).wait_for(state="visible")
     pw.expect(trigger).to_contain_text("Tag updates: Structure")
     pw.expect(updates).to_be_hidden()
     assert page.evaluate("window.__harmonistNoReload === true")
