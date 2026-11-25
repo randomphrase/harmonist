@@ -89,7 +89,7 @@ def test_a_downloads_original_upc_stands_even_when_owned_barcode_disagrees(
 def test_incomplete_or_conflicting_source_upcs_are_no_barcode_evidence(tmp_path, upcs):
     download(tmp_path, upcs)
     a = scanner.scan(tmp_path)[0]
-    contributions.observe(a, release(("CD",)), None)
+    a = contributions.observe(a, release(("CD",)), None)
     # Still a download, by its store's mark; just not one with a barcode.
     assessment = contributions.assess(a)
     assert assessment.eligible
@@ -103,7 +103,7 @@ def test_malformed_upc_value_cannot_be_hidden_by_a_readable_value(tmp_path):
     tags["----:com.apple.iTunes:UPC"] = [UPC.encode(), b"\xff"]
     tags.save()
     a = scanner.scan(tmp_path)[0]
-    contributions.observe(a, release(("CD",)), None)
+    a = contributions.observe(a, release(("CD",)), None)
     assert contributions.assess(a).source_upc is None
 
 
@@ -123,7 +123,7 @@ def test_source_evidence_covers_all_parts_but_not_other_copies(tmp_path, second)
     # An unreadable part may prevent grouping; no copy without evidence may
     # borrow the first part's UPC. A readable merged album needs every part.
     for a in albums:
-        contributions.observe(a, release(("CD",)), None)
+        a = contributions.observe(a, release(("CD",)), None)
         expected = second == UPC or (a.path == first.parent and len(albums) == 2)
         assert contributions.assess(a).source_upc == (UPC if expected else None)
 

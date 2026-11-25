@@ -30,6 +30,7 @@ from . import (
     activity,
     activity_store,
     audit,
+    background,
     formats,
     id_registry,
     library_index,
@@ -461,6 +462,9 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         audit.record("checkpoint.hold", held_for=_item_id(items[cut]), covers=_item_id(safe[0]))
 
     async def sync_items(self) -> None:
+        if background.stopping():
+            self._unfinished.update(_item_id(item) for item in self.bandcamp.purchases)
+            return
         # Seed dedup from the in-memory library index FIRST: any purchase whose
         # item_id is already recorded on disk has been downloaded, so never
         # re-fetch it — even if ignores.txt is stale/lost. Exact id match, no disk
@@ -537,7 +541,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         linked = 0
         ambiguous = 0
         unlinked: list[Path] = []  # albums to try by title in phase 2
-        for slug, albums in by_slug.items():
+        for slug, albums in background.items(by_slug.items()):
             purchases = purchases_by_slug.get(slug, [])
             if not purchases:
                 unlinked.extend(albums)  # slug matched no purchase
@@ -562,7 +566,7 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
                 continue
             title_index.setdefault(_norm_title(getattr(p, "item_title", "")), []).append(p)
         title_linked = 0
-        for album_dir in unlinked:
+        for album_dir in background.items(unlinked):
             avail = [
                 p
                 for p in title_index.get(_norm_title(_album_title(album_dir)), [])
@@ -831,6 +835,11 @@ class HarmonistSyncer(_BCSyncer):  # type: ignore[misc]
         return any(album_slug(u) == slug and store_host(u) == host for u in known)
 
     def sync_item(self, item: Any, encoding: str | None = None) -> bool:
+        if background.stopping():
+            # Leave the collection checkpoint behind every unaccepted purchase,
+            # just as for a download deferred by the cap. The next sync retries.
+            self._unfinished.add(_item_id(item))
+            return False
         if self._progress_callback:
             label = f"{getattr(item, 'band_name', '?')} / {getattr(item, 'item_title', '?')}"
             # Never let a progress callback failure abort the sync.

@@ -199,7 +199,8 @@ def test_the_startup_check_counts_what_the_library_and_inbox_show(tmp_path):
     runner = client.app.state.scan_runner
     runner.refresh_now()
     albums = {a.path.name: a for a in runner.albums()}
-    gardener.warm_from_cache(list(albums.values()), ignored={})
+    checked = gardener.warm_from_cache(list(albums.values()), ignored={})
+    albums = {a.path.name: a for a in checked.albums}
     activity_store.ignore_update(
         albums["Ignored"].id, release_version=albums["Ignored"].mb_version or ""
     )

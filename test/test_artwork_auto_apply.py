@@ -320,7 +320,7 @@ def test_an_album_whose_tags_the_pass_writes_waits_for_the_next_pass(tmp_path, m
     routing = _routing()
     bare = _library(tmp_path, routing, Bare=None)["Bare"]
     monkeypatch.setattr(auto_apply, "due", lambda albums, ignored, apply_up_to: list(albums))
-    monkeypatch.setattr(auto_apply, "_apply_one", lambda album, cfg, tagger: True)
+    monkeypatch.setattr(auto_apply, "_apply_one", lambda album, cfg, tagger: (True, album))
 
     result = _pass(tmp_path, routing, [bare])
 

@@ -19,7 +19,7 @@ import unicodedata
 import zoneinfo
 from collections import Counter
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -58,6 +58,7 @@ from harmonist import (
     artwork_watch,
     audit,
     auto_apply,
+    background,
     caa_cache,
     caa_listings,
     compare,
@@ -675,8 +676,8 @@ def create_app(
     # Both stores are idle here; the audit store and log mirroring are ready.
     storage_paths.migrate_artwork_cache(cfg.artwork_dir / "caa", cfg.artwork_cache_dir)
 
-    sync_runner = SyncRunner(runner_fn=lambda: None)  # placeholder, replaced below
     scan_runner = ScanRunner(cfg.paths.music_dir)
+    sync_runner = SyncRunner(runner_fn=lambda: None, jobs=scan_runner.jobs)
 
     if cfg.demo_mode:
         from harmonist import demo
@@ -790,6 +791,9 @@ def create_app(
                 post_download_callback=resolve_after_download,
                 link_only=link_only,
             )
+            if background.stopping():
+                scan_runner.request_scan()
+                return result
             # Downloads are done; the remaining work (mis-tag detection, the
             # unmatched report, the rescan) can take a few seconds. Re-label the
             # status so it doesn't sit pinned to the last album's name.
@@ -879,7 +883,7 @@ def create_app(
         if wrote_anything(stats):
             scan_runner.request_scan()  # sidecars written → refresh the snapshot
 
-    reconcile_runner = ReconcileRunner(runner_fn=reconcile_runner_fn)
+    reconcile_runner = ReconcileRunner(runner_fn=reconcile_runner_fn, jobs=scan_runner.jobs)
 
     # Auto-run reconcile once the initial library scan finishes — so MBID-tagged
     # (and ©cmt-URL-recoverable) orphans get sidecars on startup without needing
@@ -895,7 +899,7 @@ def create_app(
         _artwork_check_if_idle(app, sync_runner, reconcile_runner, scan_runner, check=False)
 
     scan_runner.set_on_first_complete(_on_first_scan)
-    scan_runner.set_on_rebuilt(_start_rebuilt_recheck)
+    scan_runner.set_on_rebuilt(lambda albums: _start_rebuilt_recheck(scan_runner, albums))
 
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     templates_dir = project_root / "templates"
@@ -970,6 +974,8 @@ def create_app(
         return int(path.stat().st_mtime) if path.exists() else 0
 
     templates.env.globals["static_version"] = static_version
+
+    shutdown_tasks: set[asyncio.Task[None]] = set()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -1053,26 +1059,50 @@ def create_app(
         try:
             yield
         finally:
-            # Accepted artist writes own their audit/history, Activity and
+            # Accepted writes own their audit/history, Activity and
             # inventory publication. Keep the store and scanner alive until
             # every such completion has drained, regardless of request fate.
-            await _app.state.artist_work.close()
+            scan_runner.jobs.stop()
+            scan_runner.stop()
+            _app.state.artist_work.stop()
             watch_stop.set()
             watch_task.cancel()
             rescan_task.cancel()
             check_task.cancel()
             apply_task.cancel()
             artwork_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await watch_task
-            with suppress(asyncio.CancelledError):
-                await rescan_task
-            with suppress(asyncio.CancelledError):
-                await check_task
-            with suppress(asyncio.CancelledError):
-                await apply_task
-            with suppress(asyncio.CancelledError):
-                await artwork_task
+
+            async def finish() -> None:
+                for task in (watch_task, rescan_task, check_task, apply_task, artwork_task):
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass  # These timers were explicitly stopped above.
+                    except Exception:
+                        # A failed timer or watcher must be reported without
+                        # preventing accepted writes from finishing teardown.
+                        log.exception("background timer or watcher failed")
+                try:
+                    await _app.state.artist_work.close()
+                finally:
+                    try:
+                        await scan_runner.jobs.close()
+                    finally:
+                        await scan_runner.close()
+
+            # Keep the whole completion alive if the lifespan's waiter is
+            # cancelled. In particular, scanner disposal follows write history
+            # and publication, even when the server stops waiting for teardown.
+            closing = asyncio.create_task(finish())
+            shutdown_tasks.add(closing)
+
+            def finished(task: asyncio.Task[None]) -> None:
+                shutdown_tasks.discard(task)
+                if not task.cancelled() and (error := task.exception()) is not None:
+                    log.error("application shutdown failed", exc_info=error)
+
+            closing.add_done_callback(finished)
+            await asyncio.shield(closing)
 
     app = FastAPI(title="Harmonist", lifespan=lifespan)
     app.state.cfg = cfg
@@ -1081,7 +1111,9 @@ def create_app(
     # under the spelling settings the write would apply (#685) — read off the
     # live config at the moment it looks, since Settings applies without a
     # restart.
-    gardener.configure(lambda: library_titles.choices(app.state.cfg.tagging.choices()))
+    gardener.configure(
+        lambda: library_titles.choices(app.state.cfg.tagging.choices()), owner=scan_runner
+    )
     gardener.configure_routing(lambda: app.state.cfg.gardener)
     artwork_updates.configure(
         lambda: app.state.cfg.tagging.folder_cover,
@@ -3669,7 +3701,8 @@ def _artwork_check_if_idle(
         finally:
             _artwork_check_lock.release()
 
-    threading.Thread(target=run, name="harmonist-artwork-check", daemon=True).start()
+    if not scan_runner.jobs.start("artwork-check", run):
+        _artwork_check_lock.release()
 
 
 UpdateCheckWait = Literal["off", "busy", "unscanned", "running"]
@@ -3731,11 +3764,9 @@ def _update_check_if_idle(
     report a library of nothing. And a pass still running refuses a second on top
     of itself, which would ask about the same albums twice.
 
-    **Its own thread.** The pass blocks on the network for a second per album
-    and then on the disk, which are the two things that must never happen on the
-    event loop. Daemon, and not cancelled at shutdown: it records a hint and
-    persists nothing but the cache rows it fills on the way, so being killed
-    part-way through loses only work the next pass redoes.
+    A bounded application worker keeps network and file reads off the event
+    loop. Shutdown stops the pass between albums and owns the current call
+    until it returns, including its cache and Activity outcome.
     """
     cfg: config_mod.Config = app.state.cfg
     if cfg.gardener.level == "off":
@@ -3772,7 +3803,9 @@ def _update_check_if_idle(
         finally:
             _update_check_lock.release()
 
-    threading.Thread(target=_run, name="harmonist-update-check", daemon=True).start()
+    if not scan_runner.jobs.start("update-check", _run):
+        _update_check_lock.release()
+        return "the application is stopping"
     return None
 
 
@@ -3821,7 +3854,8 @@ def _auto_apply_if_idle(
             # log is the only channel for a pass nobody is watching.
             log.exception("auto-apply pass failed")
 
-    threading.Thread(target=_run, name="harmonist-auto-apply", daemon=True).start()
+    if not scan_runner.jobs.start("auto-apply", _run):
+        return "an apply pass is running or the application is stopping"
     return None
 
 
@@ -3875,7 +3909,9 @@ def _start_bulk_apply(app: FastAPI, chosen: Mapping[str, str | None]) -> str | N
             # anything arriving here is a defect.
             log.exception("bulk apply pass failed")
 
-    threading.Thread(target=_run, name="harmonist-bulk-apply", daemon=True).start()
+    if not scan_runner.jobs.start("bulk-apply", _run):
+        auto_apply.release_claim()
+        return "the application is stopping"
     return None
 
 
@@ -3905,7 +3941,9 @@ def _start_bulk_artwork_apply(app: FastAPI, chosen: Mapping[str, str]) -> str | 
             # anything arriving here is a defect.
             log.exception("bulk artwork apply pass failed")
 
-    threading.Thread(target=_run, name="harmonist-bulk-artwork-apply", daemon=True).start()
+    if not scan_runner.jobs.start("bulk-artwork-apply", _run):
+        auto_apply.release_artwork_claim()
+        return "the application is stopping"
     return None
 
 
@@ -3917,15 +3955,11 @@ def _start_flag_warm_up(scan_runner: ScanRunner) -> None:
     `gardener.warm_from_cache` refills it from stored MusicBrainz payloads and
     the files on disk, spending **no** MusicBrainz requests.
 
-    Its own thread, not the scan thread that triggers it: this is minutes of
-    file reads on a large library, and blocking there would hold up the scan
-    completion every other startup task is waiting behind. Not an asyncio task
-    either — it must never run on the event loop, and there is nothing to await
-    it for.
+    The application's worker pool keeps these file reads off the event loop
+    and lets the scan complete before this potentially long pass finishes.
 
-    Daemon, and deliberately not cancelled at shutdown: it reads, records a
-    hint, and persists nothing, so being killed mid-pass loses only work that
-    the next startup redoes.
+    The app owns the worker through shutdown. It stops between albums, after
+    the current file read and its publication have completed.
     """
 
     def _run() -> None:
@@ -3940,28 +3974,30 @@ def _start_flag_warm_up(scan_runner: ScanRunner) -> None:
             # is simply emptier than it should be, which reads as "no updates".
             log.exception("update-available warm-up failed")
 
-    threading.Thread(target=_run, name="harmonist-flag-warmup", daemon=True).start()
+    scan_runner.jobs.start("flag-warmup", _run)
 
 
-def _start_rebuilt_recheck(albums: list[Album]) -> None:
+def _start_rebuilt_recheck(scan_runner: ScanRunner, albums: list[Album]) -> None:
     """Re-judge the update flags of albums a scan just rebuilt (#758).
 
     The warm-up covers the first scan; this covers every publish after it, for
     only the albums it rebuilt — on an hourly rescan of an untouched library,
-    none, and no thread is started. Its own thread for the warm-up's reasons:
-    file reads, nothing to await, nothing persisted.
+    none, and no job is started. It shares the application's worker pool with
+    the warm-up, coalescing repeat requests for the same local copies.
     """
+
+    scan_runner.queue_rechecks(albums)
 
     def _run() -> None:
         try:
-            gardener.recheck_rebuilt(albums)
+            gardener.recheck_rebuilt(scan_runner.take_rechecks())
         except Exception:
             # Boundary catch, as for the warm-up: a background hint must not die
             # silently, and its symptom would be albums quietly missing from the
             # Library's filter and the Inbox, which reads as "no updates".
             log.exception("update-available re-check after a rescan failed")
 
-    threading.Thread(target=_run, name="harmonist-flag-rebuilt", daemon=True).start()
+    scan_runner.jobs.start("flag-rebuilt", _run, repeat=True)
 
 
 def _start_settings_recheck(
@@ -3974,8 +4010,8 @@ def _start_settings_recheck(
 
     The Library follows the setting without anyone opening the albums: an album
     whose tags the new setting would rewrite gains a Settings update, and one
-    it no longer would loses it. Its own thread, as the warm-up is and for the
-    same reasons — file reads, nothing to await, nothing persisted.
+    it no longer would loses it. Like the warm-up, its file reads run in the
+    application's worker pool.
 
     `then` runs once the re-check is done, so the updates it found can be
     applied straight away when the user trusts Harmonist with them (#273).
@@ -4002,7 +4038,11 @@ def _start_settings_recheck(
         if then is not None:
             then()
 
-    threading.Thread(target=_run, name="harmonist-flag-recheck", daemon=True).start()
+    # Retain every affected local copy when settings changes overlap. The
+    # normal settings pass remains selective; its coalesced successor judges
+    # current cached inputs for the accumulated copies.
+    if not scan_runner.jobs.start("flag-recheck", _run) and not background.stopping():
+        _start_rebuilt_recheck(scan_runner, scan_runner.albums())
 
 
 def _refreshed_from_disk(request: Request, album: Album) -> Album:
@@ -6478,7 +6518,9 @@ def _register_routes(app: FastAPI) -> None:
                 query = f"?{request.url.query}" if request.url.query else ""
                 return RedirectResponse(f"/album/{quote(back.id, safe='')}{query}", status_code=303)
         album = _refreshed_from_disk(request, _find_album(request, album_id))
-        contributions.warm(album)
+        observed = contributions.warm(album)
+        request.app.state.scan_runner.publish_observations(album, observed)
+        album = observed
         # The tracklist and actions don't depend on the store, so a broken store
         # must not take the whole page down — but the history section has to say
         # it couldn't read rather than fall through to "Nothing recorded for this
@@ -6631,12 +6673,16 @@ def _register_routes(app: FastAPI) -> None:
                     if album.contribution_observation is None:
                         # Fetched just now for want of a stored one: what it says
                         # about media and links is the observation.
-                        contributions.observe(
+                        observed = contributions.observe(
                             album, release, mb_cache.fetched_at(str(release["id"]))
                         )
+                        request.app.state.scan_runner.publish_observations(album, observed)
+                        album = observed
                     releases, total = mb_cache.fetch_release_group_editions(str(group_id))
                     # The live album, so the Library's filters see this browse.
-                    contributions.observe_group(album, releases, total)
+                    observed = contributions.observe_group(album, releases, total)
+                    request.app.state.scan_runner.publish_observations(album, observed)
+                    album = observed
                     contribution = contributions.assess(album)
                     # A URL on any release (even physical or unspecified media)
                     # needs review before inviting an edit on the current one.
@@ -7071,7 +7117,9 @@ def _register_routes(app: FastAPI) -> None:
         # Costs one read per file on top of the comparison, which is affordable
         # on a page the user asked for and is exactly why the Library's own
         # render cannot do this for every tile.
-        plan = gardener.refresh_after_fetch(album, release, before=fetched_over).plan
+        assessment = gardener.refresh_after_fetch(album, release, before=fetched_over)
+        album = assessment.album
+        plan = assessment.plan
         assignment_review = tagger_mod.assignment_review(release, [t for _, t in reads[0]])
         # The artwork half of the page's findings, from the pass made above
         # rather than from one of its own (#485).

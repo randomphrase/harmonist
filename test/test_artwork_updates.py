@@ -1,5 +1,6 @@
 """Artwork discovery uses all local carriers, and never the tag-update verdict."""
 
+import asyncio
 import logging
 import shutil
 import threading
@@ -16,6 +17,7 @@ from harmonist import (
     activity_store,
     artwork,
     artwork_updates,
+    background,
     caa_cache,
     cover_art,
     formats,
@@ -568,7 +570,9 @@ def test_background_guards_do_not_launch_a_worker(monkeypatch, level, sync, reco
 
     monkeypatch.setattr(web_main, "_artwork_check_lock", threading.Lock())
     monkeypatch.setattr(
-        threading, "Thread", lambda **kw: pytest.fail("started a guarded artwork worker")
+        background.Jobs,
+        "start",
+        lambda *args, **kw: pytest.fail("started a guarded artwork worker"),
     )
     web_main._artwork_check_if_idle(
         _stub_app(level),
@@ -585,19 +589,13 @@ def test_worker_warms_offline_and_has_an_independent_nonoverlapping_lock(monkeyp
     monkeypatch.setattr(artwork_updates, "warm", lambda albums: calls.append("warm"))
     monkeypatch.setattr(artwork_updates, "sweep", lambda albums: calls.append("sweep"))
 
-    class InlineThread:
-        def __init__(self, *, target, **kwargs):
-            self.target = target
-
-        def start(self):
-            self.target()
-
-    monkeypatch.setattr(threading, "Thread", InlineThread)
     args = (_stub_runner(), _stub_runner(), _stub_runner())
     web_main._artwork_check_if_idle(_stub_app("off"), *args, check=False)
+    asyncio.run(args[-1].jobs.wait_idle())
     assert calls == ["warm"]
     with web_main._update_check_lock:
         web_main._artwork_check_if_idle(_stub_app(), *args)
+        asyncio.run(args[-1].jobs.wait_idle())
     assert calls == ["warm", "warm", "sweep"]
     with web_main._artwork_check_lock:
         web_main._artwork_check_if_idle(_stub_app(), *args)

@@ -420,6 +420,10 @@ class Album:
     artist: str
     track_count: int
     state: AlbumState
+    # Identity of this reading of the local files, preserved by value updates.
+    # In-memory only: a rebuilt scan gets a different token even if its display
+    # fields happen to compare equal. An assessment cannot cross that boundary.
+    revision: object = field(default_factory=object, compare=False, repr=False)
     sidecar: Sidecar | None = None
     cover_path: Path | None = None
     # Populated only when state == INCONSISTENT — per-file summary of the
@@ -528,10 +532,10 @@ class Album:
     # filter can miss an album, but it can never invite the user to act on an
     # update that isn't there.
     #
-    # Survives a rescan of an album nothing touched, because the snapshot keeps
-    # the same object: `resolve_dir` returns the cached Album on a signature
-    # hit, and the scan runner keeps an album assembled from cached folders
-    # rather than its fresh copy. An album whose files or sidecar changed is
+    # Survives an unchanged rescan because the publisher retains the latest
+    # assessed value for unchanged cached folders. Workers return new values;
+    # readers never depend on a worker mutating the object they hold.
+    # An album whose files or sidecar changed is
     # rebuilt and starts False — so a re-tag that took the update clears the
     # flag by construction — and is then judged again from its stored release
     # (#758), because every other edit leaves the update as outstanding as it was.

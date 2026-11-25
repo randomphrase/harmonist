@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from mutagen.mp4 import MP4
 
-from harmonist import library_index
+from harmonist import background, library_index
 from harmonist import sidecar as sc
 from harmonist.bandcamp_hook import (
     HarmonistSyncer,
@@ -707,6 +707,44 @@ def test_a_cap_deferred_purchase_holds_the_checkpoint_back(tmp_path, monkeypatch
     seen = _capture_checkpoint(monkeypatch)
     s._save_collection_checkpoint()
     assert seen == []  # checkpoint untouched → the next sync re-pages and finishes
+
+
+def test_shutdown_finishes_purchase_and_preserves_checkpoint_for_the_next(tmp_path, monkeypatch):
+    s = _bare_syncer()
+    s.local_media.get_path_for_purchase = lambda item: tmp_path / str(item.item_id)
+    s.local_media.is_locally_downloaded = lambda item, path: False
+    s.ignores.is_ignored = lambda item: False
+    jobs = background.Jobs(workers=1)
+    downloaded, captured = [], []
+
+    def download(self, item, encoding=None):
+        downloaded.append(item.item_id)
+        jobs.stop()
+        return True
+
+    def capture(item, *args, **kwargs):
+        captured.append(item.item_id)
+        return True
+
+    monkeypatch.setattr("harmonist.bandcamp_hook._BCSyncer.sync_item", download)
+    monkeypatch.setattr("harmonist.bandcamp_hook.write_sidecar_for_item", capture)
+    s.bandcamp.collection_items = [_StubItem(item_id=i) for i in (30, 20, 10)]
+    seen = _capture_checkpoint(monkeypatch)
+
+    def sync():
+        for item in s.bandcamp.collection_items:
+            s.sync_item(item)
+        s._save_collection_checkpoint()
+
+    async def run():
+        assert jobs.start("sync", sync)
+        await asyncio.wait_for(jobs.wait_idle(), 5)
+        await jobs.close()
+
+    asyncio.run(run())
+    assert downloaded == [30]
+    assert captured == [30]  # accepted download also completed its sidecar
+    assert seen == []  # the next sync must still page the unaccepted purchases
 
 
 def test_an_item_without_an_is_preorder_key_is_not_treated_as_unfinished(tmp_path, monkeypatch):

@@ -97,6 +97,14 @@ the other input is covered elsewhere: a rescan that rebuilds an album because
 its files changed re-judges it from the stored release, again with no requests,
 so the background check never has to notice an edit to the files.
 
+**A published reading belongs to its readers.** An assessment produces a new
+album value rather than changing the one a page may already be rendering. The
+library accepts that value only for the same local files and tagging choices;
+a newer scan, setting or cached release sends it back for a coalesced check
+from the cache. An unrelated album changing does not invalidate the work. This
+keeps the verdict, its explanation and its MusicBrainz version together without
+holding the library's publication lock while a NAS reads files.
+
 **Nothing computed here is stored.** The flag and its significance are rebuilt
 from the cache and the files whenever needed. **Only new updates are
 announced.** One the user hasn't taken yet isn't announced again when the
@@ -119,6 +127,13 @@ upgrade started without anyone deciding to.
 **It only reports.** Finding updates and writing them are separate jobs, so the
 check itself can't damage the library whatever it finds. Writing is the apply
 pass's (below), and only for the levels the user has trusted.
+
+**The application owns background work until it finishes.** Stopping a timer
+does not stop a worker it already started. Shutdown therefore stops admissions
+first, lets read-only passes stop between albums, and finishes each accepted
+write through its audit, history and library refresh. The next queued album
+waits for another run. Synchronous file and provider calls retain their worker
+until they actually return; cancelling an await cannot create spare capacity.
 
 ### Applying without asking
 

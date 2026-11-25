@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from harmonist import activity
+from harmonist import activity, background
 
 log = logging.getLogger(__name__)
 
@@ -69,13 +69,13 @@ class AlreadyRunningError(Exception):
 class SyncRunner:
     """Owns a single background sync job at a time."""
 
-    def __init__(self, runner_fn: Callable[[], Any]):
+    def __init__(self, runner_fn: Callable[[], Any], *, jobs: background.Jobs | None = None):
         """`runner_fn` is the callable that actually performs the sync.
         Typically a closure that constructs HarmonistSyncer with the right config.
         """
         self._runner_fn = runner_fn
         self._lock = threading.Lock()
-        self._thread: threading.Thread | None = None
+        self.jobs = jobs if jobs is not None else background.Jobs(workers=1)
         self._status = SyncStatus()
         # One-shot override for the NEXT sync, set by the Sync popover: None =
         # auto-detect link-only mode (the default), True/False = force it. The
@@ -89,7 +89,7 @@ class SyncRunner:
     @property
     def is_running(self) -> bool:
         with self._lock:
-            return self._status.state == "running"
+            return self._status.state == "running" or self.jobs.running("sync")
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -105,7 +105,7 @@ class SyncRunner:
             self._status.current_item = label
 
     def start(self) -> SyncStatus:
-        """Spawn a background thread that runs the sync. Raises if already running."""
+        """Admit an owned sync job. Raises if already running."""
         with self._lock:
             if self._status.state == "running":
                 raise AlreadyRunningError("sync is already running")
@@ -113,8 +113,10 @@ class SyncRunner:
                 state="running",
                 started_at=datetime.now(UTC),
             )
-        self._thread = threading.Thread(target=self._run, daemon=True, name="harmonist-sync")
-        self._thread.start()
+        if not self.jobs.start("sync", self._run):
+            with self._lock:
+                self._status.state = "idle"
+            raise AlreadyRunningError("sync is stopping")
         return self._status
 
     def _run(self) -> None:
@@ -128,6 +130,8 @@ class SyncRunner:
         failures: list[str] = []
         error: str | None = None
         try:
+            if background.stopping():
+                return
             result = self._runner_fn()
             # Real syncer exposes an int `new_items` (count of downloads); the
             # demo result exposes a `new_items_downloaded` bool. Prefer the count.

@@ -21,7 +21,7 @@ from harmonist.web.main import _library_page_vars, create_app
 from harmonist.web.scan_runner import ScanRunner
 from test.helpers import ACCURATERIP_TAGS, write_provenance_tags
 from test.test_bandcamp_hook import _bare_syncer, _StubItem
-from test.test_gardener import _release
+from test.test_gardener import _observed, _release
 
 URL = "https://artist.bandcamp.com/album/record"
 MBID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
@@ -73,7 +73,7 @@ def release(formats=("Digital Media",), urls=(), mbid=MBID):
 )
 def test_independent_media_and_url_findings(formats, urls, media, missing):
     a = album()
-    contributions.observe(a, release(formats, urls), NOW)
+    a = contributions.observe(a, release(formats, urls), NOW)
     result = contributions.assess(a)
     assert (result.media_mismatch, result.missing_url) == (media, missing)
 
@@ -82,10 +82,11 @@ def test_a_legacy_timestamp_is_not_file_provenance_and_a_linked_purchase_is():
     a = album(comment=False)
     assert a.sidecar is not None
     a.sidecar = replace(a.sidecar, bandcamp=None)
-    contributions.observe(a, release(("CD",)), NOW)
+    a = contributions.observe(a, release(("CD",)), NOW)
     assert not contributions.assess(a).eligible
     # A purchase whose comment a conversion dropped is still its download (#867),
     # but the URL it was linked by isn't evidence to contribute.
+    assert a.sidecar is not None
     a.sidecar = replace(a.sidecar, bandcamp=BandcampInfo(item_id=123))
     result = contributions.assess(a)
     assert result.eligible and result.media_mismatch and result.missing_url is None
@@ -99,7 +100,7 @@ def test_a_legacy_timestamp_is_not_file_provenance_and_a_linked_purchase_is():
 
 def test_private_cd_mix_is_reviewed_without_publishing_its_url():
     a = album(private=True)
-    contributions.observe(a, release(("CD",)), NOW)
+    a = contributions.observe(a, release(("CD",)), NOW)
     result = contributions.assess(a)
     assert result.media_mismatch and result.private
     assert result.missing_url is None
@@ -109,15 +110,16 @@ def test_url_identity_is_host_scoped_and_comment_evidence_wins():
     a = album()
     assert a.sidecar is not None
     a.sidecar = replace(a.sidecar, store_url="https://other.bandcamp.com/album/record")
-    contributions.observe(a, release(urls=(a.sidecar.store_url,)), NOW)
+    a = contributions.observe(a, release(urls=(a.sidecar.store_url,)), NOW)
     assert contributions.assess(a).missing_url
-    contributions.observe(
+    a = contributions.observe(
         a, release(urls=("http://ARTIST.bandcamp.com/album/record/?from=fan#x",)), NOW
     )
     assert contributions.assess(a).missing_url is False
     a.bandcamp_comment_urls = (URL, "https://artist.bandcamp.com/album/another")
     assert contributions.assess(a).store_url is None
     a.bandcamp_comment_urls = ("https://artist.bandcamp.com",)
+    assert a.sidecar is not None
     a.sidecar = replace(a.sidecar, store_url="https://artist.bandcamp.com")
     assert contributions.assess(a).eligible
     assert contributions.assess(a).store_url is None
@@ -127,8 +129,9 @@ def test_url_identity_is_host_scoped_and_comment_evidence_wins():
 def test_identity_change_drops_old_observation_and_unknown_is_not_clean():
     a = album()
     assert contributions.assess(a).observation is None
-    contributions.observe(a, release(urls=(URL,)), NOW)
+    a = contributions.observe(a, release(urls=(URL,)), NOW)
     assert contributions.assess(a).missing_url is False
+    assert a.sidecar is not None
     a.sidecar = replace(a.sidecar, mb_release_id="new-edition")
     assert contributions.assess(a).observation is None
     assert contributions.assess(a).missing_url is None
@@ -258,9 +261,9 @@ def test_release_match_and_contribution_filters_split_and_count_each_copy_once()
         a = album()
         a.id = a.title = name
         if formats is not None:
-            contributions.observe(a, release(formats, urls), NOW)
+            a = contributions.observe(a, release(formats, urls), NOW)
             if browsed:
-                contributions.observe_group(a, [], 0)
+                a = contributions.observe_group(a, [], 0)
         albums.append(a)
     # Nothing is flagged before its group is compared, even a CD match.
     view = _library_page_vars(albums, 1, 30, filter_="possible-mismatch")
@@ -284,7 +287,7 @@ def test_gardener_updates_contributions_even_when_tags_are_unchanged(monkeypatch
     a = album()
     before = release()
     activity_store.store_release(MBID, mb_cache._key(mb_lookup.RELEASE_INCLUDES), before)
-    contributions.warm(a)
+    a = contributions.warm(a)
     assert contributions.assess(a).missing_url
     fetch = Mock(return_value=release(urls=(URL,)))
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
@@ -292,7 +295,8 @@ def test_gardener_updates_contributions_even_when_tags_are_unchanged(monkeypatch
         gardener, "plan_for", Mock(side_effect=AssertionError("no tag work needed"))
     )
     for _ in range(2):
-        gardener.sweep([a], recheck_after=timedelta(0), limit=1)
+        checked = gardener.sweep([a], recheck_after=timedelta(0), limit=1)
+        a = _observed(checked, a)
         assert contributions.assess(a).missing_url is False
     assert fetch.call_count == 2
 
@@ -303,7 +307,7 @@ def test_old_includes_cache_does_not_claim_urls_were_checked(monkeypatch):
     activity_store.store_release(MBID, mb_cache._key(legacy), release(("CD",)))
     fetch = Mock(side_effect=AssertionError("warming must not fetch"))
     monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
-    contributions.warm(a)
+    a = contributions.warm(a)
     assert contributions.assess(a).observation is None
     assert contributions.assess(a).missing_url is None
     assert fetch.call_count == 0
@@ -330,7 +334,10 @@ def test_multi_folder_album_keeps_fresh_observation_after_cached_rescan(tmp_path
     assert len(runner.albums()) == 1
     a = runner.albums()[0]
     assert len(a.folders) == 2 and contributions.assess(a).missing_url
-    contributions.observe(a, release(urls=(URL,)), datetime.now(UTC) + timedelta(seconds=1))
+    updated = contributions.observe(
+        a, release(urls=(URL,)), datetime.now(UTC) + timedelta(seconds=1)
+    )
+    assert runner.publish_observations(a, updated)
     runner.refresh_now()
     assert contributions.assess(runner.albums()[0]).missing_url is False
 

@@ -10,7 +10,8 @@ pytest_plugins = ["pytester"]
 def test_workers_finish_before_fixture_teardown(pytester):
     hook = conftest.pytest_runtest_teardown
     pytester.makeconftest(
-        "import threading\nimport time\nimport pytest\n" + inspect.getsource(hook)
+        "import asyncio\nimport threading\nimport time\nimport pytest\n_job_owners = []\n"
+        + inspect.getsource(hook)
     )
     pytester.makepyfile("""
 import threading

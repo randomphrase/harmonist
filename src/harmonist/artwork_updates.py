@@ -26,6 +26,7 @@ from . import (
     activity_store,
     artwork,
     artwork_watch,
+    background,
     caa_cache,
     cover_art,
     derived,
@@ -229,7 +230,7 @@ def warm(albums: Sequence[Album]) -> None:
     if not unread:
         return
     with progress.job("Reading artwork", total=len(unread)) as job:
-        for mbid in unread:
+        for mbid in background.items(unread):
             observe(mbid)
             job.advance()
 
@@ -638,7 +639,7 @@ def sweep(albums: Sequence[Album], *, limit: int | None = None) -> int:
     checked = 0
     routing = _routing()
     found: list[tuple[Album, artwork.Operation]] = []
-    for _, mbid, width in due[:count]:
+    for _, mbid, width in background.items(due[:count]):
         if time.monotonic() >= deadline:
             break
         _attempted[mbid] = datetime.now(UTC)

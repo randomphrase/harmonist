@@ -35,8 +35,8 @@ def assessed(folder, matched, *siblings):
     """The album matched to `matched`, with its group — `matched` and `siblings`
     — browsed, so the Library's filters have everything they need."""
     album = scanner.scan(folder.parent)[0]
-    contributions.observe(album, matched, None)
-    contributions.observe_group(album, [matched, *siblings], 1 + len(siblings))
+    album = contributions.observe(album, matched, None)
+    album = contributions.observe_group(album, [matched, *siblings], 1 + len(siblings))
     return contributions.assess(album)
 
 

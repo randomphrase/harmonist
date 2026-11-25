@@ -7,6 +7,7 @@ templates render without crashing for each AlbumState.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -10069,7 +10070,7 @@ def test_redownload_starts_a_sync(client, cfg, quiet_sync):
 
     client.post(f"/library/{_id_for(cfg, d)}/redownload")
 
-    quiet_sync._thread.join(timeout=5)
+    asyncio.run(quiet_sync.jobs.wait_idle())
     assert started == [True]
 
 

@@ -57,7 +57,7 @@ def _flagged(tmp_path, stored: dict):
     activity_store.init(tmp_path / "activity.db")
     album = _tagged(tmp_path, _release())
     activity_store.store_release("rel-aaa", "+".join(sorted(mb_lookup.RELEASE_INCLUDES)), stored)
-    gardener.refresh_flag(album, stored)
+    album = gardener.refresh_flag(album, stored).album
     assert album.update_available
     return album
 
@@ -120,6 +120,7 @@ def test_an_update_in_range_is_written_from_the_stored_release(tmp_path, monkeyp
 
     assert (result.applied, result.held) == (1, 0)
     assert _catalogue_number(album) == "WARPCD-999"
+    album = gardener.refresh_flag(album, _catalogued()).album
     assert album.update_available is False
 
 
@@ -193,6 +194,7 @@ def test_an_update_that_reaches_further_by_write_time_is_held(tmp_path, monkeypa
 
     assert (result.applied, result.held) == (0, 1)
     assert _catalogue_number(album) is None
+    album = gardener.refresh_flag(album, retitled).album
     assert auto_apply.held_reason(album) == "Its update now reaches identity"
 
 
@@ -413,7 +415,11 @@ def test_the_digest_leaves_out_updates_that_will_apply_themselves(tmp_path):
 
     gardener._record_digest(
         gardener.PassResult(
-            asked=1, examined=1, flagged=1, newly_flagged=(album,), gone=0, failed=0
+            asked=1,
+            assessments=(gardener.Assessment(None, None, album),),
+            newly_flagged=(album,),
+            gone=0,
+            failed=0,
         )
     )
 

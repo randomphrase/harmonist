@@ -64,15 +64,16 @@ import math
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, Protocol
 
 from . import (
     activity,
     activity_store,
     album_files,
+    background,
     contributions,
     formats,
     mb_cache,
@@ -107,9 +108,20 @@ RoutingReader = Callable[[], GardenerConfig]
 
 _settings: SettingsReader | None = None
 _routing: RoutingReader | None = None
+_owner: AssessmentOwner | None = None
 
 
-def configure(settings: SettingsReader | None) -> None:
+class AssessmentOwner(Protocol):
+    def current(self, album: Album) -> Album | None: ...
+
+    def publish_observations(
+        self, before: Album, after: Album, *, valid: Callable[[], bool]
+    ) -> bool: ...
+
+    def recheck(self, album: Album) -> None: ...
+
+
+def configure(settings: SettingsReader | None, *, owner: AssessmentOwner | None = None) -> None:
     """Hand the check a reader of the user's spelling settings (#685).
 
     A reader rather than a value, so the check judges each album under the
@@ -118,8 +130,9 @@ def configure(settings: SettingsReader | None) -> None:
     a choice the user has since changed. `create_app` installs one over its
     live config; `None` means `TaggingChoices()`, MusicBrainz's own spelling.
     """
-    global _settings
+    global _settings, _owner
     _settings = settings
+    _owner = owner
 
 
 def configure_routing(routing: RoutingReader | None) -> None:
@@ -143,10 +156,12 @@ def _routing_now() -> GardenerConfig:
 # (#685) and leave its stale verdict standing. One album's plan at a time, which
 # the threads that share it — the warm-up, the re-check, the pass, a page view —
 # barely notice.
-_flag_lock = threading.Lock()
+_flag_lock = threading.RLock()
 
 
-def plan_for(album: Album, release: Release) -> tagger.AlbumPlan:
+def plan_for(
+    album: Album, release: Release, *, tagging: TaggingChoices | None = None
+) -> tagger.AlbumPlan:
     """What re-tagging `album` against `release` would change, without writing.
 
     The plan is both the verdict and the explanation: a non-empty `changes` is
@@ -204,7 +219,7 @@ def plan_for(album: Album, release: Release) -> tagger.AlbumPlan:
         # An album can span several directories (#197); planning over the
         # primary one alone would miss whatever the other discs need.
         files=album_files.for_paths(album.folders),
-        tagging=_choices(),
+        tagging=_choices() if tagging is None else tagging,
     )
 
 
@@ -229,6 +244,10 @@ class Assessment:
 
     plan: tagger.AlbumPlan | None
     verdict: owned.Significance | None
+    album: Album
+    accepted: bool = True
+    news: bool = False
+    examined: bool = True
 
 
 def _countable(plan: tagger.AlbumPlan) -> Iterator[tuple[Path, str, Any, Any]]:
@@ -308,7 +327,7 @@ def follows_settings(plan: tagger.AlbumPlan) -> bool:
 
 
 def refresh_flag(album: Album, release: Release) -> Assessment:
-    """Set `album`'s update fields from `release`; return what was found.
+    """Assess `release` against one local reading and return its updated value.
 
     Three fields move together and are meant to be read together:
     `update_available` (is there anything to take), `update_significance` (how
@@ -328,18 +347,40 @@ def refresh_flag(album: Album, release: Release) -> Assessment:
     unexplained on screen: the album page reports it through `_shape_mismatch`
     and `absent_media`, which say far more about it than a field diff could.)
 
-    Mutating the Album in place is what makes this visible to the Library:
-    `ScanRunner.albums()` hands out the live snapshot, so this is the same
-    object the grid will render.
+    The configured owner publishes the value only while its local reading and
+    settings are current. Without an owner, the caller consumes `result.album`.
+    Neither case changes the input that another reader may still hold.
 
     Under `_flag_lock`, from reading the setting to recording the verdict.
     """
-    contributions.observe(album, release, mb_cache.fetched_at(str(release["id"])))
     with _flag_lock:
-        return _assess(album, release)
+        current = _owner.current(album) if _owner is not None else album
+        if current is None:
+            assert _owner is not None
+            _owner.recheck(album)
+            return Assessment(plan=None, verdict=None, album=album, accepted=False)
+        choices = _choices()
+        observed = contributions.observe(current, release, mb_cache.fetched_at(str(release["id"])))
+        result = _assess(observed, release, tagging=choices)
+        if _owner is not None:
+            # The cache can move while the files are being read. Validate after
+            # the plan, outside the publication lock; another assessment cannot
+            # publish between this check and ours because it shares _flag_lock.
+            stored = mb_cache.stored_release(str(release["id"]))
+            if stored is not None and release_version(stored) != release_version(release):
+                _owner.recheck(current)
+                return Assessment(plan=None, verdict=None, album=current, accepted=False)
+        if _owner is not None and not _owner.publish_observations(
+            current, result.album, valid=lambda: _choices() == choices
+        ):
+            _owner.recheck(current)
+            return Assessment(plan=None, verdict=None, album=current, accepted=False)
+        return result
 
 
-def refresh_after_fetch(album: Album, release: Release, *, before: Release | None) -> Assessment:
+def refresh_after_fetch(
+    album: Album, release: Release, *, before: Release | None, announce: bool = True
+) -> Assessment:
     """`refresh_flag` for a release the album page has just fetched, recording
     the album's update in Activity if it is news (#1024), as the background
     check does.
@@ -355,46 +396,63 @@ def refresh_after_fetch(album: Album, release: Release, *, before: Release | Non
     `_earlier_verdict`), so this and the background check, fetching the same
     release at once, don't record the same update twice.
     """
-    if before is None or _same_release(before, release):
-        return refresh_flag(album, release)
-    earlier = _earlier_verdict(album, before, release)
-    assessment = refresh_flag(album, release)
-    if album.update_available and _is_news(earlier, album.update_significance):
-        _record_updates([album])
+    with _flag_lock:
+        current = _owner.current(album) if _owner is not None else album
+        if current is None or before is None or _same_release(before, release):
+            return refresh_flag(album, release)
+        earlier = _earlier_verdict(current, before, release)
+        assessment = refresh_flag(current, release)
+        news = (
+            assessment.accepted
+            and assessment.album.update_available
+            and _is_news(earlier, assessment.album.update_significance)
+        )
+        assessment = replace(assessment, news=news)
+    if news and announce:
+        _record_updates([assessment.album])
     return assessment
 
 
-def _assess(album: Album, release: Release) -> Assessment:
+def _assess(album: Album, release: Release, *, tagging: TaggingChoices) -> Assessment:
     """`refresh_flag`'s body, which the caller holds `_flag_lock` around."""
     try:
-        plan = plan_for(album, release)
+        plan = plan_for(album, release, tagging=tagging)
     except tagger.TagMismatchError as e:
-        if isinstance(e, tagger.TrackAssignmentRequired):
-            album.unassigned_track_count = e.unassigned
-        album.update_available = True
-        album.update_significance = owned.Significance.STRUCTURE
-        # No field diff exists to describe it, so the reason stands in for one.
-        album.update_changes = album.update_lead = ()
-        album.update_note = _mismatch_note(e)
-        album.mb_version = release_version(release)
-        return Assessment(plan=None, verdict=owned.Significance.STRUCTURE)
+        judged = replace(
+            album,
+            unassigned_track_count=(
+                e.unassigned
+                if isinstance(e, tagger.TrackAssignmentRequired)
+                else album.unassigned_track_count
+            ),
+            update_available=True,
+            update_significance=owned.Significance.STRUCTURE,
+            update_changes=(),
+            update_lead=(),
+            update_note=_mismatch_note(e),
+            mb_version=release_version(release),
+        )
+        return Assessment(plan=None, verdict=owned.Significance.STRUCTURE, album=judged)
     except formats.READ_ERRORS:
         # Loud, per the unattended rule: at 3am the log is the only channel.
         # ERROR rather than WARNING — nothing recovered, we simply cannot say
         # whether this album has an update, and it will keep reporting whatever
         # it last said until something can read it.
         log.exception("could not tell whether %s has a tag update available", album.path)
-        return Assessment(plan=None, verdict=None)
+        return Assessment(plan=None, verdict=None, album=album)
     verdict = verdict_for(plan)
-    album.unassigned_track_count = plan.unassigned
-    album.update_available = verdict is not None
-    album.update_significance = verdict
-    album.update_changes, album.update_lead = (
-        _change_rows(album, plan, release) if verdict is not None else ((), ())
+    changes, lead = _change_rows(album, plan, release) if verdict is not None else ((), ())
+    judged = replace(
+        album,
+        unassigned_track_count=plan.unassigned,
+        update_available=verdict is not None,
+        update_significance=verdict,
+        update_changes=changes,
+        update_lead=lead,
+        update_note=None,
+        mb_version=release_version(release),
     )
-    album.update_note = None
-    album.mb_version = release_version(release)
-    return Assessment(plan=plan, verdict=verdict)
+    return Assessment(plan=plan, verdict=verdict, album=judged)
 
 
 #: How many rows the Inbox leads with before its full list.
@@ -450,14 +508,19 @@ def _change_rows(
     return rows, tuple(lead[:LEAD_ROWS])
 
 
+@dataclass(frozen=True)
+class CachedResult:
+    albums: tuple[Album, ...]
+    flagged: int
+
+
 def warm_from_cache(
     albums: Sequence[Album],
     *,
     ignored: Mapping[str, activity_store.IgnoredUpdate],
     held: Callable[[Album], bool] = lambda _: False,
-) -> int:
-    """Rebuild the update-available flags from stored releases. Returns how many
-    albums were flagged.
+) -> CachedResult:
+    """Rebuild update flags from stored releases and return the assessed values.
 
     The flag lives in process memory, so a restart blanks it and the filter
     would read zero until the background pass next came round — potentially a
@@ -490,9 +553,9 @@ def warm_from_cache(
     ignored updates included, and so named a number nothing on screen did.
     """
 
-    def closing(looked: int, flagged: int) -> str:
-        waiting = sum(waiting_by_level(albums, ignored).values())
-        review = len(for_review(albums, ignored, _routing_now(), held))
+    def closing(looked: int, flagged: int, assessed: Sequence[Album]) -> str:
+        waiting = sum(waiting_by_level(assessed, ignored).values())
+        review = len(for_review(assessed, ignored, _routing_now(), held))
         found = _albums(waiting, "has a tag update", "have a tag update")
         return f"{found}, {review} for review" if review else found
 
@@ -509,8 +572,8 @@ def _albums(n: int, one: str, many: str) -> str:
     return f"{n} album {one}" if n == 1 else f"{n} albums {many}"
 
 
-def recheck_rebuilt(albums: Sequence[Album]) -> int:
-    """Re-judge albums a rescan rebuilt (#758). Returns how many were flagged.
+def recheck_rebuilt(albums: Sequence[Album]) -> CachedResult:
+    """Re-judge albums a rescan rebuilt (#758); return their values and count.
 
     A rebuilt album starts with no flag. That is right when the edit that
     rebuilt it took the update, and wrong in every other case — a genre set in
@@ -529,9 +592,9 @@ def recheck_rebuilt(albums: Sequence[Album]) -> int:
 
 def recheck_for_settings(
     albums: Sequence[Album], before: TaggingChoices, after: TaggingChoices
-) -> int:
+) -> CachedResult:
     """Re-judge the albums a change to the user's spelling settings can move
-    (#685, #678). Returns how many albums were flagged.
+    (#685, #678), returning the assessed values and their flagged count.
 
     The warm-up's loop, from the same stored releases and so for the same zero
     MusicBrainz requests, narrowed to albums whose release a tagging would write
@@ -557,7 +620,7 @@ def recheck_for_settings(
         # Only the albums the setting can move are looked at, so the count is of
         # those, not of the library: a library-wide "0 albums have a tag update"
         # would be false of every album with an update from MusicBrainz.
-        closing=lambda looked, flagged: (
+        closing=lambda looked, flagged, assessed: (
             f"{_albums(looked, 'affected', 'affected')}, {flagged} with a tag update"
             if looked
             else "no albums affected"
@@ -581,19 +644,20 @@ def _refresh_from_cache(
     wanted: Callable[[Release], bool],
     what: str,
     label: str | None,
-    closing: Callable[[int, int], str] | None = None,
-) -> int:
+    closing: Callable[[int, int, Sequence[Album]], str] | None = None,
+) -> CachedResult:
     """The paced loop `warm_from_cache` and the re-checks share.
 
     Shown in the status bar as `label` while it runs (#757): the warm-up and the
     Settings re-check are minutes of file reads on a large library, and a person
     may be waiting on either. None keeps it out of the bar. A shown job ends with
-    `closing(looked, flagged)`.
+    `closing(looked, flagged, assessed)`.
     """
     started = time.monotonic()
     log.info("update-available %s: checking %d albums", what, len(albums))
     flagged = 0
     looked = 0
+    assessed: list[Album] = []
     reported = started
     shown = (
         progress.job(label, total=len(albums))
@@ -601,18 +665,22 @@ def _refresh_from_cache(
         else contextlib.nullcontext(progress.Job("", len(albums)))
     )
     with shown as job:
-        for album in albums:
+        for album in background.items(albums):
             release = _stored_release_of(album)
             if release is not None and wanted(release):
                 looked += 1
                 _yield_to_requests()
-                refresh_flag(album, release)
+                if background.stopping():
+                    break
+                assessment = refresh_flag(album, release)
+                album = assessment.album
                 # The verdict is the flag, not the return value — a None comes
                 # back both for an unreadable album (not flagged) and for one
                 # whose tracklist no longer fits (flagged), so counting the
                 # return would undercount.
-                if album.update_available:
+                if assessment.accepted and album.update_available:
                     flagged += 1
+            assessed.append(album)
             job.advance()
             if time.monotonic() - reported >= _PROGRESS_EVERY.total_seconds():
                 reported = time.monotonic()
@@ -622,7 +690,10 @@ def _refresh_from_cache(
                     looked,
                     flagged,
                 )
-        job.closing = closing(looked, flagged) if closing is not None else None
+        result = CachedResult(tuple(assessed), flagged)
+        job.closing = (
+            closing(looked, result.flagged, result.albums) if closing is not None else None
+        )
     log.info(
         "update-available %s: done in %.0fs — %d of %d albums with a stored release have an update",
         what,
@@ -630,7 +701,7 @@ def _refresh_from_cache(
         flagged,
         looked,
     )
-    return flagged
+    return result
 
 
 def _yield_to_requests() -> None:
@@ -817,9 +888,7 @@ class PassResult:
     #: Of those, the ones whose files were then read — because the payload had
     #: moved, or because there was nothing stored to compare it against. The gap
     #: between this and `asked` is the early exit doing its job.
-    examined: int
-    #: Of those, the ones that turned out to have an update outstanding.
-    flagged: int
+    assessments: tuple[Assessment, ...]
     #: Of those, the ones that did NOT have one before this pass looked. The
     #: digest counts these and not `flagged`, and the difference is the whole of
     #: #274's discipline: an album the user has been sitting on for a fortnight
@@ -838,6 +907,14 @@ class PassResult:
     #: the closing log line, so a short pass says why it was short rather than
     #: leaving a small number of albums looking like a quiet night.
     gave_up: bool = False
+
+    @property
+    def examined(self) -> int:
+        return sum(a.examined for a in self.assessments)
+
+    @property
+    def flagged(self) -> int:
+        return sum(a.examined and a.accepted and a.album.update_available for a in self.assessments)
 
 
 def _slice_size(due_count: int, *, tick: timedelta, window: timedelta) -> int:
@@ -925,9 +1002,10 @@ def sweep(
     )
     asked = examined = flagged = gone = failed = 0
     newly_flagged: list[Album] = []
+    assessments: list[Assessment] = []
     gave_up = False
     reported = time.monotonic()
-    for mbid, group in due[:slice_size]:
+    for mbid, group in background.items(due[:slice_size]):
         # Read the baseline BEFORE the fetch: `fetch_release` replaces the row
         # on its way back, so afterwards there is nothing left to compare with.
         before = mb_cache.stored_release(mbid)
@@ -991,10 +1069,18 @@ def sweep(
             )
         _consecutive_failures = 0
         # URL-only edits can settle contributions without changing any tag.
-        for album in group:
-            contributions.observe(album, release, mb_cache.fetched_at(str(release["id"])))
-        _browse_siblings(release, group)
+        group = [
+            _publish_contribution(
+                album,
+                contributions.observe(album, release, mb_cache.fetched_at(str(release["id"]))),
+            )
+            for album in group
+        ]
+        group = _browse_siblings(release, group)
         if before is not None and _same_release(before, release):
+            assessments.extend(
+                Assessment(plan=None, verdict=None, album=a, examined=False) for a in group
+            )
             continue  # MusicBrainz has said nothing new; read no files
         examined += len(group)
         for album in group:
@@ -1002,19 +1088,19 @@ def sweep(
             # fields it reads. The digest is a statement about the difference
             # between the two verdicts, and this is the only moment both are
             # knowable.
-            earlier = _earlier_verdict(album, before, release)
-            refresh_flag(album, release)
-            if album.update_available:
+            assessment = refresh_after_fetch(album, release, before=before, announce=False)
+            assessments.append(assessment)
+            album = assessment.album
+            if assessment.accepted and album.update_available:
                 flagged += 1
-                if _is_news(earlier, album.update_significance):
+                if assessment.news:
                     newly_flagged.append(album)
         if time.monotonic() - reported >= _PROGRESS_EVERY.total_seconds():
             reported = time.monotonic()
             log.info("update check: %d asked, %d with something new", asked, examined)
     result = PassResult(
         asked=asked,
-        examined=examined,
-        flagged=flagged,
+        assessments=tuple(assessments),
         newly_flagged=tuple(newly_flagged),
         gone=gone,
         failed=failed,
@@ -1364,7 +1450,14 @@ def _last_look(mbid: str, times: dict[str, datetime]) -> datetime | None:
     return max(seen) if seen else None
 
 
-def _browse_siblings(release: Release, group: list[Album]) -> None:
+def _publish_contribution(before: Album, after: Album) -> Album:
+    if _owner is not None and not _owner.publish_observations(before, after, valid=lambda: True):
+        _owner.recheck(before)
+        return before
+    return after
+
+
+def _browse_siblings(release: Release, group: list[Album]) -> list[Album]:
     """Browse the release's group when an album on it needs sibling evidence (#618).
 
     Only when needed: an album with a finding, since neither Library filter
@@ -1387,7 +1480,7 @@ def _browse_siblings(release: Release, group: list[Album]) -> None:
             break
     group_id = (release.get("release-group") or {}).get("id")
     if not wanted or not group_id:
-        return
+        return group
     try:
         releases, total = mb_cache.fetch_release_group_editions(str(group_id))
     except mb_lookup.MBError:
@@ -1397,9 +1490,11 @@ def _browse_siblings(release: Release, group: list[Album]) -> None:
             exc_info=True,
             extra={"_diagnostic": True},
         )
-        return
-    for album in group:
-        contributions.observe_group(album, releases, total)
+        return group
+    return [
+        _publish_contribution(album, contributions.observe_group(album, releases, total))
+        for album in group
+    ]
 
 
 def _same_release(before: Release, after: Release) -> bool:

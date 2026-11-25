@@ -13,12 +13,14 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- Background jobs finish accepted album writes, history and library refreshes during graceful shutdown (#1048).
 - Artist Identify and Refresh give lookups 30 seconds, preserve completed optional results, and finish accepted writes and their history during graceful shutdown (#1040).
 - **A track's work has a column in the track list** when the other tags leave
   one free, rather than a line under the track (#1035).
 
 ### Fixed
 
+- Tag-update assessments overtaken by a scan, setting or MusicBrainz change are rechecked from cache without replacing newer library readings (#1048).
 - Background scan discoveries keep their own Activity and audit grouping instead of appearing beneath the action that triggered the scan (#1044).
 
 ## [1.35.0] - 2026-11-24

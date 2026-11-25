@@ -307,7 +307,7 @@ def resolve_dir(
             audio_bytes=_audio_bytes(signature, audio_files),
         )
         album = build_album(album_dir, audio_files, io, _written_at(signature))
-        contributions.warm(album)
+        album = contributions.warm(album)
     except (InvalidSidecarError, UnsupportedSchemaVersionError) as e:
         _warn_once(album_dir, signature, "skipping %s: %s", e)
         return None
@@ -511,7 +511,7 @@ def _combine(mbid: str | None, group: list[ScannedDir]) -> Album:
     )
     written = [e.album.files_written_at for e in group if e.album.files_written_at]
     album = build_album(primary.album.path, files, io, max(written) if written else None)
-    album.origin_override_conflict = (
+    conflict = (
         len(
             {
                 e.album.sidecar.origin_override
@@ -526,12 +526,12 @@ def _combine(mbid: str | None, group: list[ScannedDir]) -> Album:
         for e in group
         if e.album.contribution_observation is not None
     ]
-    album.contribution_observation = max(
+    observation = max(
         observations,
         key=lambda o: o.checked_at or datetime.min.replace(tzinfo=UTC),
         default=None,
     )
-    return album
+    return replace(album, origin_override_conflict=conflict, contribution_observation=observation)
 
 
 def _merge_sidecars(sidecars: list[Sidecar | None], mbid: str | None) -> Sidecar:

@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from harmonist import activity, activity_store, live_counts, sidecar
+from harmonist import activity, activity_store, background, live_counts, sidecar
 
 if TYPE_CHECKING:
     from harmonist.models import Album
@@ -81,20 +81,20 @@ def _iso(dt: datetime | None) -> str | None:
 class ReconcileRunner:
     """Owns a single background reconciliation job at a time."""
 
-    def __init__(self, runner_fn: Callable[..., None]):
+    def __init__(self, runner_fn: Callable[..., None], *, jobs: background.Jobs | None = None):
         """`runner_fn(status_updater)` is the callable that iterates orphans
         and reconciles them. The runner injects a status updater so the
         function can report progress (current_item, completed counters).
         """
         self._runner_fn = runner_fn
         self._lock = threading.Lock()
-        self._thread: threading.Thread | None = None
+        self.jobs = jobs if jobs is not None else background.Jobs(workers=1)
         self._status = ReconcileStatus()
 
     @property
     def is_running(self) -> bool:
         with self._lock:
-            return self._status.state == "running"
+            return self._status.state == "running" or self.jobs.running("reconcile")
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -122,8 +122,10 @@ class ReconcileRunner:
                 state="running",
                 started_at=datetime.now(UTC),
             )
-        self._thread = threading.Thread(target=self._run, daemon=True, name="harmonist-reconcile")
-        self._thread.start()
+        if not self.jobs.start("reconcile", self._run):
+            with self._lock:
+                self._status.state = "idle"
+            return False
         return True
 
     def _can_start_locked(self) -> bool:
@@ -137,6 +139,8 @@ class ReconcileRunner:
     def _run(self) -> None:
         error: str | None = None
         try:
+            if background.stopping():
+                return
             self._runner_fn(self._update_status)
         except Exception as e:
             log.exception("reconcile run failed")
@@ -291,7 +295,7 @@ def reconcile_pending_orphans(
         }
     activity.record(f"Reconcile started — {total} album(s) to check")
 
-    for album in pending:
+    for album in background.items(pending):
         # One action scope per ALBUM (#84): reconcile writes a sidecar and an
         # activity entry for each, so each is separately revertible. A run-wide
         # scope would lump every album's audit records under a single id.
@@ -449,7 +453,7 @@ def _record_video_media(
 
     activity.record(f"Checking MusicBrainz for video-only discs — {len(pending)} album(s)")
     checked = 0
-    for album in pending:
+    for album in background.items(pending):
         with activity_store.action():
             try:
                 positions = reconcile.record_video_media(
@@ -502,7 +506,7 @@ def _adopt_external_retags(albums: list[Album], exempt: set[Path]) -> int:
         return 0
 
     adopted = 0
-    for album in candidates:
+    for album in background.items(candidates):
         sc = album.sidecar
         written = album.files_written_at
         if sc is None or sc.tagged_at is None or written is None:

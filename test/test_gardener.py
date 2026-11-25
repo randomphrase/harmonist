@@ -44,6 +44,15 @@ from harmonist.web.scan_runner import ScanRunner
 SINE_M4A = Path(__file__).parent / "fixtures" / "sine.m4a"
 
 
+def _observed(result, album):
+    values = (
+        [a.album for a in result.assessments]
+        if isinstance(result, gardener.PassResult)
+        else result.albums
+    )
+    return next((a for a in values if a.revision is album.revision), album)
+
+
 def _release(title: str = "Test Album", *, tracks: int = 1, mbid: str = "rel-aaa") -> dict:
     """A minimal release the tagger can write from, in musicbrainzngs' shape."""
     return {
@@ -91,7 +100,7 @@ def _flag(album: Album, release: dict) -> bool:
     verdicts. `update_available` is the single answer, and it is what the
     Library reads.
     """
-    gardener.refresh_flag(album, release)
+    album = gardener.refresh_flag(album, release).album
     return album.update_available
 
 
@@ -160,7 +169,8 @@ def test_the_flag_is_judged_under_the_users_transforms(tmp_path):
 
     gardener.configure(lambda: TaggingChoices())
 
-    assert _flag(album, disambiguated) is True
+    album = gardener.refresh_flag(album, disambiguated).album
+    assert album.update_available is True
     assert album.update_significance == owned.Significance.SETTINGS
 
 
@@ -180,7 +190,7 @@ def test_an_unreadable_file_leaves_the_flag_as_it_was(tmp_path):
     something can read the files again."""
     release = _release()
     album = _tagged(tmp_path, release)
-    gardener.refresh_flag(album, _release("Test Album (remastered)"))
+    album = gardener.refresh_flag(album, _release("Test Album (remastered)")).album
     assert album.update_available is True
 
     (album.path / "01 Track 1.m4a").write_bytes(b"not an m4a at all")
@@ -219,7 +229,9 @@ def test_the_warm_up_rebuilds_flags_without_asking_musicbrainz(tmp_path, monkeyp
 
     monkeypatch.setattr(mb_lookup, "fetch_release", _no_requests)
 
-    assert gardener.warm_from_cache([album], ignored={}) == 1
+    checked = gardener.warm_from_cache([album], ignored={})
+    assert checked.flagged == 1
+    album = _observed(checked, album)
     assert album.update_available is True
 
 
@@ -240,9 +252,10 @@ def test_a_second_warm_up_changes_nothing(tmp_path, monkeypatch):
     )
 
     first = gardener.warm_from_cache([album], ignored={})
+    album = _observed(first, album)
     events_after_first = len(activity_store.recent(50))
 
-    assert gardener.warm_from_cache([album], ignored={}) == first == 1
+    assert gardener.warm_from_cache([album], ignored={}).flagged == first.flagged == 1
     assert album.update_available is True
     assert len(activity_store.recent(50)) == events_after_first
 
@@ -253,7 +266,7 @@ def test_the_warm_up_leaves_an_album_musicbrainz_was_never_asked_about(tmp_path)
     activity_store.init(tmp_path / "activity.db")
     album = _tagged(tmp_path, _release())
 
-    assert gardener.warm_from_cache([album], ignored={}) == 0
+    assert gardener.warm_from_cache([album], ignored={}).flagged == 0
     assert album.update_available is False
 
 
@@ -265,7 +278,7 @@ def test_the_warm_up_skips_an_album_with_no_release_of_its_own(tmp_path):
     album = next(a for a in scanner.scan(tmp_path) if a.path == d)
     assert album.sidecar is None
 
-    assert gardener.warm_from_cache([album], ignored={}) == 0
+    assert gardener.warm_from_cache([album], ignored={}).flagged == 0
 
 
 def test_the_warm_up_closes_with_the_counts_the_page_shows(tmp_path):
@@ -291,11 +304,11 @@ def test_the_warm_up_closes_with_the_counts_the_page_shows(tmp_path):
 
     gardener.configure_routing(lambda: GardenerConfig(apply_up_to=owned.Significance.IDENTITY))
 
-    gardener.warm_from_cache(
-        list(albums.values()), ignored=ignored, held=lambda album: album is albums["Held"]
+    checked = gardener.warm_from_cache(
+        list(albums.values()), ignored=ignored, held=lambda album: album.id == albums["Held"].id
     )
 
-    assert all(a.update_significance == owned.Significance.IDENTITY for a in albums.values())
+    assert all(a.update_significance == owned.Significance.IDENTITY for a in checked.albums)
     finished = progress.status()["finished"]
     assert finished["label"] == "Checking for tag updates"
     assert finished["message"] == "2 albums have a tag update, 1 for review"
@@ -378,7 +391,7 @@ def test_an_edit_that_does_not_take_the_update_keeps_the_flag_through_a_rescan(
 
     async def go() -> None:
         await _scan_via_runner(runner)
-        _join("harmonist-flag-warmup")
+        await runner.jobs.wait_idle()
         [before] = runner.albums()
         assert before.update_available is True
 
@@ -388,7 +401,7 @@ def test_an_edit_that_does_not_take_the_update_keeps_the_flag_through_a_rescan(
         runner._kick()
         assert runner._task is not None
         await runner._task
-        _join("harmonist-flag-rebuilt")
+        await runner.jobs.wait_idle()
 
         [after] = runner.albums()
         assert after is not before  # the edit really did rebuild it
@@ -490,10 +503,8 @@ def test_the_app_judges_flags_under_its_own_transforms(engaged, monkeypatch):
     assert runner.albums()[0].update_significance == owned.Significance.SETTINGS
 
 
-def _join_recheck() -> None:
-    for thread in threading.enumerate():
-        if thread.name == "harmonist-flag-recheck":
-            thread.join(timeout=10)
+def _join_recheck(runner) -> None:
+    asyncio.run(runner.jobs.wait_idle())
 
 
 def _save_transforms(client, transforms: list[str], artist_names: str = "variations"):
@@ -528,7 +539,7 @@ def test_saving_an_artist_names_choice_re_checks_the_albums_it_moves(engaged, mo
     activity_store.store_release("rel-aaa", "+".join(sorted(mb_lookup.RELEASE_INCLUDES)), release)
 
     assert _save_transforms(client, [], artist_names="variations").status_code == 200
-    _join_recheck()
+    _join_recheck(runner)
 
     assert runner.albums()[0].update_significance == owned.Significance.SETTINGS
 
@@ -550,12 +561,12 @@ def test_saving_a_transform_re_checks_the_albums_it_moves(engaged, monkeypatch):
     assert runner.albums()[0].update_available is False
 
     assert _save_transforms(client, ["album_disambiguation"]).status_code == 200
-    _join_recheck()
+    _join_recheck(runner)
 
     assert runner.albums()[0].update_significance == owned.Significance.SETTINGS
 
     assert _save_transforms(client, []).status_code == 200
-    _join_recheck()
+    _join_recheck(runner)
 
     assert runner.albums()[0].update_available is False
 
@@ -574,13 +585,15 @@ def test_the_re_check_reads_only_albums_the_change_can_move(tmp_path, monkeypatc
     looked: list[Path] = []
     real = gardener.plan_for
 
-    def _counting(album: Album, release: dict) -> tagger.AlbumPlan:
+    def _counting(album: Album, release: dict, **kwargs) -> tagger.AlbumPlan:
         looked.append(album.path)
-        return real(album, release)
+        return real(album, release, **kwargs)
 
     monkeypatch.setattr(gardener, "plan_for", _counting)
 
-    gardener.recheck_for_settings([plain, moved], TaggingChoices(), _disambiguating())
+    checked = gardener.recheck_for_settings([plain, moved], TaggingChoices(), _disambiguating())
+    plain = _observed(checked, plain)
+    moved = _observed(checked, moved)
 
     assert looked == [moved.path]
 
@@ -1328,7 +1341,8 @@ def test_the_warm_up_says_it_started_and_says_it_finished(tmp_path, caplog):
     album = _tagged(tmp_path, _release())
 
     with caplog.at_level(logging.INFO, logger="harmonist.gardener"):
-        gardener.warm_from_cache([album], ignored={})
+        checked = gardener.warm_from_cache([album], ignored={})
+        album = _observed(checked, album)
 
     lines = [r.getMessage() for r in caplog.records]
     assert any("checking 1 albums" in m for m in lines)
@@ -1339,9 +1353,9 @@ def _slowed(monkeypatch, seconds: float) -> None:
     """Make each album's look take at least `seconds`, so pacing is measurable."""
     real = gardener.plan_for
 
-    def slow(album: Album, release: dict) -> tagger.AlbumPlan:
+    def slow(album: Album, release: dict, **kwargs) -> tagger.AlbumPlan:
         time.sleep(seconds)
-        return real(album, release)
+        return real(album, release, **kwargs)
 
     monkeypatch.setattr(gardener, "plan_for", slow)
 
@@ -1415,8 +1429,9 @@ def test_a_request_that_never_ends_cannot_park_the_check(tmp_path, monkeypatch):
     album = _tagged(tmp_path, release)
     _store(release)
     monkeypatch.setattr(gardener, "_LONGEST_WAIT", timedelta(milliseconds=50))
+    results = []
     check = threading.Thread(
-        target=gardener.warm_from_cache, args=([album],), kwargs={"ignored": {}}, daemon=True
+        target=lambda: results.append(gardener.warm_from_cache([album], ignored={})), daemon=True
     )
 
     with request_load.serving():
@@ -1424,7 +1439,7 @@ def test_a_request_that_never_ends_cannot_park_the_check(tmp_path, monkeypatch):
         check.join(5)
 
     assert not check.is_alive(), "the check is still waiting on a request that never ends"
-    assert album.mb_version is not None, "and it looked at the album"
+    assert results[0].albums[0].mb_version is not None, "and it looked at the album"
 
 
 def test_judging_an_album_parses_each_file_once(tmp_path, monkeypatch):
@@ -1549,6 +1564,7 @@ def test_a_pass_finds_an_update_nobody_went_looking_for(tmp_path, monkeypatch):
     asked = _serving(monkeypatch, _release("Test Album (remastered)"))
 
     result = gardener.sweep([album])
+    album = _observed(result, album)
 
     assert asked == ["rel-aaa"]
     assert album.update_available is True
@@ -1638,6 +1654,7 @@ def test_a_release_with_no_stored_baseline_is_not_news(tmp_path, monkeypatch):
     _serving(monkeypatch, _release("Test Album (remastered)"))
 
     result = gardener.sweep([album])
+    album = _observed(result, album)
 
     assert album.update_available is True
     assert (result.flagged, len(result.newly_flagged)) == (1, 0)
@@ -1657,6 +1674,7 @@ def test_an_update_outstanding_before_the_warm_up_reached_it_is_not_news(tmp_pat
     _serving(monkeypatch, _release("Test Album (remastered, again)"))
 
     result = gardener.sweep([album])
+    album = _observed(result, album)
 
     assert album.update_available is True
     assert len(result.newly_flagged) == 0
@@ -1672,7 +1690,8 @@ def test_a_pass_that_finds_nothing_writes_nothing_to_the_feed(tmp_path, monkeypa
     _store(_release(), age=_stale())
     _serving(monkeypatch, _release())
 
-    gardener.sweep([album])
+    checked = gardener.sweep([album])
+    album = _observed(checked, album)
 
     assert album.update_available is False
     assert _digest() == []
@@ -1687,7 +1706,7 @@ def test_an_album_already_flagged_is_not_announced_a_second_time(tmp_path, monke
     album = _tagged(tmp_path, _release())
     moved = _release("Test Album (remastered)")
     _store(moved, age=_stale())
-    gardener.refresh_flag(album, moved)
+    album = gardener.refresh_flag(album, moved).album
     assert album.update_available is True
 
     # MusicBrainz edits the release AGAIN, so the payload really has moved and
@@ -1695,6 +1714,7 @@ def test_an_album_already_flagged_is_not_announced_a_second_time(tmp_path, monke
     # update still outstanding, which is not news.
     _serving(monkeypatch, _release("Test Album (remastered, again)"))
     result = gardener.sweep([album])
+    album = _observed(result, album)
 
     assert (result.examined, result.flagged, len(result.newly_flagged)) == (1, 1, 0)
     assert _named_updates() == []
@@ -1719,6 +1739,7 @@ def test_a_settings_update_musicbrainz_caused_is_logged_only_if_chosen(
     gardener.configure_routing(lambda: GardenerConfig(activity_from=activity_from))
 
     result = gardener.sweep([album])
+    album = _observed(result, album)
 
     assert album.update_significance == owned.Significance.SETTINGS
     assert (result.flagged, len(result.newly_flagged)) == (1, 1)
@@ -1736,11 +1757,12 @@ def test_a_waiting_settings_change_is_not_news_when_musicbrainz_moves_again(tmp_
     _store(release, age=_stale())
     gardener.configure(_disambiguating)
     gardener.configure_routing(lambda: GardenerConfig(activity_from=owned.Significance.SETTINGS))
-    gardener.refresh_flag(album, release)
+    album = gardener.refresh_flag(album, release).album
     assert album.update_significance == owned.Significance.SETTINGS
     _serving(monkeypatch, {**release, "quality": "high"})
 
     result = gardener.sweep([album])
+    album = _observed(result, album)
 
     assert (result.examined, len(result.newly_flagged)) == (1, 0)
     assert album.update_significance == owned.Significance.SETTINGS
@@ -1759,7 +1781,9 @@ def test_the_settings_re_check_logs_nothing_even_when_settings_is_logged(tmp_pat
     gardener.configure(_disambiguating)  # the setting just saved
     gardener.configure_routing(lambda: GardenerConfig(activity_from=owned.Significance.SETTINGS))
 
-    assert gardener.recheck_for_settings([album], TaggingChoices(), _disambiguating()) == 1
+    checked = gardener.recheck_for_settings([album], TaggingChoices(), _disambiguating())
+    assert checked.flagged == 1
+    album = _observed(checked, album)
 
     assert album.update_significance == owned.Significance.SETTINGS
     assert _named_updates() == []
@@ -1773,8 +1797,8 @@ def test_a_payload_already_judged_is_not_news_a_second_time(tmp_path):
     album = _tagged(tmp_path, _release())
     moved = _release("Test Album (remastered)")
 
-    gardener.refresh_after_fetch(album, moved, before=_release())
-    gardener.refresh_after_fetch(album, moved, before=_release())
+    album = gardener.refresh_after_fetch(album, moved, before=_release()).album
+    album = gardener.refresh_after_fetch(album, moved, before=_release()).album
 
     assert _named_updates() == [
         (album.id, album.label, "Update available from MusicBrainz (identity)")
@@ -1792,7 +1816,7 @@ def test_a_waiting_settings_change_does_not_hide_news_from_musicbrainz(tmp_path,
     album = _tagged(tmp_path, release)
     _store(release, age=_stale())
     gardener.configure(_disambiguating)
-    gardener.refresh_flag(album, release)
+    album = gardener.refresh_flag(album, release).album
     assert album.update_significance == owned.Significance.SETTINGS
     retitled = copy.deepcopy(release)
     retitled["medium-list"][0]["track-list"][0]["title"] = "Track One"
@@ -1800,6 +1824,7 @@ def test_a_waiting_settings_change_does_not_hide_news_from_musicbrainz(tmp_path,
     _serving(monkeypatch, retitled)
 
     result = gardener.sweep([album])
+    album = _observed(result, album)
 
     assert album.update_significance == owned.Significance.IDENTITY
     assert _named_updates() == [
@@ -1835,11 +1860,12 @@ def test_an_unchanged_release_does_not_clear_a_flag_already_raised(tmp_path, mon
     album = _tagged(tmp_path, _release())
     moved = _release("Test Album (remastered)")
     _store(moved, age=_stale())
-    gardener.refresh_flag(album, moved)
+    album = gardener.refresh_flag(album, moved).album
     assert album.update_available is True
 
     _serving(monkeypatch, moved)
-    gardener.sweep([album])
+    checked = gardener.sweep([album])
+    album = _observed(checked, album)
 
     assert album.update_available is True
 
@@ -1855,7 +1881,8 @@ def test_the_pass_writes_nothing_to_the_files(tmp_path, monkeypatch):
     _store(_release(), age=_stale())
     _serving(monkeypatch, _release("Test Album (remastered)"))
 
-    gardener.sweep([album])
+    checked = gardener.sweep([album])
+    album = _observed(checked, album)
 
     assert album.update_available is True  # it found the change ...
     assert {p: p.read_bytes() for p in sorted(album.path.iterdir())} == before  # ... and left it
@@ -1874,7 +1901,9 @@ def test_a_second_pass_over_an_unchanged_library_does_nothing_at_all(tmp_path, m
     asked = _serving(monkeypatch, _release("Test Album (remastered)"))
 
     first = gardener.sweep([album])
+    album = _observed(first, album)
     second = gardener.sweep([album])
+    album = _observed(second, album)
 
     assert (first.asked, first.examined) == (1, 1)
     assert (second.asked, second.examined) == (0, 0)
@@ -1927,7 +1956,9 @@ def test_an_album_musicbrainz_was_never_asked_about_goes_first(tmp_path, monkeyp
     _store(_release(mbid="rel-seen"), age=_stale())
     asked = _serving(monkeypatch, _release(mbid="rel-seen"), _release(mbid="rel-never"))
 
-    gardener.sweep([seen, never], limit=1)
+    checked = gardener.sweep([seen, never], limit=1)
+    seen = _observed(checked, seen)
+    never = _observed(checked, never)
 
     assert asked == ["rel-never"]
 
@@ -1944,7 +1975,9 @@ def test_the_stalest_album_goes_first_when_the_cap_bites(tmp_path, monkeypatch):
     _store(_release(mbid="rel-ancient"), age=_stale() * 2)
     asked = _serving(monkeypatch, _release(mbid="rel-recent"), _release(mbid="rel-ancient"))
 
-    gardener.sweep([recent, ancient], limit=1)
+    checked = gardener.sweep([recent, ancient], limit=1)
+    recent = _observed(checked, recent)
+    ancient = _observed(checked, ancient)
 
     assert asked == ["rel-ancient"]
 
@@ -2106,6 +2139,8 @@ def test_two_albums_on_one_release_cost_one_request(tmp_path, monkeypatch):
     asked = _serving(monkeypatch, _release("Test Album (remastered)"))
 
     result = gardener.sweep([one, two])
+    one = _observed(result, one)
+    two = _observed(result, two)
 
     assert asked == ["rel-aaa"]
     assert (one.update_available, two.update_available) == (True, True)
@@ -2122,7 +2157,9 @@ def test_a_deleted_release_is_not_asked_about_again_next_pass(tmp_path, monkeypa
     asked = _serving(monkeypatch)  # nothing answers: MusicBrainz has deleted it
 
     first = gardener.sweep([album])
+    album = _observed(first, album)
     second = gardener.sweep([album])
+    album = _observed(second, album)
 
     assert first.gone == 1
     assert asked == ["rel-aaa"]  # asked once, across both passes
@@ -2148,8 +2185,10 @@ def test_a_merged_release_is_not_asked_about_again_next_pass(tmp_path, monkeypat
 
     monkeypatch.setattr(mb_lookup, "fetch_release", _redirects)
 
-    gardener.sweep([album])
-    gardener.sweep([album])
+    checked = gardener.sweep([album])
+    album = _observed(checked, album)
+    checked = gardener.sweep([album])
+    album = _observed(checked, album)
 
     assert asked == ["rel-aaa"]
     assert album.update_available is True  # the id in the files no longer matches
@@ -2220,6 +2259,11 @@ def _stub_runner(*, running: bool = False, scanned: bool = True):
     class _Stub:
         is_running = running
 
+        def __init__(self):
+            from harmonist.background import Jobs
+
+            self.jobs = Jobs()
+
         def has_completed(self) -> bool:
             return scanned
 
@@ -2235,9 +2279,7 @@ def _sweep_signal(monkeypatch) -> threading.Event:
 
     def _sweep(albums, **kwargs):
         done.set()
-        return gardener.PassResult(
-            asked=0, examined=0, flagged=0, newly_flagged=(), gone=0, failed=0
-        )
+        return gardener.PassResult(asked=0, assessments=(), newly_flagged=(), gone=0, failed=0)
 
     monkeypatch.setattr(gardener, "sweep", _sweep)
     return done
@@ -2451,7 +2493,7 @@ def test_the_verdict_is_the_furthest_reaching_change_in_the_diff(tmp_path):
     both = _release("Test Album (remastered)")
     both["barcode"] = "5051234567890"
 
-    gardener.refresh_flag(album, both)
+    album = gardener.refresh_flag(album, both).album
 
     assert album.update_significance == "identity"
 
@@ -2464,7 +2506,7 @@ def test_an_enrichment_on_its_own_is_recorded_as_one(tmp_path):
     enriched = _release()
     enriched["barcode"] = "5051234567890"
 
-    gardener.refresh_flag(album, enriched)
+    album = gardener.refresh_flag(album, enriched).album
 
     assert album.update_significance == "enrichment"
 
@@ -2494,7 +2536,8 @@ def test_a_credit_list_arriving_is_an_enrichment_verdict(tmp_path):
     del f[ATOM_ALBUM_ARTISTS]
     f.save()
 
-    assert _flag(album, release) is True
+    album = gardener.refresh_flag(album, release).album
+    assert album.update_available is True
     assert album.update_significance == "enrichment"
 
 
@@ -2513,7 +2556,8 @@ def test_a_credit_list_that_names_somebody_else_is_still_identity(tmp_path):
     f[ATOM_ALBUM_ARTISTS] = [b"Somebody Else"]
     f.save()
 
-    assert _flag(album, release) is True
+    album = gardener.refresh_flag(album, release).album
+    assert album.update_available is True
     assert album.update_significance == "identity"
 
 
@@ -2524,7 +2568,8 @@ def test_a_tracklist_that_no_longer_fits_is_a_structural_verdict(tmp_path):
     leave the album flagged with nothing to show for it."""
     album = _tagged(tmp_path, _release(tracks=1))
 
-    assert _flag(album, _release(tracks=3)) is True
+    album = gardener.refresh_flag(album, _release(tracks=3)).album
+    assert album.update_available is True
     assert album.update_significance == "structure"
 
 
@@ -2535,7 +2580,7 @@ def test_an_album_with_nothing_outstanding_has_no_verdict(tmp_path):
     release = _release()
     album = _tagged(tmp_path, release)
 
-    gardener.refresh_flag(album, release)
+    album = gardener.refresh_flag(album, release).album
 
     assert (album.update_available, album.update_significance) == (False, None)
 
@@ -2547,7 +2592,7 @@ def test_the_verdict_and_the_version_come_from_one_look(tmp_path):
     album = _tagged(tmp_path, _release())
     moved = _release("Test Album (remastered)")
 
-    gardener.refresh_flag(album, moved)
+    album = gardener.refresh_flag(album, moved).album
 
     assert album.mb_version == gardener.release_version(moved)
     assert album.update_significance == "identity"
@@ -2558,7 +2603,7 @@ def test_an_ignore_holds_while_musicbrainz_sits_still(tmp_path):
     and until something lands they do not want to be asked about it again."""
     activity_store.init(tmp_path / "activity.db")
     album = _tagged(tmp_path, _release())
-    gardener.refresh_flag(album, _release("Test Album (remastered)"))
+    album = gardener.refresh_flag(album, _release("Test Album (remastered)")).album
     _ignore(album)
 
     assert gardener.is_ignored(album, activity_store.ignored_updates()) is True
@@ -2571,11 +2616,11 @@ def test_an_ignore_lapses_the_moment_musicbrainz_moves(tmp_path):
     for, and Harmonist cannot tell whether it was their own."""
     activity_store.init(tmp_path / "activity.db")
     album = _tagged(tmp_path, _release())
-    gardener.refresh_flag(album, _release("Test Album (remastered)"))
+    album = gardener.refresh_flag(album, _release("Test Album (remastered)")).album
     _ignore(album)
     ignored = activity_store.ignored_updates()
 
-    gardener.refresh_flag(album, _release("Test Album (remastered, expanded)"))
+    album = gardener.refresh_flag(album, _release("Test Album (remastered, expanded)")).album
 
     assert gardener.is_ignored(album, ignored) is False
 
@@ -2602,14 +2647,16 @@ def test_the_pass_keeps_asking_about_an_ignored_album(tmp_path, monkeypatch):
     _store(_release(), age=_stale())
     moved = _release("Test Album (remastered)")
     _serving(monkeypatch, moved)
-    gardener.sweep([album])
+    checked = gardener.sweep([album])
+    album = _observed(checked, album)
     _ignore(album)
 
     gardener._asked.clear()
     _store(moved, age=_stale())
     expanded = _release("Test Album (remastered, expanded)")
     asked = _serving(monkeypatch, expanded)
-    gardener.sweep([album])
+    checked = gardener.sweep([album])
+    album = _observed(checked, album)
 
     assert asked == ["rel-aaa"]  # it went and looked ...
     assert album.mb_version == gardener.release_version(expanded)  # ... and moved on

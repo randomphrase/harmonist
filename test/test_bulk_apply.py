@@ -16,7 +16,7 @@ import threading
 
 import pytest
 
-from harmonist import activity, activity_store, auto_apply, formats, mb_lookup, progress
+from harmonist import activity, activity_store, auto_apply, formats, gardener, mb_lookup, progress
 from harmonist import retag as retag_mod
 from harmonist.config import GardenerConfig
 from harmonist.formats import owned
@@ -62,7 +62,7 @@ def test_a_selected_update_is_written_from_the_stored_release(tmp_path, monkeypa
 
     assert result is not None and (result.applied, result.failed) == (1, 0)
     assert _catalogue_number(album) == "WARPCD-999"
-    assert album.update_available is False
+    assert gardener.refresh_flag(album, _catalogued()).album.update_available is False
 
 
 def test_each_applied_update_is_its_own_undoable_action(tmp_path, monkeypatch):

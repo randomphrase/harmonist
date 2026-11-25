@@ -141,7 +141,7 @@ def test_an_album_with_a_file_left_unassigned_has_no_update_waiting(album_with_t
     sidecar.write(root, Sidecar(mb_release_id=release["id"]))
     album = next(a for a in scanner.scan(tmp_path) if a.path == root)
     assert album.unassigned_track_count == 1
-    gardener.refresh_flag(album, release)
+    album = gardener.refresh_flag(album, release).album
     assert not album.update_available
     assert album.update_significance is None
     assert album.unassigned_track_count == 1

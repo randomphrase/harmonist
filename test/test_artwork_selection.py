@@ -347,12 +347,13 @@ def test_while_a_selection_is_applied_its_cards_say_where_they_stand(client, cfg
 def test_the_bulk_artwork_pass_runs_off_the_request_thread(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
+    from harmonist.background import Jobs
     from harmonist.web.main import _start_bulk_artwork_apply
 
     written = threading.Event()
     monkeypatch.setattr(auto_apply, "write_claimed_artwork", lambda *a, **k: written.set())
     idle = Mock(is_running=False)
-    runner = Mock(has_completed=lambda: True, albums=list)
+    runner = Mock(has_completed=lambda: True, albums=list, jobs=Jobs())
     app = Mock(
         state=SimpleNamespace(
             cfg=_config(tmp_path, ROUTING),

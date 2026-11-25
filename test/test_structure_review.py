@@ -221,7 +221,7 @@ def test_restart_and_repeated_checks_rederive_structural_review(
     for _ in range(2):
         albums = scanner.scan(tmp_path)
         album = next(a for a in albums if a.path == root)
-        gardener.warm_from_cache([album], ignored={})
+        [album] = gardener.warm_from_cache([album], ignored={}).albums
         assert album.update_available
         assert album.update_significance == owned.Significance.STRUCTURE
     assert [f.read_bytes() for f in album_files.audio_files(root)] == before

@@ -29,7 +29,7 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -40,6 +40,7 @@ from harmonist import (
     artist_nfo,
     artists,
     audit,
+    background,
     contributions,
     formats,
     library_index,
@@ -106,6 +107,11 @@ class ScanRunner:
         self._music_dir = music_dir
         self._cache: scanner.AlbumCache = {}
         self._albums: list[Album] = []
+        self._positions: dict[tuple[str, tuple[Path, ...]], int] = {}
+        self.jobs = background.Jobs()
+        self._rechecks: dict[tuple[str, tuple[Path, ...]], Album] = {}
+        self._recheck_lock = threading.Lock()
+        self._stopping = False
         self._nfos = artist_nfo.Inventory()
         self._nfo_diagnostics = artist_nfo.Diagnostics()
         self._artist_ids: frozenset[str] = frozenset()
@@ -195,8 +201,102 @@ class ScanRunner:
 
     def albums(self) -> list[Album]:
         """The most recent snapshot. Empty until the first scan completes.
-        Reference read is atomic under the GIL — safe across threads."""
-        return self._albums
+        Album values are shared; the collection belongs to the caller."""
+        return self._albums.copy()
+
+    def current(self, album: Album) -> Album | None:
+        """The latest observations of exactly the local reading a caller holds."""
+        with self._snapshot_lock:
+            position = self._positions.get((album.id, album.folders))
+            if position is None:
+                return album if not self.is_engaged() and not self._completed_once else None
+            current = self._albums[position]
+            return current if current.revision is album.revision else None
+
+    def publish_observations(
+        self, before: Album, after: Album, *, valid: Callable[[], bool] = lambda: True
+    ) -> bool:
+        """Replace one reading's derived observations, with no I/O under the lock.
+
+        Changes to another album do not invalidate this one. Readers holding the
+        previous value keep it, and the scan cache remains an observation of disk.
+        """
+        fields = (
+            "unassigned_track_count",
+            "update_available",
+            "update_significance",
+            "update_changes",
+            "update_lead",
+            "update_note",
+            "mb_version",
+            "contribution_observation",
+        )
+        with self._snapshot_lock:
+            position = self._positions.get((before.id, before.folders))
+            if position is None:
+                return not self.is_engaged() and not self._completed_once and valid()
+            current = self._albums[position]
+            if current.revision is not before.revision or not valid():
+                return False
+            changes = {
+                name: getattr(after, name)
+                for name in fields
+                if getattr(before, name) != getattr(after, name)
+            }
+            observed = changes.get("contribution_observation")
+            previous = current.contribution_observation
+            floor = datetime.min.replace(tzinfo=UTC)
+            if (
+                observed is not None
+                and previous is not None
+                and ((observed.checked_at or floor) < (previous.checked_at or floor))
+            ):
+                changes.pop("contribution_observation")
+            updated = replace(current, **changes)
+            if updated != current:
+                published = self._albums.copy()
+                published[position] = updated
+                self._albums = published
+                self._scan_seq += 1
+                self._status.seq = self._scan_seq
+            return True
+
+    def recheck(self, album: Album) -> None:
+        """Reassess current copies of changed folders from the stored release."""
+        with self._snapshot_lock:
+            current = [a for a in self._albums if set(a.folders).intersection(album.folders)]
+        self._report_rebuilt(current)
+
+    def queue_rechecks(self, albums: Sequence[Album]) -> None:
+        with self._recheck_lock:
+            self._rechecks.update({(a.id, a.folders): a for a in albums})
+
+    def take_rechecks(self) -> list[Album]:
+        with self._recheck_lock:
+            pending = self._rechecks
+            self._rechecks = {}
+        with self._snapshot_lock:
+            return [self._albums[self._positions[key]] for key in pending if key in self._positions]
+
+    def stop(self) -> None:
+        """Stop new walks; accepted writes may still publish targeted refreshes."""
+        if self._stopping:
+            return
+        self._stopping = True
+        self._dirty = False
+        self._changed_paths.clear()
+
+    async def close(self) -> None:
+        self.stop()
+        if self._task is not None:
+            await asyncio.shield(self._task)
+        if self._dirty and self._executor is not None:
+            # A drained sync/reconcile can owe publication of files it already
+            # wrote. Finish that completion before disposing of the scanner.
+            self._dirty = False
+            await self._scan_once(visible=False, finishing=True)
+        if self._executor is not None:
+            self._executor.shutdown(wait=False)
 
     def has_completed(self) -> bool:
         return self._completed_once
@@ -247,8 +347,8 @@ class ScanRunner:
         return scanner.scan(self._music_dir, album_cache=self._cache)
 
     def refresh_now(self) -> None:
-        """Synchronously refresh the snapshot from a cache-warm scan and patch
-        `_albums` in place, WITHOUT flipping status to 'scanning'. A single-album
+        """Synchronously publish a snapshot from a cache-warm scan,
+        WITHOUT flipping status to 'scanning'. A single-album
         mutation that must show immediately pairs this with
         `request.state.skip_rescan = True`, so the album resolves in one render
         instead of via the async post-mutation rescan — whose 'scanning' status
@@ -476,9 +576,11 @@ class ScanRunner:
             previous = observations.get(observed.mbid)
             if previous is None or (observed.checked_at or floor) > (previous.checked_at or floor):
                 observations[observed.mbid] = observed
-        for album in results:
+        for position, album in enumerate(results):
             mbid = album.sidecar.mb_release_id if album.sidecar else None
-            album.contribution_observation = observations.get(mbid) if mbid else None
+            observed = observations.get(mbid) if mbid else None
+            if observed != album.contribution_observation:
+                results[position] = replace(album, contribution_observation=observed)
         changed = results != self._albums
         failures: tuple[artist_nfo.Failure, ...] = ()
         if inventory is not None:
@@ -487,6 +589,7 @@ class ScanRunner:
             failures = self._nfo_diagnostics.changes(inventory)
         self._scanned = scanned
         self._albums = results
+        self._positions = {(a.id, a.folders): i for i, a in enumerate(results)}
         self._artist_ids = artists.library_ids(results)
         library_titles.reset_from(results)
         return results, changed, rebuilt, failures
@@ -604,6 +707,7 @@ class ScanRunner:
         with self._snapshot_lock:
             self._scanned = []
             self._albums = []
+            self._positions = {}
             self._nfos = artist_nfo.Inventory()
             self._artist_ids = frozenset()
         self._kick()
@@ -626,6 +730,8 @@ class ScanRunner:
         self._start()
 
     def _start(self) -> None:
+        if self._stopping:
+            return
         if self._task is None or self._task.done():
             assert self._loop is not None
             # A scan is an independent job, even when a request scheduled the
@@ -637,7 +743,7 @@ class ScanRunner:
 
     async def _run(self) -> None:
         # Coalesce: if more changes land while scanning, scan again after.
-        while self._dirty or self._changed_paths:
+        while not self._stopping and (self._dirty or self._changed_paths):
             full_scan = self._dirty
             paths = self._changed_paths
             self._changed_paths = set()
@@ -665,7 +771,7 @@ class ScanRunner:
             finally:
                 self._current = None
 
-    async def _scan_once(self, *, visible: bool) -> None:
+    async def _scan_once(self, *, visible: bool, finishing: bool = False) -> None:
         loop = asyncio.get_running_loop()
         executor = self._executor
         assert executor is not None  # set in attach_loop before any scan
@@ -699,6 +805,8 @@ class ScanRunner:
         discovery = artist_nfo.Discovery(self._music_dir)
         walk = scanner.iter_album_dirs(self._music_dir, nfos=discovery)
         while True:
+            if self._stopping and not finishing:
+                return
             # Blocking walk+stat for the next album → worker; loop stays free.
             item = await loop.run_in_executor(executor, next, walk, _DONE)
             if item is _DONE:

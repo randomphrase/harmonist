@@ -36,7 +36,7 @@ def _flag(tmp_path, stored: dict):
     activity_store.init(tmp_path / "activity.db")
     album = _tagged(tmp_path, _release())
     activity_store.store_release("rel-aaa", "+".join(sorted(mb_lookup.RELEASE_INCLUDES)), stored)
-    gardener.refresh_flag(album, stored)
+    album = gardener.refresh_flag(album, stored).album
     return album
 
 

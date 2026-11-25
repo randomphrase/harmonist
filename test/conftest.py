@@ -2,14 +2,31 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 from harmonist import artist_fill, cover_art, fanart_tv, formats, mb_lookup, mb_search, wikimedia
+from harmonist.background import Jobs
+
+_job_owners: list[Jobs] = []
+
+
+@pytest.fixture(autouse=True)
+def own_background_jobs(monkeypatch):
+    original = Jobs.__init__
+
+    def create(self, **kwargs):
+        original(self, **kwargs)
+        _job_owners.append(self)
+
+    monkeypatch.setattr(Jobs, "__init__", create)
+
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -197,6 +214,19 @@ def pytest_runtest_teardown(item, nextitem):
     guarantee this ordering against every module's fixtures; the outer teardown
     hook can. Re-snapshot because a worker can start another worker as it ends.
     """
+
+    async def drain():
+        owners = list(_job_owners)
+        _job_owners.clear()
+        for owner in owners:
+            owner.stop()
+        await asyncio.wait_for(asyncio.gather(*(owner.close() for owner in owners)), 10)
+
+    if _job_owners:
+        # Playwright's sync API keeps a loop running on this thread. Drain on
+        # a separate thread so the same teardown also works for browser tests.
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            executor.submit(asyncio.run, drain()).result(timeout=15)
     # These are one-shot workers. Scan executor threads are long-lived and
     # must not be joined here merely because their name starts with harmonist.
     worker_names = {

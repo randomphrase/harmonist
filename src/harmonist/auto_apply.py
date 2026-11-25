@@ -45,6 +45,7 @@ from . import (
     album_artwork,
     artwork,
     artwork_updates,
+    background,
     caa_cache,
     cover_art,
     gardener,
@@ -187,16 +188,17 @@ def apply_due(
         applied = held = added = 0
         with progress.job("Applying updates", total=len(todo) + len(art_todo)) as job:
             # Named, so the bar says which album its tracks belong to (#815).
-            for album in job.items(todo, lambda a: a.label):
+            for album in background.items(job.items(todo, lambda a: a.label)):
                 try:
-                    if _apply_one(album, cfg, tagger):
+                    written, judged = _apply_one(album, cfg, tagger)
+                    if written:
                         applied += 1
-                    elif is_held(album):
+                    elif is_held(judged):
                         held += 1
                 finally:
                     if on_processed is not None:
                         on_processed(album)
-            for album in job.items(art_todo, lambda a: a.label):
+            for album in background.items(job.items(art_todo, lambda a: a.label)):
                 try:
                     if _apply_artwork_one(album, cfg):
                         added += 1
@@ -294,8 +296,10 @@ def _release_artwork_hold(album: Album) -> None:
         _artwork_held.pop(album.id, None)
 
 
-def _apply_one(album: Album, cfg: config_mod.Config, tagger: tagger_mod.Tagger) -> bool:
-    """Write one album's update, or hold it with a reason. True when written."""
+def _apply_one(
+    album: Album, cfg: config_mod.Config, tagger: tagger_mod.Tagger
+) -> tuple[bool, Album]:
+    """Write or hold one update; return whether it wrote and the judged value."""
     sc = album.sidecar
     mbid = sc.mb_release_id if sc else None
     release = mb_cache.stored_release(mbid) if mbid else None
@@ -303,20 +307,23 @@ def _apply_one(album: Album, cfg: config_mod.Config, tagger: tagger_mod.Tagger) 
         # The flag was judged against a stored release; without one there is
         # nothing to write from, and fetching one is not this pass's to spend.
         _hold(album, "Its MusicBrainz release isn't stored, so it is applied from its page")
-        return False
-    gardener.refresh_flag(album, release)
+        return False, album
+    assessment = gardener.refresh_flag(album, release)
+    if not assessment.accepted:
+        return False, album
+    album = assessment.album
     if not album.update_available or album.update_significance is None:
         _release_hold(album)
-        return False  # the files caught up on their own; nothing to write
+        return False, album  # the files caught up on their own; nothing to write
     level = owned.Significance(album.update_significance)
     if not gardener.applies(level, cfg.gardener.apply_up_to):
         _hold(album, f"Its update now reaches {level.value}")
-        return False
+        return False, album
     if album.state == AlbumState.INCOMPLETE:
         # Writing a short album's tags needs the tagger's incomplete mode, which
         # is a decision about that album (#252) and not one to take unattended.
         _hold(album, "Tracks are missing, so it is applied from its page")
-        return False
+        return False, album
     # A pregap the user counted as present is written as the page writes it
     # (#242); otherwise the file-count guard applies.
     failure = _write(
@@ -331,9 +338,9 @@ def _apply_one(album: Album, cfg: config_mod.Config, tagger: tagger_mod.Tagger) 
     if failure is not None:
         # Held, so the Inbox says why, and not retried until MusicBrainz moves.
         _hold(album, failure)
-        return False
+        return False, album
     _release_hold(album)
-    return True
+    return True, album
 
 
 def _write(
@@ -442,7 +449,7 @@ def write_claimed(
     try:
         applied = failed = 0
         with progress.job("Applying updates", total=len(todo)) as job:
-            for album in job.items(todo, lambda a: a.label):
+            for album in background.items(job.items(todo, lambda a: a.label)):
                 with _queue_lock:
                     _queue[album.id] = "applying"
                 try:
@@ -462,9 +469,14 @@ def write_claimed(
         log.info("bulk apply: %d album(s) updated, %d not", applied, failed)
         return ChosenResult(applied=applied, failed=failed)
     finally:
-        with _queue_lock:
-            _queue.clear()
-        _pass_lock.release()
+        release_claim()
+
+
+def release_claim() -> None:
+    """Release a selected pass, including one shutdown refused to admit."""
+    with _queue_lock:
+        _queue.clear()
+    _pass_lock.release()
 
 
 def is_applying() -> bool:
@@ -523,7 +535,7 @@ def write_claimed_artwork(
     try:
         applied = failed = 0
         with progress.job("Applying artwork", total=len(todo)) as job:
-            for album in job.items(todo, lambda a: a.label):
+            for album in background.items(job.items(todo, lambda a: a.label)):
                 with _queue_lock:
                     _artwork_queue[album.id] = "applying"
                 try:
@@ -541,9 +553,13 @@ def write_claimed_artwork(
         log.info("bulk artwork apply: %d album(s) updated, %d not", applied, failed)
         return ChosenResult(applied=applied, failed=failed)
     finally:
-        with _queue_lock:
-            _artwork_queue.clear()
-        _pass_lock.release()
+        release_artwork_claim()
+
+
+def release_artwork_claim() -> None:
+    with _queue_lock:
+        _artwork_queue.clear()
+    _pass_lock.release()
 
 
 def _apply_chosen_artwork_one(
@@ -627,7 +643,10 @@ def _apply_chosen_one(
         return refuse("Its MusicBrainz release isn't stored, so it is applied from its page")
     # Re-judged at write time, as the pass above re-judges: the card can be
     # older than the files and the stored release beside it.
-    gardener.refresh_flag(album, release)
+    assessment = gardener.refresh_flag(album, release)
+    if not assessment.accepted:
+        return refuse("The album changed after it was selected")
+    album = assessment.album
     if not album.update_available or album.update_significance is None:
         return None
     if album.mb_version != version:

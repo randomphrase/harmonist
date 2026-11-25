@@ -328,8 +328,7 @@ def _digest_of(cfg, levels: dict[str, owned.Significance]) -> dict[str, Album]:
     gardener._record_digest(
         gardener.PassResult(
             asked=len(albums),
-            examined=len(albums),
-            flagged=len(albums),
+            assessments=tuple(gardener.Assessment(None, None, a) for a in albums.values()),
             newly_flagged=tuple(albums.values()),
             gone=0,
             failed=0,
@@ -378,7 +377,11 @@ def test_the_digest_records_a_settings_update_only_once_settings_is_chosen(cfg):
     gardener.configure_routing(lambda: GardenerConfig(activity_from=S.SETTINGS))
     gardener._record_digest(
         gardener.PassResult(
-            asked=1, examined=1, flagged=1, newly_flagged=(albums["Spelled"],), gone=0, failed=0
+            asked=1,
+            assessments=(gardener.Assessment(None, None, albums["Spelled"]),),
+            newly_flagged=(albums["Spelled"],),
+            gone=0,
+            failed=0,
         )
     )
     assert [e.message for e in activity.recent(10)] == [

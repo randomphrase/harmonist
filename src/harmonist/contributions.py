@@ -7,9 +7,12 @@ from. No function here writes music, sidecars, or persisted status flags.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
-from dataclasses import dataclass, field, replace
+import threading
+from collections import OrderedDict
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
@@ -32,13 +35,15 @@ class Observation:
     # releases it said the group has. None when it was never browsed.
     group: tuple[Release, ...] | None = None
     group_total: int = 0
-    # Each local copy's classification of `group`, keyed by the evidence it was
-    # classified against. The Library assesses every album on every render, and
-    # classifying a hundred-release group each time is the cost worth keeping.
-    # Not an init field, so `replace()` starts a new observation with none.
-    checks: dict[tuple[object, ...], SiblingCheck] = field(
-        default_factory=dict, init=False, compare=False, repr=False
-    )
+
+
+# Memoization belongs to the classifier, never to a published observation.
+# Retaining the observation alongside its id prevents id reuse; bounding it
+# avoids retaining every superseded release-group payload for the process life.
+_checks: OrderedDict[int, tuple[Observation, dict[tuple[object, ...], SiblingCheck]]] = (
+    OrderedDict()
+)
+_checks_lock = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -446,12 +451,19 @@ def assess(album: Album) -> Assessment:
     # Everything `sibling_check` reads from this copy, so one classification
     # serves every render until the evidence or the stored browse changes.
     key = (url, private, rip, album.source_upc, barcode_status, sc.mb_release_id)
-    check = observed.checks.get(key)
+    with _checks_lock:
+        cached = _checks.get(id(observed))
+        check = cached[1].get(key) if cached is not None else None
     if check is None:
         check = sibling_check(
             list(observed.group), assessment, sc.mb_release_id, observed.group_total
         )
-        observed.checks[key] = check
+        with _checks_lock:
+            cached = _checks.setdefault(id(observed), (observed, {}))
+            cached[1][key] = check
+            _checks.move_to_end(id(observed))
+            while len(_checks) > 256:
+                _checks.popitem(last=False)
     evidence: set[str] = set()
     for edition in check.editions:
         mbid = edition["id"]
@@ -474,7 +486,7 @@ def assess(album: Album) -> Assessment:
     )
 
 
-def observe(album: Album, release: Release, checked_at: datetime | None) -> None:
+def observe(album: Album, release: Release, checked_at: datetime | None) -> Album:
     """Use a successful full release fetch, whose includes request url-rels.
 
     A missing url-relation-list in that response means no relationships. An
@@ -487,8 +499,8 @@ def observe(album: Album, release: Release, checked_at: datetime | None) -> None
     if group_id and _eligible(album):
         stored = mb_cache.stored_release_group_editions(str(group_id))
         if stored is not None:
-            group, total = tuple(stored[0]), stored[1]
-    album.contribution_observation = Observation(
+            group, total = tuple(copy.deepcopy(stored[0])), stored[1]
+    observation = Observation(
         str(release["id"]),
         tuple(str(m.get("format") or "") for m in (release.get("medium-list") or [])),
         frozenset(
@@ -501,25 +513,33 @@ def observe(album: Album, release: Release, checked_at: datetime | None) -> None
         group,
         total,
     )
+    return replace(album, contribution_observation=observation)
 
 
-def observe_group(album: Album, releases: list[Release], total: int) -> None:
+def observe_group(album: Album, releases: list[Release], total: int) -> Album:
     """Attach a fresh browse of the release's group to the album's observation."""
     if album.contribution_observation is not None:
-        album.contribution_observation = replace(
-            album.contribution_observation, group=tuple(releases), group_total=total
+        return replace(
+            album,
+            contribution_observation=replace(
+                album.contribution_observation,
+                group=tuple(copy.deepcopy(releases)),
+                group_total=total,
+            ),
         )
+    return album
 
 
-def warm(album: Album) -> None:
+def warm(album: Album) -> Album:
     """Rebuild from the durable current-includes cache without network I/O."""
     if not assess(album).eligible:
-        return
+        return album
     assert album.sidecar is not None and album.sidecar.mb_release_id is not None
     mbid = album.sidecar.mb_release_id
     snapshot = mb_cache.stored_release_snapshot(mbid)
     if snapshot is not None:
-        observe(album, snapshot.payload, snapshot.fetched_at)
+        return observe(album, snapshot.payload, snapshot.fetched_at)
+    return album
 
 
 def media_fit(release: Release, rip: bool) -> bool | None:

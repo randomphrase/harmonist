@@ -140,7 +140,8 @@ def test_automatic_tagging_refreshes_without_watcher(tmp_path, monkeypatch, part
     runner = ScanRunner(tmp_path)
     runner.refresh_now()
     album = next(album for album in runner.albums() if album.path == original_album.path)
-    gardener.refresh_flag(album, release)
+    gardener.configure(None, owner=runner)
+    album = gardener.refresh_flag(album, release).album
     runner.set_on_rebuilt(
         lambda albums: [gardener.refresh_flag(rebuilt, release) for rebuilt in albums]
     )
@@ -159,10 +160,7 @@ def test_automatic_tagging_refreshes_without_watcher(tmp_path, monkeypatch, part
     )
     idle = Mock(is_running=False)
     assert _auto_apply_if_idle(app, idle, idle, runner) is None
-    workers = [thread for thread in threading.enumerate() if thread.name == "harmonist-auto-apply"]
-    for worker in workers:
-        worker.join(5)
-        assert not worker.is_alive()
+    asyncio.run(runner.jobs.wait_idle())
     current = next(album for album in runner.albums() if album.path == original_album.path)
     assert current.title == "Updated title"
     assert auto_apply.is_held(current) == partial_failure

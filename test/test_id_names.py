@@ -100,7 +100,7 @@ def test_an_id_row_carries_no_character_diff(tmp_path):
     stored["medium-list"][0]["track-list"][0]["recording"]["id"] = "rec-new"
     activity_store.store_release("rel-aaa", "+".join(sorted(mb_lookup.RELEASE_INCLUDES)), stored)
 
-    gardener.refresh_flag(album, stored)
+    album = gardener.refresh_flag(album, stored).album
 
     row = next(r for r in album.update_changes if r.field == "mb_track_id")
     assert row.before_runs == row.after_runs == ()

@@ -22,8 +22,8 @@ def assessed(folder, formats=("CD",)):
     so the Possible mismatch filter has everything it needs to list it."""
     album = scanner.scan(folder.parent)[0]
     matched = release(formats)
-    contributions.observe(album, matched, None)
-    contributions.observe_group(album, [matched], 1)
+    album = contributions.observe(album, matched, None)
+    album = contributions.observe_group(album, [matched], 1)
     return contributions.assess(album)
 
 

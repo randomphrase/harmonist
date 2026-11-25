@@ -41,8 +41,8 @@ def store(tmp_path):
 
 def observed(a, current_urls=(LABEL,), siblings=(), formats=("Digital Media",)):
     current = release(formats, current_urls)
-    contributions.observe(a, current, NOW)
-    contributions.observe_group(a, [current, *siblings], 1 + len(siblings))
+    a = contributions.observe(a, current, NOW)
+    a = contributions.observe_group(a, [current, *siblings], 1 + len(siblings))
     return contributions.assess(a)
 
 
@@ -86,8 +86,8 @@ def test_store_url_on_another_release_is_not_a_contribution(accepted, sibling_fo
     current["medium-list"][0]["track-count"] = 28
     sibling = release((sibling_format,), urls=(URL,), mbid="shorter-release")
     sibling["medium-list"][0]["track-count"] = 25
-    contributions.observe(a, current, NOW)
-    contributions.observe_group(a, [current, sibling], 2)
+    a = contributions.observe(a, current, NOW)
+    a = contributions.observe_group(a, [current, sibling], 2)
     assessment = contributions.assess(a)
     assert assessment.siblings is not None
     shown = contributions.panel(assessment, assessment.siblings)
@@ -121,8 +121,8 @@ def test_a_reused_barcode_is_evidence_only_where_the_match_lacks_it(current, rea
     matched["barcode"] = current
     sibling = release(mbid="sibling")
     sibling["barcode"] = "801061000332"  # the same GTIN, spelt without its zero
-    contributions.observe(a, matched, NOW)
-    contributions.observe_group(a, [matched, sibling], 2)
+    a = contributions.observe(a, matched, NOW)
+    a = contributions.observe_group(a, [matched, sibling], 2)
     assessment = contributions.assess(a)
     assert assessment.siblings is not None
     shown = contributions.panel(assessment, assessment.siblings)
@@ -137,8 +137,8 @@ def test_an_incomplete_group_places_no_album_even_one_matched_to_a_cd():
         if accepted:
             a.sidecar = replace(a.sidecar, accepted_release_id=MBID)
         current = release(("CD",))
-        contributions.observe(a, current, NOW)
-        contributions.observe_group(a, [current, unknown], 2)
+        a = contributions.observe(a, current, NOW)
+        a = contributions.observe_group(a, [current, unknown], 2)
         assessment = contributions.assess(a)
         assert assessment.siblings is not None and not assessment.siblings.complete
         assert not contributions.possible_mismatch(assessment)
@@ -148,11 +148,11 @@ def test_an_incomplete_group_places_no_album_even_one_matched_to_a_cd():
 def test_sibling_classification_is_reused_until_the_browse_changes():
     a = album()
     current = release(urls=(LABEL,))
-    contributions.observe(a, current, NOW)
-    contributions.observe_group(a, [current, release(urls=(RENAMED,), mbid="sibling")], 2)
+    a = contributions.observe(a, current, NOW)
+    a = contributions.observe_group(a, [current, release(urls=(RENAMED,), mbid="sibling")], 2)
     first = contributions.assess(a).siblings
     assert first is not None and contributions.assess(a).siblings is first
-    contributions.observe_group(a, [current], 1)
+    a = contributions.observe_group(a, [current], 1)
     again = contributions.assess(a).siblings
     assert again is not first and again is not None and again.same_store == []
 
@@ -180,11 +180,12 @@ def test_failed_group_browse_keeps_the_stored_one(monkeypatch):
     stored = {"release-list": [release(urls=(RENAMED,), mbid="sibling")], "release-count": 1}
     activity_store.store_release("rg-kept", mb_cache._group_key(), stored)
     monkeypatch.setattr(mb_lookup, "fetch_release", lambda mbid: current)
-    monkeypatch.setattr(gardener, "refresh_flag", Mock())
+    monkeypatch.setattr(gardener, "refresh_flag", lambda a, r: gardener.Assessment(None, None, a))
     monkeypatch.setattr(
         musicbrainzngs, "browse_releases", Mock(side_effect=musicbrainzngs.NetworkError("down"))
     )
-    gardener.sweep([a], recheck_after=timedelta(0), limit=1)
+    result = gardener.sweep([a], recheck_after=timedelta(0), limit=1)
+    a = result.assessments[0].album
     assert mb_cache.stored_release_group_editions("rg-kept") == (stored["release-list"], 1)
     assert contributions.possible_mismatch(contributions.assess(a))
 
@@ -195,8 +196,8 @@ def test_accepted_physical_release_offers_its_link_but_not_the_download_barcode(
     a.sidecar = replace(a.sidecar, accepted_release_id=MBID)
     current = release(("CD",))
     current["barcode"] = "0801061000639"
-    contributions.observe(a, current, NOW)
-    contributions.observe_group(a, [current], 1)
+    a = contributions.observe(a, current, NOW)
+    a = contributions.observe_group(a, [current], 1)
     assessment = contributions.assess(a)
     assert assessment.siblings is not None
     shown = contributions.panel(assessment, assessment.siblings)
@@ -220,10 +221,10 @@ def test_filters_split_on_acceptance_and_need_the_group_to_clear_an_album():
         if accepted:
             a.sidecar = replace(a.sidecar, accepted_release_id=MBID)
         current = release(urls=(LABEL,))
-        contributions.observe(a, current, NOW)
+        a = contributions.observe(a, current, NOW)
         if browsed:
             sibling = release(urls=sibling_urls, mbid="sibling")
-            contributions.observe_group(a, [current, sibling], 2)
+            a = contributions.observe_group(a, [current, sibling], 2)
         albums.append(a)
     mismatch = _library_page_vars(albums, 1, 30, filter_="possible-mismatch")["rows"]
     due = _library_page_vars(albums, 1, 30, filter_="mb-contributions")["rows"]
@@ -375,13 +376,14 @@ def test_background_check_keeps_looking_after_provisional_dismissal(tmp_path, mo
     assert _dismiss(client, _dismissal_panel(client)).status_code == 200
     albums = client.app.state.scan_runner.scan_now()
     monkeypatch.setattr(mb_lookup, "fetch_release", Mock(return_value=current))
-    monkeypatch.setattr(gardener, "refresh_flag", Mock())
+    monkeypatch.setattr(gardener, "refresh_flag", lambda a, r: gardener.Assessment(None, None, a))
     browse.return_value = {
         "release-list": [current, release(mbid="new-digital")],
         "release-count": 2,
     }
     browse.reset_mock()
-    gardener.sweep(albums, recheck_after=timedelta(0), limit=1)
+    result = gardener.sweep(albums, recheck_after=timedelta(0), limit=1)
+    albums = [a.album for a in result.assessments]
     assert browse.call_count == 1
     assert contributions.possible_mismatch(contributions.assess(albums[0]))
     assert sidecar.read(folder).mb_release_id == MBID
@@ -665,10 +667,12 @@ def test_update_check_browses_a_group_only_while_it_could_place_an_album(monkeyp
         "rg-accepted-incomplete", key, {"release-list": [unknown], "release-count": 1}
     )
     monkeypatch.setattr(mb_lookup, "fetch_release", lambda mbid: fetches[mbid])
-    monkeypatch.setattr(gardener, "refresh_flag", Mock())  # no tag work in question
+    monkeypatch.setattr(gardener, "refresh_flag", lambda a, r: gardener.Assessment(None, None, a))
     browse = Mock(return_value={"release-list": [], "release-count": 0})
     monkeypatch.setattr(musicbrainzngs, "browse_releases", browse)
-    gardener.sweep(list(albums.values()), recheck_after=timedelta(0), limit=len(names))
+    result = gardener.sweep(list(albums.values()), recheck_after=timedelta(0), limit=len(names))
+    observed = {a.album.revision: a.album for a in result.assessments}
+    albums = {name: observed.get(a.revision, a) for name, a in albums.items()}
     browsed = {c.kwargs["release_group"] for c in browse.call_args_list}
     assert browsed == {"rg-flagged", "rg-accepted-unbrowsed", "rg-accepted-incomplete"}
     assert browse.call_count == 3

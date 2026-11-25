@@ -121,11 +121,15 @@ class ArtistWork:
             # programming error must remain visible after a request disappears.
             log.error("Accepted artist write failed", exc_info=error)
 
-    async def close(self) -> None:
+    def stop(self) -> None:
+        """Stop admissions synchronously with the other application jobs."""
         self._stopping = True
-        pending = self._lookups | self._waiting
-        for task in pending:
+        for task in self._lookups | self._waiting:
             task.cancel()
+
+    async def close(self) -> None:
+        self.stop()
+        pending = self._lookups | self._waiting
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         if self._accepted:

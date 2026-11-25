@@ -1,7 +1,7 @@
 """Eligibility decisions feed the same plan as the Library and reviewed writes."""
 
+import asyncio
 import json
-import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from html import unescape
@@ -300,19 +300,12 @@ def test_explicit_watch_runs_with_general_background_checks_off(client, cfg, set
     assert album.sidecar is not None
     other = replace(album, id="unwatched", sidecar=replace(album.sidecar, artwork_watch=None))
 
-    class InlineThread:
-        def __init__(self, *, target, **kwargs):
-            self.target = target
-
-        def start(self):
-            self.target()
-
-    monkeypatch.setattr(threading, "Thread", InlineThread)
     sweep = Mock()
     monkeypatch.setattr(artwork_updates, "sweep", sweep)
     scan = _stub_runner()
     scan.albums = lambda: [album, other]
     main._artwork_check_if_idle(_stub_app("off"), _stub_runner(), _stub_runner(), scan)
+    asyncio.run(scan.jobs.wait_idle())
     sweep.assert_called_once_with([album])
 
 
