@@ -14,13 +14,11 @@ Commons picture both follow MusicBrainz's answer, and are asked side by side.
 
 from __future__ import annotations
 
-import contextvars
+import asyncio
 import logging
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from concurrent.futures import Future, ThreadPoolExecutor
-from contextlib import contextmanager
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any
 
 import httpx
 
@@ -34,8 +32,6 @@ _LOG_ONLY = {"_activity": True}
 
 #: How long fetching a picture may take, as for the lookups that found it.
 _TIMEOUT = httpx.Timeout(10.0)
-
-_T = TypeVar("_T")
 
 
 class PictureFetchError(Exception):
@@ -63,6 +59,19 @@ class Filled:
     failed: bool = False
     picture: nfo_history.NewPicture | None = None
     picture_failed: str | None = None
+    biography_lookup: Mapping[str, Any] | None = None
+    picture_lookup: Mapping[str, Any] | None = None
+
+    def keep(self, mbid: str) -> None:
+        """Publish lookup observations off-loop with the accepted completion.
+
+        Gathering inputs has a deadline; recording their explanation must not
+        make a completed optional result disappear when that deadline expires.
+        """
+        if self.biography_lookup is not None:
+            activity_store.store_artist_biography(mbid, dict(self.biography_lookup))
+        if self.picture_lookup is not None:
+            activity_store.store_artist_picture(mbid, dict(self.picture_lookup))
 
     @property
     def wanted(self) -> dict[str, str]:
@@ -83,15 +92,18 @@ class _Found:
 
     picture: nfo_history.NewPicture | None = None
     failed: str | None = None
+    lookup: Mapping[str, Any] | None = None
 
 
-def fill(
+async def fill(
     requested: str,
-    read: Callable[[], Mapping[str, Any]],
+    read: Callable[[], Awaitable[Mapping[str, Any]]],
     *,
     lacks_biography: bool,
     lacks_picture: bool,
     asking: Asking,
+    client: httpx.AsyncClient,
+    deadline: float,
 ) -> tuple[Mapping[str, Any], Filled]:
     """MusicBrainz's answer for the artist `requested`, from `read`, and what
     to fill into its NFO from elsewhere: a biography where the file lacks one,
@@ -102,65 +114,73 @@ def fill(
     about that one instead. Raises whatever `read` raises, and then nothing
     else is waited for.
     """
-    with _side_by_side() as submit:
+    error: BaseException | None = None
+    async with asyncio.TaskGroup() as group:
         early = (
-            submit(_fanart, requested, asking)
+            group.create_task(_fanart(requested, asking, client, deadline))
             if lacks_picture and fanart_tv.available(asking.fanart_key)
             else None
         )
-        answer = read()
-        mbid = str(answer.get("id") or requested)
-        if early is not None and mbid != requested:
-            early.cancel()
-            early = submit(_fanart, mbid, asking)
-        told = (
-            submit(
-                biography,
-                mbid,
-                answer,
-                languages=asking.languages,
-                user_agent=asking.user_agent,
+        try:
+            async with asyncio.timeout_at(deadline):
+                answer = await read()
+        except BaseException as exc:
+            # Join speculative HTTP work before propagating the original
+            # identity failure (including cancellation), not an ExceptionGroup.
+            error = exc
+            if early is not None:
+                early.cancel()
+        else:
+            mbid = str(answer.get("id") or requested)
+            if early is not None and mbid != requested:
+                early.cancel()
+                early = group.create_task(_fanart(mbid, asking, client, deadline))
+            told = (
+                group.create_task(
+                    biography(
+                        mbid,
+                        answer,
+                        languages=asking.languages,
+                        user_agent=asking.user_agent,
+                        client=client,
+                        deadline=deadline,
+                    )
+                )
+                if lacks_biography
+                else None
             )
-            if lacks_biography
-            else None
-        )
-        found = _picture(mbid, answer, early, asking) if lacks_picture else _Found()
-        said = told.result() if told is not None else Filled()
-    return answer, Filled(said.biography, said.failed, found.picture, found.failed)
+            pictured = (
+                group.create_task(_picture(mbid, answer, early, asking, client, deadline))
+                if lacks_picture
+                else None
+            )
+    if error is not None:
+        raise error
+    found = pictured.result() if pictured is not None else _Found()
+    said = told.result() if told is not None else Filled()
+    return answer, Filled(
+        said.biography,
+        said.failed,
+        found.picture,
+        found.failed,
+        said.biography_lookup,
+        found.lookup,
+    )
 
 
-@contextmanager
-def _side_by_side() -> Iterator[Callable[..., Future[Any]]]:
-    """Submit lookups to run beside this thread, for one identification.
-
-    Each runs in a copy of this thread's context, so it belongs to the action
-    this one does (`activity_store.action`), which a thread doesn't inherit.
-    Leaving doesn't wait: a lookup still running when MusicBrainz couldn't be
-    read is let finish and its answer dropped, rather than keeping the user
-    waiting for an answer nothing will use. How Harmonist runs work side by
-    side is under review as a whole; this is the one place a change of
-    approach touches here.
-    """
-    pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="harmonist-artist")
-
-    def submit(fn: Callable[..., _T], *args: Any, **kwargs: Any) -> Future[_T]:
-        context = contextvars.copy_context()
-        return pool.submit(lambda: context.run(fn, *args, **kwargs))
-
-    try:
-        yield submit
-    finally:
-        pool.shutdown(wait=False, cancel_futures=True)
-
-
-def _fanart(mbid: str, asking: Asking) -> _Found:
+async def _fanart(mbid: str, asking: Asking, client: httpx.AsyncClient, deadline: float) -> _Found:
     """fanart.tv's picture of the artist `mbid`, fetched."""
     try:
-        thumb = fanart_tv.artist_thumb(
-            mbid, personal_key=asking.fanart_key, user_agent=asking.user_agent
-        )
-        data = download_picture(thumb.url, user_agent=asking.user_agent) if thumb else None
-    except (fanart_tv.FanartError, PictureFetchError) as exc:
+        async with asyncio.timeout_at(deadline):
+            thumb = await fanart_tv.artist_thumb(
+                mbid, personal_key=asking.fanart_key, user_agent=asking.user_agent, client=client
+            )
+            data = (
+                await download_picture(thumb.url, user_agent=asking.user_agent, client=client)
+                if thumb
+                else None
+            )
+    except (fanart_tv.FanartError, PictureFetchError, TimeoutError) as exc:
         log.warning(
             "could not fetch a picture of %s from fanart.tv: %s", mbid, exc, extra=_LOG_ONLY
         )
@@ -171,8 +191,13 @@ def _fanart(mbid: str, asking: Asking) -> _Found:
     return _Found(nfo_history.NewPicture(data, credit))
 
 
-def _picture(
-    mbid: str, answer: Mapping[str, Any], early: Future[_Found] | None, asking: Asking
+async def _picture(
+    mbid: str,
+    answer: Mapping[str, Any],
+    early: asyncio.Task[_Found] | None,
+    asking: Asking,
+    client: httpx.AsyncClient,
+    deadline: float,
 ) -> _Found:
     """The picture to fill in: fanart.tv's, or failing that, the image
     Wikidata gives the item MusicBrainz links the artist to. A failure at
@@ -180,29 +205,30 @@ def _picture(
     filling in only where there is none means the second choice would stand
     for good. What it found is kept with the artist's stored answer."""
     if early is not None:
-        found = early.result()
+        found = await early
         if found.picture is not None or found.failed:
-            _keep_picture(mbid, found, source="fanart.tv")
-            return found
+            return _picture_lookup(found, source="fanart.tv")
     item = wikimedia.wikidata_item(answer)
     if item is None:
-        activity_store.store_artist_picture(mbid, {"status": "missing", "item": None})
-        return _Found()
+        return _Found(lookup={"status": "missing", "item": None})
     try:
-        found_on_commons = wikimedia.picture(item, user_agent=asking.user_agent)
-        data = (
-            download_picture(found_on_commons.url, user_agent=asking.user_agent)
-            if found_on_commons
-            else None
-        )
-    except (wikimedia.WikimediaError, PictureFetchError) as exc:
+        async with asyncio.timeout_at(deadline):
+            found_on_commons = await wikimedia.picture(
+                item, user_agent=asking.user_agent, client=client
+            )
+            data = (
+                await download_picture(
+                    found_on_commons.url, user_agent=asking.user_agent, client=client
+                )
+                if found_on_commons
+                else None
+            )
+    except (wikimedia.WikimediaError, PictureFetchError, TimeoutError) as exc:
         log.warning("could not fetch a picture of %s from Commons: %s", item, exc, extra=_LOG_ONLY)
         found = _Found(failed="Wikimedia Commons")
-        _keep_picture(mbid, found, source="Wikimedia Commons")
-        return found
+        return _picture_lookup(found, source="Wikimedia Commons")
     if found_on_commons is None or data is None:
-        activity_store.store_artist_picture(mbid, {"status": "missing", "item": item})
-        return _Found()
+        return _Found(lookup={"status": "missing", "item": item})
     found = _Found(
         nfo_history.NewPicture(
             data,
@@ -215,35 +241,36 @@ def _picture(
             ),
         )
     )
-    _keep_picture(mbid, found, source="Wikimedia Commons")
-    return found
+    return _picture_lookup(found, source="Wikimedia Commons")
 
 
-def _keep_picture(mbid: str, found: _Found, *, source: str) -> None:
-    activity_store.store_artist_picture(
-        mbid,
+def _picture_lookup(found: _Found, *, source: str) -> _Found:
+    return _Found(
+        found.picture,
+        found.failed,
         {"status": "failed", "service": source}
         if found.failed
         else {"status": "found", "service": source},
     )
 
 
-def download_picture(
-    url: str, *, user_agent: str, client: httpx.Client | None = None
-) -> bytes | None:
+async def download_picture(url: str, *, user_agent: str, client: httpx.AsyncClient) -> bytes | None:
     """The picture at `url`, an address a service's answer gave and its module
     checked, or None when it isn't a JPEG or a PNG, the only pictures written.
     A redirect isn't followed, since it could lead anywhere. Raises
     `PictureFetchError` when it can't be fetched or is over the size Harmonist
     shows."""
-    if client is None:
-        with httpx.Client(timeout=_TIMEOUT, follow_redirects=False) as owned:
-            return download_picture(url, user_agent=user_agent, client=owned)
     data = bytearray()
     try:
-        with client.stream("GET", url, headers={"User-Agent": user_agent}) as response:
+        async with client.stream(
+            "GET",
+            url,
+            headers={"User-Agent": user_agent},
+            follow_redirects=False,
+            timeout=_TIMEOUT,
+        ) as response:
             response.raise_for_status()
-            for chunk in response.iter_bytes():
+            async for chunk in response.aiter_bytes():
                 data += chunk
                 if len(data) > artist_nfo.IMAGE_LIMIT:
                     raise PictureFetchError(f"{url} is over {artist_nfo.IMAGE_LIMIT} bytes")
@@ -252,8 +279,14 @@ def download_picture(
     return bytes(data) if images.mime_of(bytes(data)) is not None else None
 
 
-def biography(
-    mbid: str, answer: Mapping[str, Any], *, languages: Sequence[str], user_agent: str
+async def biography(
+    mbid: str,
+    answer: Mapping[str, Any],
+    *,
+    languages: Sequence[str],
+    user_agent: str,
+    client: httpx.AsyncClient,
+    deadline: float,
 ) -> Filled:
     """The biography for the artist MusicBrainz answered with as `answer`: the
     introduction of the article its Wikidata item links to, in the first of
@@ -266,13 +299,17 @@ def biography(
     if item is None:
         return Filled()
     try:
-        found = wikimedia.biography(item, languages=languages, user_agent=user_agent)
-    except wikimedia.WikimediaError as exc:
+        async with asyncio.timeout_at(deadline):
+            found = await wikimedia.biography(
+                item, languages=languages, user_agent=user_agent, client=client
+            )
+    except (wikimedia.WikimediaError, TimeoutError) as exc:
         log.warning("could not fetch a biography for %s: %s", item, exc, extra=_LOG_ONLY)
-        _keep(mbid, item, languages, "failed")
-        return Filled(failed=True)
-    _keep(mbid, item, languages, "found" if found else "missing")
-    return Filled(biography=found)
+        return Filled(failed=True, biography_lookup=_biography_lookup(item, languages, "failed"))
+    return Filled(
+        biography=found,
+        biography_lookup=_biography_lookup(item, languages, "found" if found else "missing"),
+    )
 
 
 def note(stored: activity_store.CachedArtist | None) -> str | None:
@@ -318,7 +355,5 @@ def picture_note(stored: activity_store.CachedArtist | None) -> str | None:
     return None
 
 
-def _keep(mbid: str, item: str, languages: Sequence[str], status: str) -> None:
-    activity_store.store_artist_biography(
-        mbid, {"item": item, "languages": list(languages), "status": status}
-    )
+def _biography_lookup(item: str, languages: Sequence[str], status: str) -> dict[str, Any]:
+    return {"item": item, "languages": list(languages), "status": status}

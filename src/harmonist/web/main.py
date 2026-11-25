@@ -118,7 +118,7 @@ from harmonist.models import (
 )
 from harmonist.tagger import PicardCompatibleTagger, Tagger, tagsets_for
 from harmonist.transforms import NO_CHOICES, TaggingChoices, TagTransform
-from harmonist.web import dir_watcher, periodic
+from harmonist.web import artist_work, dir_watcher, periodic
 from harmonist.web.reconcile_runner import (
     ReconcileRunner,
     reconcile_pending_orphans,
@@ -1049,9 +1049,14 @@ def create_app(
                 stop_event=watch_stop,
             )
         )
+        _app.state.artist_work = artist_work.ArtistWork()
         try:
             yield
         finally:
+            # Accepted artist writes own their audit/history, Activity and
+            # inventory publication. Keep the store and scanner alive until
+            # every such completion has drained, regardless of request fate.
+            await _app.state.artist_work.close()
             watch_stop.set()
             watch_task.cancel()
             rescan_task.cancel()
@@ -3402,26 +3407,68 @@ def _asking(cfg: config_mod.Config) -> artist_fill.Asking:
     )
 
 
-def _fill(
-    mbid: str,
-    read: Callable[[], Mapping[str, Any]],
-    data: bytes,
-    profile: artist_nfo.Profile,
-    cfg: config_mod.Config,
-) -> tuple[Mapping[str, Any], artist_fill.Filled]:
-    """MusicBrainz's answer for the artist `mbid`, from `read`, and what to
-    fill the NFO holding `data` in with: a biography where the file has none
-    (#1018), and a picture where its folder has none (#1020). Nothing is asked
-    for what the NFO has already. Raises what `read` raises,
-    `nfo_writer.NfoWriteError` for a file that can't be read, and `OSError`
-    for a folder that can't be listed."""
-    return artist_fill.fill(
+@asynccontextmanager
+async def _artist_runtime(request: Request) -> AsyncIterator[artist_work.ArtistWork]:
+    work = getattr(request.app.state, "artist_work", None)
+    if work is not None:
+        yield work
+    else:
+        # Embedders and existing TestClients may run without ASGI lifespan.
+        # Their request owns a scoped runtime and drains it before closing.
+        work = artist_work.ArtistWork()
+        try:
+            yield work
+        finally:
+            await work.close()
+
+
+def _artist_inputs(
+    request: Request, artist_key: str, file: str
+) -> tuple[artist_nfo.Profile, bytes, bool, bool]:
+    profile = _nfo_file(_nfo_inventory(request), artist_key, file)
+    with nfo_history.serialized(profile.path):
+        data = profile.path.read_bytes()
+        if nfo_history.page_key(profile.path, data) != profile.key:
+            raise nfo_writer.NfoChangedError("The file has just changed, so nothing was written.")
+        thumb = nfo_writer.values(data, {"thumb": None})["thumb"] or ""
+        return (
+            profile,
+            data,
+            nfo_writer.lacks(data, "biography"),
+            artist_nfo.picture_in(profile.path.parent, thumb) is None,
+        )
+
+
+async def _gather_artist(
+    request: Request,
+    work: artist_work.ArtistWork,
+    artist_key: str,
+    file: str,
+    requested: str | None,
+) -> tuple[artist_nfo.Profile, bytes, Mapping[str, Any], artist_fill.Filled]:
+    deadline = asyncio.get_running_loop().time() + artist_work.LOOKUP_SECONDS
+    async with asyncio.timeout_at(deadline):
+        profile, data, lacks_biography, lacks_picture = await work.io.run(
+            lambda: _artist_inputs(request, artist_key, file)
+        )
+    mbid = requested or profile.mbid
+    if mbid is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "this NFO isn't identified")
+    answer, filled = await artist_fill.fill(
         mbid,
-        read,
-        lacks_biography=nfo_writer.lacks(data, "biography"),
-        lacks_picture=artist_nfo.picture_in(profile.path.parent, profile.image_ref) is None,
-        asking=_asking(cfg),
+        lambda: work.musicbrainz.run(lambda: _fetch_artist(mbid)),
+        lacks_biography=lacks_biography,
+        lacks_picture=lacks_picture,
+        asking=_asking(request.app.state.cfg),
+        client=work.http,
+        deadline=deadline,
     )
+    return profile, data, answer, filled
+
+
+def _serialized_artist[T](path: Path, complete: Callable[[], T]) -> T:
+    with nfo_history.serialized(path):
+        return complete()
 
 
 def _filled_failures(filled: artist_fill.Filled, written: nfo_history.Written | None) -> list[str]:
@@ -3433,6 +3480,8 @@ def _filled_failures(filled: artist_fill.Filled, written: nfo_history.Written | 
         failures.append(f"couldn't fetch a picture from {filled.picture_failed}")
     if written is not None and written.picture_error:
         failures.append(written.picture_error)
+    if written is not None and written.history_error:
+        failures.append(written.history_error)
     return failures
 
 
@@ -5273,8 +5322,42 @@ def _register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/artist/{artist_key}/identify", response_class=HTMLResponse)
-    def artist_identify(
+    async def artist_identify(
         request: Request, artist_key: str, file: str = Form(...), artist: str = Form(...)
+    ) -> Response:
+        mbid = _artist_input(artist)
+        if mbid is None:
+            return _identify_problem("That isn't a MusicBrainz artist URL or MBID.")
+        request.state.skip_rescan = True
+        async with _artist_runtime(request) as work:
+            try:
+                profile, data, answer, filled = await work.lookup(
+                    lambda: _gather_artist(request, work, artist_key, file, mbid)
+                )
+                return await work.write(
+                    profile.path,
+                    lambda: _serialized_artist(
+                        profile.path,
+                        lambda: _identify_complete(request, profile, data, answer, filled),
+                    ),
+                )
+            except _NoArtist as exc:
+                return _identify_problem(str(exc))
+            except TimeoutError:
+                return _identify_problem(
+                    "MusicBrainz didn't answer within 30 seconds. Try again later."
+                )
+            except artist_work.Stopping:
+                return _identify_problem("Harmonist is stopping; nothing was written.")
+            except (OSError, nfo_writer.NfoWriteError) as exc:
+                return _identify_problem(f"Nothing was written: {exc}")
+
+    def _identify_complete(
+        request: Request,
+        profile: artist_nfo.Profile,
+        data: bytes,
+        answer: Mapping[str, Any],
+        filled: artist_fill.Filled,
     ) -> Response:
         """Fill in one of this page's NFOs from a MusicBrainz artist, and record
         it (#981), with a biography from the Wikipedia article MusicBrainz links
@@ -5286,18 +5369,10 @@ def _register_routes(app: FastAPI) -> None:
         lands above the rows. A biography or picture that can't be fetched
         doesn't stop the identification: the rest is written, and the answer
         says so."""
-        profile = _nfo_file(_nfo_inventory(request), artist_key, file)
-        mbid = _artist_input(artist)
-        if mbid is None:
-            return _identify_problem("That isn't a MusicBrainz artist URL or MBID.")
-        try:
-            data = profile.path.read_bytes()
-        except OSError as exc:
-            return _identify_problem(f"Couldn't read the file: {exc.strerror}")
         cfg = request.app.state.cfg
         root = cfg.paths.music_dir
         try:
-            answer, filled = _fill(mbid, lambda: _fetch_artist(mbid), data, profile, cfg)
+            filled.keep(str(answer.get("id") or profile.mbid or ""))
             written = nfo_history.write(
                 profile.path,
                 root=root,
@@ -5306,8 +5381,6 @@ def _register_routes(app: FastAPI) -> None:
                 credits=filled.credits,
                 picture=filled.picture,
             )
-        except _NoArtist as exc:
-            return _identify_problem(str(exc))
         except OSError as exc:
             return _identify_problem(f"Couldn't read the folder: {exc.strerror}")
         except nfo_writer.NfoChangedError:
@@ -5347,7 +5420,50 @@ def _register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/artist/{artist_key}/refresh", response_class=HTMLResponse)
-    def artist_refresh(request: Request, artist_key: str, file: str = Form(...)) -> Response:
+    async def artist_refresh(request: Request, artist_key: str, file: str = Form(...)) -> Response:
+        request.state.skip_rescan = True
+        async with _artist_runtime(request) as work:
+            try:
+                profile, data, _answer, filled = await work.lookup(
+                    lambda: _gather_artist(request, work, artist_key, file, None)
+                )
+                return await work.write(
+                    profile.path,
+                    lambda: _serialized_artist(
+                        profile.path,
+                        lambda: _refresh_complete(request, profile, data, _answer, filled),
+                    ),
+                )
+            except artist_work.Stopping:
+                return _flash_response(
+                    "Not filled in",
+                    "Harmonist is stopping; nothing was written",
+                    level=Level.WARNING,
+                    tasks_changed=False,
+                    record_activity=False,
+                )
+            except (_NoArtist, TimeoutError, OSError, nfo_writer.NfoWriteError) as exc:
+                details = (
+                    "MusicBrainz didn't answer within 30 seconds; try again later"
+                    if isinstance(exc, TimeoutError)
+                    else str(exc)
+                )
+                return await work.io.run(
+                    lambda: _flash_response(
+                        "Not filled in",
+                        details,
+                        level=Level.WARNING,
+                        tasks_changed=False,
+                    )
+                )
+
+    def _refresh_complete(
+        request: Request,
+        profile: artist_nfo.Profile,
+        data: bytes,
+        answer: Mapping[str, Any],
+        filled: artist_fill.Filled,
+    ) -> Response:
         """Read an identified artist from MusicBrainz again, keep the answer,
         and fill in what its NFO lacks (#1022): additions only, as an album's
         re-read doesn't re-tag. Where MusicBrainz now says something else about
@@ -5357,7 +5473,6 @@ def _register_routes(app: FastAPI) -> None:
 
         The page is drawn again whatever happens, since the date it shows has
         moved. A read that fills nothing in says nothing: the page shows it."""
-        profile = _nfo_file(_nfo_inventory(request), artist_key, file)
         mbid = profile.mbid
         if mbid is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "this NFO isn't identified")
@@ -5365,8 +5480,7 @@ def _register_routes(app: FastAPI) -> None:
         cfg = request.app.state.cfg
         root = cfg.paths.music_dir
         try:
-            data = profile.path.read_bytes()
-            _answer, filled = _fill(mbid, lambda: mb_cache.fetch_artist(mbid), data, profile, cfg)
+            filled.keep(str(answer.get("id") or mbid))
             written = nfo_history.write(
                 profile.path,
                 root=root,
@@ -5374,23 +5488,6 @@ def _register_routes(app: FastAPI) -> None:
                 wanted=filled.wanted,
                 credits=filled.credits,
                 picture=filled.picture,
-            )
-        except mb_lookup.ArtistNotFoundError:
-            return _flash_response(
-                "Not read",
-                "MusicBrainz has no artist with this ID",
-                level=Level.WARNING,
-                tasks_changed=False,
-                artist=artist,
-            )
-        except mb_lookup.MBError as exc:
-            log.warning("could not read MusicBrainz artist %s: %s", mbid, exc, extra=_LOG_ONLY)
-            return _flash_response(
-                "Not read",
-                "couldn't read MusicBrainz; try again later",
-                level=Level.WARNING,
-                tasks_changed=False,
-                artist=artist,
             )
         except OSError as exc:
             return _flash_response(
@@ -5439,7 +5536,47 @@ def _register_routes(app: FastAPI) -> None:
         return _close_finder(request, response, profile.key)
 
     @app.post("/artist/{artist_key}/undo", response_class=HTMLResponse)
-    def artist_nfo_undo(request: Request, artist_key: str, event_id: int = Form(...)) -> Response:
+    async def artist_nfo_undo(
+        request: Request, artist_key: str, event_id: int = Form(...)
+    ) -> Response:
+        request.state.skip_rescan = True
+        async with _artist_runtime(request) as work:
+
+            def find_record() -> activity_store.NfoChanges:
+                key = artists.page_key(artist_key) or ""
+                mine = any(e.id == event_id for e in activity_store.artist_history(key))
+                record = activity_store.nfo_changes_for([event_id]).get(event_id) if mine else None
+                if record is None:
+                    raise HTTPException(
+                        status.HTTP_404_NOT_FOUND, "no NFO change on that history entry"
+                    )
+                return record
+
+            try:
+                record = await work.lookup(lambda: work.io.run(find_record))
+                path = request.app.state.cfg.paths.music_dir / record.file
+                return await work.write(
+                    path, lambda: _serialized_artist(path, lambda: _undo_complete(request, record))
+                )
+            except artist_work.Stopping:
+                return _flash_response(
+                    "Couldn't undo",
+                    "Harmonist is stopping; nothing was written",
+                    level=Level.WARNING,
+                    tasks_changed=False,
+                    record_activity=False,
+                )
+            except activity_store.StoreUnavailableError:
+                return await work.io.run(
+                    lambda: _flash_response(
+                        "Couldn't undo",
+                        "this artist's history can't be read right now",
+                        level=Level.ERROR,
+                        tasks_changed=False,
+                    )
+                )
+
+    def _undo_complete(request: Request, record: activity_store.NfoChanges) -> Response:
         """Put back the NFO fields one write changed (#981), and remove a
         picture it put beside the file (#1020).
 
@@ -5448,20 +5585,7 @@ def _register_routes(app: FastAPI) -> None:
         the tag Undo does: a request can name a History entry, never a file, a
         field or a value. Fields changed since the write are left alone, and so
         is a picture replaced since."""
-        key = artists.page_key(artist_key) or ""
         root = request.app.state.cfg.paths.music_dir
-        try:
-            mine = any(e.id == event_id for e in activity_store.artist_history(key))
-            record = activity_store.nfo_changes_for([event_id]).get(event_id) if mine else None
-        except activity_store.StoreUnavailableError:
-            return _flash_response(
-                "Couldn't undo",
-                "this artist's history can't be read right now",
-                level=Level.ERROR,
-                tasks_changed=False,
-            )
-        if record is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "no NFO change on that history entry")
         try:
             plan = nfo_history.undo_plan(record, root=root)
             if not plan.revert and plan.picture is None:
@@ -5500,13 +5624,15 @@ def _register_routes(app: FastAPI) -> None:
             details.append(f"removed {written.picture}")
         if written.picture_error:
             details.append(written.picture_error)
+        if written.history_error:
+            details.append(written.history_error)
         return _artist_written(
             request,
             written,
             plan.path,
             "NFO fields put back" if written.changes else f"Removed {written.picture}",
             "; ".join(details),
-            level=Level.WARNING if written.picture_error else Level.INFO,
+            level=Level.WARNING if written.picture_error or written.history_error else Level.INFO,
         )
 
     @app.get("/tasks", response_class=HTMLResponse)
@@ -9965,9 +10091,15 @@ def _artist_written(
 
     The Inbox, at `/`, stays where it is (#996): the card leaves as a confirmed
     album's does, so the next can be done in turn."""
+    # Completion is recorded before constructing any HTTP response. The app
+    # owns this worker after acceptance, even if its request has disappeared.
+    message = verb if not details else f"{verb} — {details}"
+    activity.record(message, level, artist_id=written.key, artist_label=written.label)
     request.app.state.scan_runner.refresh_nfo(path)
     request.state.skip_rescan = True
-    response = _flash_response(verb, details, level=level, artist=(written.key, written.label))
+    response = _flash_response(
+        verb, details, level=level, artist=(written.key, written.label), record_activity=False
+    )
     return _close_finder(request, response, written.key)
 
 

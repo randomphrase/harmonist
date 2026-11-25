@@ -1,5 +1,6 @@
 """The public demo exercises the real artist inventory and exclusion rules."""
 
+import asyncio
 from functools import partial
 
 import pytest
@@ -15,6 +16,7 @@ from harmonist import (
     wikimedia,
 )
 from harmonist.models import AlbumState
+from harmonist.web.artist_work import ArtistWork
 
 VARIOUS = "89ad4ac3-39f7-470e-963a-56509c546377"
 
@@ -119,9 +121,19 @@ def test_the_demos_wikipedia_has_a_biography_for_wyld_stallion_and_is_never_aske
     wyld = demo.MB_RELEASES["demo-rel-wyld"]["artist-credit"][0]["artist"]["id"]
     item = wikimedia.wikidata_item(demo.fetch_artist(wyld))
     assert item is not None
-    found = wikimedia.biography(item, languages=["en"], user_agent="demo")
+
+    async def biography(languages):
+        work = ArtistWork()
+        try:
+            return await wikimedia.biography(
+                item, languages=languages, user_agent="demo", client=work.http
+            )
+        finally:
+            await work.close()
+
+    found = asyncio.run(biography(["en"]))
     assert found is not None and found.text.startswith("Wyld Stallion are a rock duo")
-    assert wikimedia.biography(item, languages=["pt"], user_agent="demo") is None
+    assert asyncio.run(biography(["pt"])) is None
 
 
 def test_the_demos_pictures_come_from_each_source_and_never_for_real(tmp_path):
@@ -133,16 +145,30 @@ def test_the_demos_pictures_come_from_each_source_and_never_for_real(tmp_path):
     wyld = demo.MB_RELEASES["demo-rel-wyld"]["artist-credit"][0]["artist"]["id"]
     satellites = demo._demo_mbid("art", "demo-unplayed-satellites")
     mouse_rat = demo.MB_RELEASES["demo-rel-mouserat"]["artist-credit"][0]["artist"]["id"]
-    found = {
-        mbid: artist_fill.fill(
-            mbid,
-            partial(demo.fetch_artist, mbid),
-            lacks_biography=False,
-            lacks_picture=True,
-            asking=asking,
-        )[1]
-        for mbid in (wyld, satellites, mouse_rat)
-    }
+
+    async def pictures():
+        work = ArtistWork()
+        try:
+            found = {}
+            for mbid in (wyld, satellites, mouse_rat):
+
+                async def read(mbid: str = mbid):
+                    return await work.musicbrainz.run(partial(demo.fetch_artist, mbid))
+
+                _, found[mbid] = await artist_fill.fill(
+                    mbid,
+                    read,
+                    lacks_biography=False,
+                    lacks_picture=True,
+                    asking=asking,
+                    client=work.http,
+                    deadline=asyncio.get_running_loop().time() + 5,
+                )
+            return found
+        finally:
+            await work.close()
+
+    found = asyncio.run(pictures())
     assert found[wyld].picture is not None
     assert found[wyld].picture.name == "artist.png"
     assert found[wyld].picture.credit.source == "fanart.tv"

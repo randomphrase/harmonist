@@ -19,6 +19,7 @@ imported in the non-demo runtime path.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import hashlib
 import json
@@ -1187,7 +1188,7 @@ def fetch_artist(mbid: str) -> dict[str, Any]:
     return {"id": mbid, "name": name, "sort-name": sort_name, **ARTIST_DETAILS.get(name, {})}
 
 
-def wikipedia_biography(
+async def wikipedia_biography(
     item: str, *, languages: Sequence[str], user_agent: str, client: object = None
 ) -> wikimedia.Biography | None:
     """Demo counterpart of fetching a biography from Wikipedia (#1018): the
@@ -1200,7 +1201,7 @@ def wikipedia_biography(
     )
 
 
-def fanart_thumb(
+async def fanart_thumb(
     mbid: str, *, personal_key: str, user_agent: str, client: object = None
 ) -> fanart_tv.Thumb | None:
     """Demo counterpart of fanart.tv's artist thumbnails (#1020)."""
@@ -1212,7 +1213,7 @@ def fanart_thumb(
     )
 
 
-def commons_picture(
+async def commons_picture(
     item: str, *, user_agent: str, client: object = None
 ) -> wikimedia.CommonsPicture | None:
     """Demo counterpart of the image Wikidata gives an item, on Commons (#1020)."""
@@ -1228,12 +1229,12 @@ def commons_picture(
     )
 
 
-def download_picture(url: str, *, user_agent: str, client: object = None) -> bytes | None:
+async def download_picture(url: str, *, user_agent: str, client: object = None) -> bytes | None:
     """Demo counterpart of fetching a picture fanart.tv or Commons named: the
     demo's own image of that name."""
     for prefix in (_DEMO_FANART_ASSETS, _DEMO_COMMONS_UPLOADS):
         if url.startswith(prefix):
-            return (ASSETS_DIR / url.removeprefix(prefix)).read_bytes()
+            return await asyncio.to_thread((ASSETS_DIR / url.removeprefix(prefix)).read_bytes)
     raise artist_fill.PictureFetchError(f"demo: no picture at {url}")
 
 

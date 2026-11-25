@@ -826,17 +826,16 @@ def record_nfo_changes(
     changes: Mapping[str, Sequence[str | None]],
     sources: Mapping[str, Mapping[str, str]] | None = None,
     picture: Mapping[str, Any] | None = None,
-) -> None:
+) -> bool:
     """Attach one NFO write's per-field before/after to its `nfo.write` audit
     row `event_id` (#981), with where any field came from (#1018), and the
     picture it put beside the file or took away (#1020).
 
-    Best-effort, like `record_tag_changes`: the write has happened and its audit
-    line is committed, so losing this row costs the History detail and the
-    Undo, never the record that the write took place.
+    The file has already changed. Return whether its Undo detail was saved,
+    so the write can report a partial outcome instead of claiming success.
     """
     if not changes and not picture:
-        return
+        return True
     try:
         with _LOCK:
             conn = _ensure()
@@ -865,8 +864,10 @@ def record_nfo_changes(
                 ),
             )
             conn.commit()
+        return True
     except sqlite3.Error:
         log.exception("activity_store record_nfo_changes failed", extra=_QUIET_MIRROR)
+        return False
 
 
 def nfo_changes_for(event_ids: Sequence[int]) -> dict[int, NfoChanges]:

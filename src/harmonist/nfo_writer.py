@@ -189,6 +189,12 @@ def apply(data: bytes, wanted: Mapping[str, str | None]) -> bytes:
     return result
 
 
+def check_expected(path: Path, expected: bytes) -> None:
+    """Refuse a stale snapshot, including an operation changing only a picture."""
+    if _read(path) != expected:
+        raise NfoChangedError(f"{path} changed since its changes were worked out")
+
+
 def write(path: Path, *, expected: bytes, wanted: Mapping[str, str | None]) -> bytes:
     """Put `wanted` into the NFO at `path`, which must still hold `expected`.
 
@@ -200,8 +206,7 @@ def write(path: Path, *, expected: bytes, wanted: Mapping[str, str | None]) -> b
     result = apply(expected, wanted)
     if result == expected:
         return expected
-    if _read(path) != expected:
-        raise NfoChangedError(f"{path} changed since its changes were worked out")
+    check_expected(path, expected)
     _replace(path, result)
     if _read(path) != result:
         _replace(path, expected)

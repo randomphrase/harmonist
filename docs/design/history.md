@@ -187,6 +187,18 @@ text does.
 
 ## Undoing an NFO write
 
+**An accepted write belongs to the application, not its HTTP request** (#1040).
+Identify, Refresh and Undo serialize the final file check, mutation and recording
+for the same NFO, with provider waits outside that boundary. The original NFO is
+checked even when only a picture changes: its identity is why that picture was
+chosen. Cancelling before acceptance abandons the proposal; after acceptance,
+verification, audit and Undo detail, Activity and inventory refresh finish even
+if the response is abandoned. Graceful shutdown stops new work, cancels pending
+lookups and drains accepted writes through recording. Forced process termination
+cannot give that guarantee. A changed file whose Undo detail could not be saved
+is reported as a partial outcome, since claiming success would promise an Undo
+that does not exist.
+
 The same rules as a tagging's undo, for the same reasons. **The write is the
 unit**: Undo puts back everything one write changed. **A field changed since is
 left alone** and named in the result, so an Undo offered on an old entry is safe

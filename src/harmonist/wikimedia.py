@@ -93,12 +93,12 @@ def wikidata_item(artist: Mapping[str, Any]) -> str | None:
     return items[0] if len(items) == 1 else None
 
 
-def biography(
+async def biography(
     item: str,
     *,
     languages: Sequence[str],
     user_agent: str,
-    client: httpx.Client | None = None,
+    client: httpx.AsyncClient,
 ) -> Biography | None:
     """The introduction of the article Wikidata's `item` links to in the first
     of `languages` that has one, as plain text.
@@ -107,22 +107,21 @@ def biography(
     article has no introduction. Raises `WikimediaError` when either service
     can't be asked or answers something unreadable.
     """
-    if client is None:
-        with httpx.Client(timeout=TIMEOUT, follow_redirects=True) as owned:
-            return biography(item, languages=languages, user_agent=user_agent, client=owned)
     headers = {"User-Agent": user_agent}
     sites = {_site(language): language for language in languages}
-    entities = _ask(
-        client,
-        _WIKIDATA_API,
-        {
-            "action": "wbgetentities",
-            "ids": item,
-            "props": "sitelinks/urls",
-            "sitefilter": "|".join(sites),
-            "format": "json",
-        },
-        headers,
+    entities = (
+        await _ask(
+            client,
+            _WIKIDATA_API,
+            {
+                "action": "wbgetentities",
+                "ids": item,
+                "props": "sitelinks/urls",
+                "sitefilter": "|".join(sites),
+                "format": "json",
+            },
+            headers,
+        )
     ).get("entities")
     if not isinstance(entities, dict):
         raise WikimediaError("Wikidata's answer has no entities")
@@ -141,21 +140,23 @@ def biography(
     # before anything is sent there.
     if not _WIKIPEDIA_HOST_RE.fullmatch(host) or not title:
         raise WikimediaError(f"Wikidata links {item} to {url!r}, which isn't a Wikipedia article")
-    query = _ask(
-        client,
-        f"https://{host}/w/api.php",
-        {
-            "action": "query",
-            "prop": "extracts|revisions",
-            "exintro": "1",
-            "explaintext": "1",
-            "rvprop": "ids",
-            "titles": title,
-            "redirects": "1",
-            "format": "json",
-            "formatversion": "2",
-        },
-        headers,
+    query = (
+        await _ask(
+            client,
+            f"https://{host}/w/api.php",
+            {
+                "action": "query",
+                "prop": "extracts|revisions",
+                "exintro": "1",
+                "explaintext": "1",
+                "rvprop": "ids",
+                "titles": title,
+                "redirects": "1",
+                "format": "json",
+                "formatversion": "2",
+            },
+            headers,
+        )
     ).get("query")
     pages = query.get("pages") if isinstance(query, dict) else None
     if not isinstance(pages, list) or not pages or not isinstance(pages[0], dict):
@@ -172,8 +173,8 @@ def biography(
     return Biography(text=text, language=sites[site], url=url, revision=str(revisions[0]["revid"]))
 
 
-def picture(
-    item: str, *, user_agent: str, client: httpx.Client | None = None
+async def picture(
+    item: str, *, user_agent: str, client: httpx.AsyncClient
 ) -> CommonsPicture | None:
     """The image Wikidata gives `item` (P18), as Commons' rendition
     `PICTURE_WIDTH` pixels wide, with its author and licence.
@@ -185,34 +186,35 @@ def picture(
     answers something unreadable, including a rendition that isn't on one of
     Wikimedia's own image hosts.
     """
-    if client is None:
-        with httpx.Client(timeout=TIMEOUT, follow_redirects=True) as owned:
-            return picture(item, user_agent=user_agent, client=owned)
     headers = {"User-Agent": user_agent}
-    claims = _ask(
-        client,
-        _WIKIDATA_API,
-        {"action": "wbgetclaims", "entity": item, "property": "P18", "format": "json"},
-        headers,
-        empty=("no-such-entity",),
+    claims = (
+        await _ask(
+            client,
+            _WIKIDATA_API,
+            {"action": "wbgetclaims", "entity": item, "property": "P18", "format": "json"},
+            headers,
+            empty=("no-such-entity",),
+        )
     ).get("claims")
     name = _best_value((claims or {}).get("P18") if isinstance(claims, dict) else None)
     if name is None:
         return None
-    query = _ask(
-        client,
-        _COMMONS_API,
-        {
-            "action": "query",
-            "titles": f"File:{name}",
-            "prop": "imageinfo",
-            "iiprop": "url|extmetadata",
-            "iiurlwidth": str(PICTURE_WIDTH),
-            "iiextmetadatafilter": "Artist|LicenseShortName|LicenseUrl",
-            "format": "json",
-            "formatversion": "2",
-        },
-        headers,
+    query = (
+        await _ask(
+            client,
+            _COMMONS_API,
+            {
+                "action": "query",
+                "titles": f"File:{name}",
+                "prop": "imageinfo",
+                "iiprop": "url|extmetadata",
+                "iiurlwidth": str(PICTURE_WIDTH),
+                "iiextmetadatafilter": "Artist|LicenseShortName|LicenseUrl",
+                "format": "json",
+                "formatversion": "2",
+            },
+            headers,
+        )
     ).get("query")
     pages = query.get("pages") if isinstance(query, dict) else None
     if not isinstance(pages, list) or not pages or not isinstance(pages[0], dict):
@@ -295,8 +297,8 @@ def _site(language: str) -> str:
     return language.replace("-", "_") + "wiki"
 
 
-def _ask(
-    client: httpx.Client,
+async def _ask(
+    client: httpx.AsyncClient,
     url: str,
     params: Mapping[str, str],
     headers: Mapping[str, str],
@@ -307,7 +309,7 @@ def _ask(
     except one whose code is in `empty`: an answer of nothing, read as an empty
     one."""
     try:
-        response = client.get(url, params=params, headers=headers)
+        response = await client.get(url, params=params, headers=headers, timeout=TIMEOUT)
         response.raise_for_status()
         answer = response.json()
     except httpx.HTTPError as exc:

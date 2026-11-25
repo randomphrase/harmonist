@@ -63,8 +63,8 @@ def available(personal_key: str) -> bool:
     return bool(PROJECT_KEY or personal_key)
 
 
-def artist_thumb(
-    mbid: str, *, personal_key: str, user_agent: str, client: httpx.Client | None = None
+async def artist_thumb(
+    mbid: str, *, personal_key: str, user_agent: str, client: httpx.AsyncClient
 ) -> Thumb | None:
     """The first of the artist `mbid`'s thumbnails on fanart.tv.
 
@@ -72,13 +72,10 @@ def artist_thumb(
     Raises `FanartError` when it can't be asked or answers something
     unreadable, including a thumbnail that isn't on its own image host.
     """
-    if client is None:
-        with httpx.Client(timeout=TIMEOUT, follow_redirects=True) as owned:
-            return artist_thumb(
-                mbid, personal_key=personal_key, user_agent=user_agent, client=owned
-            )
     try:
-        response = client.get(_API.format(mbid=mbid), headers=_headers(personal_key, user_agent))
+        response = await client.get(
+            _API.format(mbid=mbid), headers=_headers(personal_key, user_agent), timeout=TIMEOUT
+        )
         if response.status_code == httpx.codes.NOT_FOUND:
             return None
         response.raise_for_status()

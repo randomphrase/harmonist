@@ -202,6 +202,14 @@ images the archive could hold (#909).
   asked one request at a time, whatever else is in flight. If MusicBrainz
   answers with another artist, the one the ID was merged into, fanart.tv is
   asked about that one instead.
+- **Artist lookups share one 30-second deadline**, including time queued for
+  MusicBrainz and any retries (#1040). A slow optional provider must not hold
+  the action indefinitely, or discard a sibling's completed biography or
+  picture. Without MusicBrainz establishing identity, nothing is written.
+  HTTP work belongs to the application lifespan; a synchronous MusicBrainz
+  call retains its bounded worker slot until it really stops, even when its
+  caller has timed out. Otherwise repeated timeouts could create unbounded
+  outstanding work on a slow NAS.
 - **fanart.tv needs a key, and Harmonist's is in its source.** A project key
   says which program is asking. It opens nothing that isn't public, and can't be
   kept secret anyway: every copy of Harmonist has to carry it, as every copy of

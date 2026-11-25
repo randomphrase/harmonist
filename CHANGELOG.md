@@ -13,6 +13,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- Artist Identify and Refresh give lookups 30 seconds, preserve completed optional results, and finish accepted writes and their history during graceful shutdown (#1040).
 - **A track's work has a column in the track list** when the other tags leave
   one free, rather than a line under the track (#1035).
 

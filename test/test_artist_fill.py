@@ -4,9 +4,10 @@ filled in beside it (#1020)."""
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from dataclasses import replace
-from unittest.mock import Mock
+from unittest.mock import ANY, AsyncMock
 
 import httpx
 import pytest
@@ -20,6 +21,7 @@ from harmonist import (
     nfo_history,
     wikimedia,
 )
+from harmonist.web.artist_work import ArtistWork
 
 MBID = "77777777-7777-4777-8777-777777777777"
 LINKED = {
@@ -43,7 +45,24 @@ def store(tmp_path):
 
 def look_up(answer, found, languages=("en",)):
     activity_store.store_artist(MBID, answer)
-    return artist_fill.biography(MBID, answer, languages=list(languages), user_agent="test")
+
+    async def run():
+        work = ArtistWork()
+        try:
+            filled = await artist_fill.biography(
+                MBID,
+                answer,
+                languages=list(languages),
+                user_agent="test",
+                client=work.http,
+                deadline=asyncio.get_running_loop().time() + 5,
+            )
+            await work.io.run(lambda: filled.keep(MBID))
+            return filled
+        finally:
+            await work.close()
+
+    return asyncio.run(run())
 
 
 def note():
@@ -51,7 +70,7 @@ def note():
 
 
 def test_a_biography_found_is_filled_and_credited(monkeypatch):
-    monkeypatch.setattr(wikimedia, "biography", Mock(return_value=FOUND))
+    monkeypatch.setattr(wikimedia, "biography", AsyncMock(return_value=FOUND))
     filled = look_up(LINKED, FOUND)
     assert filled.biography == FOUND
     assert filled.credits == {"biography": nfo_history.Credit(FOUND.url, FOUND.revision)}
@@ -60,20 +79,22 @@ def test_a_biography_found_is_filled_and_credited(monkeypatch):
 
 
 def test_no_wikidata_link_asks_wikipedia_nothing_and_says_so(monkeypatch):
-    monkeypatch.setattr(wikimedia, "biography", Mock(side_effect=AssertionError("asked")))
+    monkeypatch.setattr(wikimedia, "biography", AsyncMock(side_effect=AssertionError("asked")))
     filled = look_up(UNLINKED, None)
     assert filled.biography is None and not filled.failed
     assert note() == "MusicBrainz links no Wikidata item"
 
 
 def test_no_article_in_the_languages_asked_for_says_which(monkeypatch):
-    monkeypatch.setattr(wikimedia, "biography", Mock(return_value=None))
+    monkeypatch.setattr(wikimedia, "biography", AsyncMock(return_value=None))
     look_up(LINKED, None, languages=("pt", "en"))
     assert note() == "No Wikipedia article in pt or en"
 
 
 def test_wikipedia_unreachable_is_a_failure_and_says_so(monkeypatch):
-    monkeypatch.setattr(wikimedia, "biography", Mock(side_effect=wikimedia.WikimediaError("503")))
+    monkeypatch.setattr(
+        wikimedia, "biography", AsyncMock(side_effect=wikimedia.WikimediaError("503"))
+    )
     filled = look_up(LINKED, None)
     assert filled.failed and filled.biography is None
     assert note() == "Wikipedia couldn't be reached"
@@ -82,7 +103,7 @@ def test_wikipedia_unreachable_is_a_failure_and_says_so(monkeypatch):
 def test_a_lookup_for_an_item_musicbrainz_no_longer_links_says_nothing(monkeypatch):
     """What the lookup found was about the old item, so it says nothing about
     the new one until the artist is read again and looked up."""
-    monkeypatch.setattr(wikimedia, "biography", Mock(return_value=None))
+    monkeypatch.setattr(wikimedia, "biography", AsyncMock(return_value=None))
     look_up(LINKED, None)
     relinked = {
         **LINKED,
@@ -121,9 +142,9 @@ def pictures(monkeypatch):
     """fanart.tv with a key, and neither it nor Commons having a picture
     until a test says so. Fetching a picture gives the JPEG."""
     monkeypatch.setattr(fanart_tv, "PROJECT_KEY", "project")
-    thumb = Mock(return_value=None)
-    on_commons = Mock(return_value=None)
-    fetch = Mock(return_value=JPEG)
+    thumb = AsyncMock(return_value=None)
+    on_commons = AsyncMock(return_value=None)
+    fetch = AsyncMock(return_value=JPEG)
     monkeypatch.setattr(fanart_tv, "artist_thumb", thumb)
     monkeypatch.setattr(wikimedia, "picture", on_commons)
     monkeypatch.setattr(artist_fill, "download_picture", fetch)
@@ -141,9 +162,24 @@ def reading(answer):
 
 
 def fill(read, *, lacks_biography=False, lacks_picture=True):
-    return artist_fill.fill(
-        MBID, read, lacks_biography=lacks_biography, lacks_picture=lacks_picture, asking=ASKING
-    )
+    async def run():
+        work = ArtistWork()
+        try:
+            answer, filled = await artist_fill.fill(
+                MBID,
+                lambda: work.musicbrainz.run(read),
+                lacks_biography=lacks_biography,
+                lacks_picture=lacks_picture,
+                asking=ASKING,
+                client=work.http,
+                deadline=asyncio.get_running_loop().time() + 5,
+            )
+            await work.io.run(lambda: filled.keep(str(answer["id"])))
+            return answer, filled
+        finally:
+            await work.close()
+
+    return asyncio.run(run())
 
 
 def picture_note(mbid=MBID):
@@ -159,8 +195,8 @@ def test_fanart_tvs_picture_is_filled_in_and_credited(pictures):
     )
     assert filled.picture.name == "artist.jpg"
     assert filled.picture_failed is None
-    thumb.assert_called_once_with(MBID, personal_key="", user_agent="test")
-    fetch.assert_called_once_with(THUMB.url, user_agent="test")
+    thumb.assert_awaited_once_with(MBID, personal_key="", user_agent="test", client=ANY)
+    fetch.assert_awaited_once_with(THUMB.url, user_agent="test", client=ANY)
     on_commons.assert_not_called()
 
 
@@ -240,7 +276,7 @@ def test_without_a_picture_on_fanart_tv_the_items_image_is_taken_and_credited(pi
         ),
     )
     assert filled.picture.name == "artist.png"
-    on_commons.assert_called_once_with("Q123", user_agent="test")
+    on_commons.assert_awaited_once_with("Q123", user_agent="test", client=ANY)
 
 
 def test_a_picture_that_isnt_a_jpeg_or_png_on_fanart_tv_leaves_it_to_commons(pictures):
@@ -292,7 +328,7 @@ def test_a_folder_with_a_picture_asks_nobody_for_one(pictures):
 def test_the_biography_and_the_picture_are_filled_in_together(pictures, monkeypatch):
     thumb, _on_commons, _fetch = pictures
     thumb.return_value = THUMB
-    monkeypatch.setattr(wikimedia, "biography", Mock(return_value=FOUND))
+    monkeypatch.setattr(wikimedia, "biography", AsyncMock(return_value=FOUND))
     _, filled = fill(reading(LINKED), lacks_biography=True)
     assert filled.biography == FOUND and filled.picture is not None
 
@@ -301,23 +337,24 @@ def test_when_musicbrainz_cant_be_read_nothing_else_is_waited_for(pictures):
     """The user is told at once, rather than when fanart.tv answers about an
     artist nothing will be written for."""
     thumb, _on_commons, _fetch = pictures
-    release, finished = threading.Event(), threading.Event()
+    started, finished = threading.Event(), threading.Event()
 
-    def slow(*args, **kwargs):
-        release.wait(timeout=5)
-        finished.set()
+    async def slow(*args, **kwargs):
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            finished.set()
 
     thumb.side_effect = slow
 
     def read():
+        assert started.wait(timeout=5)
         raise mb_lookup.MBError("down")
 
-    try:
-        with pytest.raises(mb_lookup.MBError):
-            fill(read)
-        assert not finished.is_set()
-    finally:
-        release.set()
+    with pytest.raises(mb_lookup.MBError):
+        fill(read)
+    assert finished.is_set(), "speculative HTTP must be cancelled and joined"
 
 
 def test_no_picture_lookup_has_no_note():
@@ -327,10 +364,13 @@ def test_no_picture_lookup_has_no_note():
 
 
 def fetched(handler, monkeypatch=None):
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        return artist_fill.download_picture(
-            "https://assets.fanart.tv/x.jpg", user_agent="test", client=client
-        )
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await artist_fill.download_picture(
+                "https://assets.fanart.tv/x.jpg", user_agent="test", client=client
+            )
+
+    return asyncio.run(run())
 
 
 @pytest.mark.parametrize(("data", "expected"), [(JPEG, JPEG), (PNG, PNG), (b"GIF89a....", None)])

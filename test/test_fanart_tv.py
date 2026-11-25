@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -18,11 +20,13 @@ def ask(handler, *, personal_key=""):
         requests.append(request)
         return handler(request)
 
-    with httpx.Client(transport=httpx.MockTransport(record)) as client:
-        found = fanart_tv.artist_thumb(
-            MBID, personal_key=personal_key, user_agent="Harmonist/test", client=client
-        )
-    return found, requests
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(record)) as client:
+            return await fanart_tv.artist_thumb(
+                MBID, personal_key=personal_key, user_agent="Harmonist/test", client=client
+            )
+
+    return asyncio.run(run()), requests
 
 
 def answering(body, status=200):

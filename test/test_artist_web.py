@@ -5,7 +5,7 @@ import shutil
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from bs4 import BeautifulSoup
@@ -89,8 +89,8 @@ def artist_client(tmp_path, monkeypatch):
     # Identifying an artist looks for a picture where the folder has none
     # (#1020). Neither fanart.tv nor Commons has one unless a test says so,
     # and neither is ever really asked.
-    monkeypatch.setattr(fanart_tv, "artist_thumb", Mock(return_value=None))
-    monkeypatch.setattr(wikimedia, "picture", Mock(return_value=None))
+    monkeypatch.setattr(fanart_tv, "artist_thumb", AsyncMock(return_value=None))
+    monkeypatch.setattr(wikimedia, "picture", AsyncMock(return_value=None))
     monkeypatch.setattr(artist_fill, "download_picture", network)
     return TestClient(create_app(cfg), headers={"HX-Request": "true"}), cfg, network
 

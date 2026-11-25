@@ -4,7 +4,7 @@ and Undo (#981, #917)."""
 from __future__ import annotations
 
 import json
-from unittest.mock import Mock
+from unittest.mock import ANY, AsyncMock, Mock
 
 import pytest
 from bs4 import BeautifulSoup
@@ -98,6 +98,54 @@ def test_identify_writes_what_musicbrainz_says_when_it_is_pressed(identify):
     identify_as(client, key, key)
     assert lookup.call_count == 2
     assert "<name>Carol (renamed)</name>" in path.read_text()
+
+
+def test_refresh_validates_the_selected_profile_before_starting_lookups(identify, monkeypatch):
+    from harmonist.web import main
+
+    client, path, file_key, lookup = identify
+    original = f"<artist><musicbrainzartistid>{CAROL}</musicbrainzartistid></artist>"
+    path.write_text(original)
+    inventory = client.app.state.scan_runner.scan_nfos_now()
+    monkeypatch.setattr(main, "_nfo_inventory", lambda request: inventory)
+    changed = original.replace(CAROL, ALICE)
+    path.write_text(changed)
+    response = client.post(f"/artist/{CAROL}/refresh", data={"file": file_key})
+    assert "file has just changed" in response.text
+    lookup.assert_not_called()
+    assert path.read_text() == changed
+
+
+def test_changed_files_and_activity_survive_a_failure_building_the_response(identify, monkeypatch):
+    from harmonist.web import main
+
+    client, path, key, _lookup = identify
+    monkeypatch.setattr(main, "_flash_response", Mock(side_effect=RuntimeError("render failed")))
+    with pytest.raises(RuntimeError, match="render failed"):
+        identify_as(client, key, key)
+    assert CAROL in path.read_text()
+    events = activity_store.artist_history(CAROL)
+    outcomes = [
+        e for e in events if e.source is Source.ACTIVITY and e.message.startswith("Identified")
+    ]
+    audit = [e for e in events if e.source is Source.AUDIT and e.message.startswith("nfo.write")]
+    assert len(outcomes) == len(audit) == 1
+    assert outcomes[0].action_id == audit[0].action_id
+    assert activity_store.nfo_changes_for([audit[0].id])[audit[0].id].changes
+
+
+def test_missing_undo_history_is_reported_as_a_partial_write(identify, monkeypatch):
+    client, path, key, _lookup = identify
+    monkeypatch.setattr(activity_store, "record_nfo_changes", Mock(return_value=False))
+    response = identify_as(client, key, key)
+    outcome = json.loads(response.headers["HX-Trigger"])["harmonist-status"]
+    assert outcome["level"] == Level.WARNING
+    assert "couldn't save Undo history" in outcome["details"]
+    assert CAROL in path.read_text()
+    events = activity_store.artist_history(CAROL)
+    assert any(
+        e.source is Source.ACTIVITY and "couldn't save Undo history" in e.message for e in events
+    )
 
 
 def test_the_page_finds_by_name_for_an_unidentified_nfo(identify):
@@ -440,7 +488,7 @@ def wikipedia(identify, monkeypatch):
     for it."""
     client, path, key, lookup = identify
     lookup.side_effect = lambda mbid: {**CAROL_MB, "url-relation-list": [dict(WIKIDATA)]}
-    found = Mock(return_value=BIOGRAPHY)
+    found = AsyncMock(return_value=BIOGRAPHY)
     monkeypatch.setattr(wikimedia, "biography", found)
     return client, path, key, found
 
@@ -462,7 +510,9 @@ def test_identify_fills_in_a_biography_from_the_linked_wikipedia_article(wikiped
     client, path, key, found = wikipedia
     response = identify_as(client, key, key)
     assert response.headers["HX-Redirect"] == f"/artist/{CAROL}"
-    found.assert_called_once_with("Q123", languages=["en"], user_agent=mb_lookup_agent(client))
+    found.assert_awaited_once_with(
+        "Q123", languages=["en"], user_agent=mb_lookup_agent(client), client=ANY
+    )
     written = path.read_text()
     # HTML, escaped as XML: players show a biography as HTML, and Navidrome
     # turns a newline into a space, so a line break keeps the paragraphs apart.
@@ -674,7 +724,7 @@ def test_no_article_says_so_on_the_biography_row_not_in_the_answer(wikipedia):
 
 def test_no_wikidata_link_on_musicbrainz_asks_wikipedia_nothing(identify, monkeypatch):
     client, path, key, _lookup = identify
-    found = Mock(side_effect=AssertionError("Wikipedia was asked"))
+    found = AsyncMock(side_effect=AssertionError("Wikipedia was asked"))
     monkeypatch.setattr(wikimedia, "biography", found)
     response = identify_as(client, key, key)
     assert "<biography>" not in path.read_text()
@@ -724,7 +774,7 @@ def test_reading_again_fills_in_a_biography_musicbrainz_now_links(identify, monk
     identify_as(client, key, key)
     assert biography_note(client, CAROL) == "MusicBrainz links no Wikidata item"
     lookup.side_effect = lambda mbid: {**CAROL_MB, "url-relation-list": [dict(WIKIDATA)]}
-    monkeypatch.setattr(wikimedia, "biography", Mock(return_value=BIOGRAPHY))
+    monkeypatch.setattr(wikimedia, "biography", AsyncMock(return_value=BIOGRAPHY))
 
     response = refresh(client, CAROL, key, f"/artist/{CAROL}?artist_page=1")
     assert lookup.call_count == 2
@@ -770,7 +820,9 @@ def test_reading_again_with_wikipedia_unreachable_warns(identify, monkeypatch):
     client, _path, key, lookup = identify
     identify_as(client, key, key)
     lookup.side_effect = lambda mbid: {**CAROL_MB, "url-relation-list": [dict(WIKIDATA)]}
-    monkeypatch.setattr(wikimedia, "biography", Mock(side_effect=wikimedia.WikimediaError("x")))
+    monkeypatch.setattr(
+        wikimedia, "biography", AsyncMock(side_effect=wikimedia.WikimediaError("x"))
+    )
     status = flash(refresh(client, CAROL, key))
     assert status["level"] == Level.WARNING
     assert "couldn't fetch a biography from Wikipedia" in status["details"]
@@ -817,9 +869,9 @@ def fanart(identify, monkeypatch):
     """fanart.tv with a key and a picture of Carol, which fetches as a JPEG."""
     client, path, key, _lookup = identify
     monkeypatch.setattr(fanart_tv, "PROJECT_KEY", "project")
-    thumb = Mock(return_value=THUMB)
+    thumb = AsyncMock(return_value=THUMB)
     monkeypatch.setattr(fanart_tv, "artist_thumb", thumb)
-    monkeypatch.setattr(artist_fill, "download_picture", Mock(return_value=JPEG))
+    monkeypatch.setattr(artist_fill, "download_picture", AsyncMock(return_value=JPEG))
     return client, path, key, thumb
 
 
@@ -839,7 +891,9 @@ def test_identify_puts_fanart_tvs_picture_beside_the_nfo_and_credits_it(fanart):
     response = identify_as(client, key, key)
     picture = path.parent / "artist.jpg"
     assert picture.read_bytes() == JPEG
-    thumb.assert_called_once_with(CAROL, personal_key="", user_agent=mb_lookup_agent(client))
+    thumb.assert_awaited_once_with(
+        CAROL, personal_key="", user_agent=mb_lookup_agent(client), client=ANY
+    )
     status = flash(response)
     assert (status["verb"], status["level"]) == ("Identified", Level.INFO)
     assert status["details"] == "Carol/artist.nfo; added artist.jpg"
@@ -861,8 +915,8 @@ def test_identify_puts_fanart_tvs_picture_beside_the_nfo_and_credits_it(fanart):
 
 def test_a_commons_picture_is_credited_with_its_author_and_licence(wikipedia, monkeypatch):
     client, path, key, _found = wikipedia
-    monkeypatch.setattr(wikimedia, "picture", Mock(return_value=ON_COMMONS))
-    monkeypatch.setattr(artist_fill, "download_picture", Mock(return_value=JPEG))
+    monkeypatch.setattr(wikimedia, "picture", AsyncMock(return_value=ON_COMMONS))
+    monkeypatch.setattr(artist_fill, "download_picture", AsyncMock(return_value=JPEG))
     identify_as(client, key, key)
     assert (path.parent / "artist.jpg").read_bytes() == JPEG
     caption = picture_credit(client, CAROL)

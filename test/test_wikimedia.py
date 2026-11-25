@@ -3,7 +3,9 @@ the artist's Wikidata item and never by name (#1018)."""
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -112,9 +114,16 @@ class Wikimedia:
         return httpx.Response(200, json={"query": {"pages": [page]}})
 
 
-def fetch(service: Wikimedia, languages: list[str]) -> wikimedia.Biography | None:
-    with httpx.Client(transport=httpx.MockTransport(service)) as client:
-        return wikimedia.biography(ITEM, languages=languages, user_agent=AGENT, client=client)
+def fetch(
+    service: Callable[[httpx.Request], httpx.Response], languages: list[str]
+) -> wikimedia.Biography | None:
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(service)) as client:
+            return await wikimedia.biography(
+                ITEM, languages=languages, user_agent=AGENT, client=client
+            )
+
+    return asyncio.run(run())
 
 
 def test_the_biography_is_the_articles_introduction_in_the_first_language_it_has():
@@ -169,22 +178,16 @@ def test_an_article_with_no_introduction_is_no_biography():
     ids=["unavailable", "not-json", "error"],
 )
 def test_an_answer_that_cant_be_read_is_an_error_not_an_absence(answer):
-    with (
-        httpx.Client(transport=httpx.MockTransport(lambda _request: answer)) as client,
-        pytest.raises(wikimedia.WikimediaError),
-    ):
-        wikimedia.biography(ITEM, languages=["en"], user_agent=AGENT, client=client)
+    with pytest.raises(wikimedia.WikimediaError):
+        fetch(lambda _request: answer, ["en"])
 
 
 def test_an_unreachable_service_is_an_error():
     def refuse(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("no route", request=request)
 
-    with (
-        httpx.Client(transport=httpx.MockTransport(refuse)) as client,
-        pytest.raises(wikimedia.WikimediaError),
-    ):
-        wikimedia.biography(ITEM, languages=["en"], user_agent=AGENT, client=client)
+    with pytest.raises(wikimedia.WikimediaError):
+        fetch(refuse, ["en"])
 
 
 def test_an_article_somewhere_other_than_wikipedia_is_not_asked():
@@ -198,11 +201,8 @@ def test_an_article_somewhere_other_than_wikipedia_is_not_asked():
         entity = {"id": ITEM, "sitelinks": {"enwiki": sitelink}}
         return httpx.Response(200, content=json.dumps({"entities": {ITEM: entity}}))
 
-    with (
-        httpx.Client(transport=httpx.MockTransport(answer)) as client,
-        pytest.raises(wikimedia.WikimediaError),
-    ):
-        wikimedia.biography(ITEM, languages=["en"], user_agent=AGENT, client=client)
+    with pytest.raises(wikimedia.WikimediaError):
+        fetch(answer, ["en"])
 
 
 # The picture: the image Wikidata gives the item (P18), on Commons (#1020).
@@ -261,8 +261,11 @@ def commons(claims: list[dict[str, Any]] | None, page: dict[str, Any] | None = N
 
 
 def picture(answer):
-    with httpx.Client(transport=httpx.MockTransport(answer)) as client:
-        return wikimedia.picture(ITEM, user_agent=AGENT, client=client)
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as client:
+            return await wikimedia.picture(ITEM, user_agent=AGENT, client=client)
+
+    return asyncio.run(run())
 
 
 def test_the_items_image_is_fetched_as_a_rendition_with_its_author_and_licence():

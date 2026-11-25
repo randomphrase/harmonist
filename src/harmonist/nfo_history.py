@@ -19,7 +19,10 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Mapping, Sequence
+import threading
+import weakref
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -39,6 +42,24 @@ _PICTURE_FILES = frozenset({"artist.jpg", "artist.png"})
 #: Keeps a failure's detail out of the Activity feed, for one already reported
 #: there, or one that drawing a page would report on every redraw.
 _LOG_ONLY = {"_activity": True}
+
+_locks_guard = threading.Lock()
+_locks: weakref.WeakValueDictionary[Path, threading.RLock] = weakref.WeakValueDictionary()
+
+
+@contextmanager
+def serialized(path: Path) -> Iterator[None]:
+    """Check, mutate and record one NFO under the same process-local lock.
+
+    Undo also holds this while planning, and the app holds it through Activity
+    and inventory publication. Resolve aliases off the event loop. Other apps
+    do not share the lock, so the expected-byte and picture checks still apply.
+    """
+    canonical = path.resolve()
+    with _locks_guard:
+        lock = _locks.setdefault(canonical, threading.RLock())
+    with lock:
+        yield
 
 
 class UndoUnavailableError(Exception):
@@ -62,6 +83,8 @@ class Written:
     #: Why a picture the write was given couldn't be put there, when its
     #: fields were written all the same.
     picture_error: str | None = None
+    #: The files changed, but their durable Undo record could not be completed.
+    history_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -208,6 +231,28 @@ def write(
     picture: NewPicture | None = None,
     remove_picture: tuple[Path, str] | None = None,
 ) -> Written | None:
+    with serialized(path):
+        return _write(
+            path,
+            root=root,
+            expected=expected,
+            wanted=wanted,
+            credits=credits,
+            picture=picture,
+            remove_picture=remove_picture,
+        )
+
+
+def _write(
+    path: Path,
+    *,
+    root: Path,
+    expected: bytes,
+    wanted: Mapping[str, str | None],
+    credits: Mapping[str, Credit] | None,
+    picture: NewPicture | None,
+    remove_picture: tuple[Path, str] | None,
+) -> Written | None:
     """Write `wanted` into the NFO at `path`, which holds `expected`, and record
     each field it changed, with where `credits` says any of them came from.
 
@@ -225,6 +270,9 @@ def write(
     picture couldn't be written and nothing else was. A picture that couldn't
     be written beside fields that were is in the result's `picture_error`.
     """
+    # Picture-only writes and Undo must validate the NFO too: the picture was
+    # gathered for the identity in these bytes, not merely for this directory.
+    nfo_writer.check_expected(path, expected)
     changes = nfo_writer.plan(expected, wanted)
     if not changes and picture is None and remove_picture is None:
         return None
@@ -265,8 +313,9 @@ def write(
     event = audit.record(
         WRITE_EVENT, artist_id=key, file=path, fields=",".join(changes), **pictured
     )
+    recorded = False
     if event is not None:
-        activity_store.record_nfo_changes(
+        recorded = activity_store.record_nfo_changes(
             event,
             file=_relative(path, root),
             key_before=before,
@@ -284,6 +333,7 @@ def write(
         changes,
         picture=placed["file"] if placed else None,
         picture_error=error,
+        history_error=None if recorded else "couldn't save Undo history for the changed files",
     )
 
 
