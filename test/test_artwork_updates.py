@@ -568,7 +568,6 @@ def test_any_image_threshold_fetches_and_recovers_unmeasurable_artwork(tmp_path)
 def test_background_guards_do_not_launch_a_worker(monkeypatch, level, sync, reconcile, scanned):
     from harmonist.web import main as web_main
 
-    monkeypatch.setattr(web_main, "_artwork_check_lock", threading.Lock())
     monkeypatch.setattr(
         background.Jobs,
         "start",
@@ -582,23 +581,40 @@ def test_background_guards_do_not_launch_a_worker(monkeypatch, level, sync, reco
     )
 
 
-def test_worker_warms_offline_and_has_an_independent_nonoverlapping_lock(monkeypatch):
+def test_worker_warms_offline_and_has_an_independent_nonoverlapping_job(monkeypatch):
     from harmonist.web import main as web_main
 
     calls = []
     monkeypatch.setattr(artwork_updates, "warm", lambda albums: calls.append("warm"))
-    monkeypatch.setattr(artwork_updates, "sweep", lambda albums: calls.append("sweep"))
+    tag_entered, art_entered = threading.Event(), threading.Event()
+    release_tag, release_art = threading.Event(), threading.Event()
+
+    def tag_check():
+        tag_entered.set()
+        assert release_tag.wait(5)
+
+    def artwork_check(albums):
+        calls.append("sweep")
+        art_entered.set()
+        assert release_art.wait(5)
+
+    monkeypatch.setattr(artwork_updates, "sweep", artwork_check)
 
     args = (_stub_runner(), _stub_runner(), _stub_runner())
     web_main._artwork_check_if_idle(_stub_app("off"), *args, check=False)
     asyncio.run(args[-1].jobs.wait_idle())
     assert calls == ["warm"]
-    with web_main._update_check_lock:
+    assert args[-1].jobs.start("update-check", tag_check)
+    try:
+        assert tag_entered.wait(5)
         web_main._artwork_check_if_idle(_stub_app(), *args)
+        assert art_entered.wait(5)
+        assert args[-1].jobs.running("update-check")
+        web_main._artwork_check_if_idle(_stub_app(), *args)
+    finally:
+        release_art.set()
+        release_tag.set()
         asyncio.run(args[-1].jobs.wait_idle())
-    assert calls == ["warm", "warm", "sweep"]
-    with web_main._artwork_check_lock:
-        web_main._artwork_check_if_idle(_stub_app(), *args)
     assert calls == ["warm", "warm", "sweep"]
 
 

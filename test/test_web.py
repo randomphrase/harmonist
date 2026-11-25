@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Event
 from typing import Any, cast
 from unittest import mock
 from zoneinfo import ZoneInfo
@@ -6745,23 +6746,30 @@ def test_update_check_status_says_what_holds_the_next_batch(
 ):
     from harmonist import gardener
     from harmonist.config import GardenerConfig
-    from harmonist.web import main as web_main
 
     client.app.state.cfg = cfg.model_copy(update={"gardener": GardenerConfig(level="review")})
     state = client.app.state
     monkeypatch.setattr(state.scan_runner, "has_completed", lambda: condition != "unscanned")
     monkeypatch.setattr(type(state.sync_runner), "is_running", condition == "busy")
+    entered, release = Event(), Event()
+
+    def held():
+        entered.set()
+        assert release.wait(5)
+
     if condition == "running":
-        assert web_main._update_check_lock.acquire(blocking=False)
+        assert state.scan_runner.jobs.start("update-check", held)
     status = gardener.SweepStatus(
         matched=10, due=0, next_pass=None, backing_off=condition == "backing_off"
     )
     monkeypatch.setattr(gardener, "status", lambda albums, **kw: status)
     try:
+        if condition == "running":
+            assert entered.wait(5)
         line = _update_status_line(client.get("/settings/update-check").text)
     finally:
-        if condition == "running":
-            web_main._update_check_lock.release()
+        release.set()
+        asyncio.run(state.scan_runner.jobs.wait_idle())
     assert line is not None
     assert (
         " ".join(line.text.split())

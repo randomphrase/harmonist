@@ -14,7 +14,6 @@ import os
 # out of the production import path entirely.
 import re
 import sys
-import threading
 import unicodedata
 import zoneinfo
 from collections import Counter
@@ -1265,7 +1264,7 @@ def _register_demo_routes(app: FastAPI) -> None:
             request.app.state.sync_runner.is_running
             or request.app.state.reconcile_runner.is_running
             or request.app.state.scan_runner.status()["state"] == "scanning"
-            or _update_check_lock.locked()
+            or request.app.state.scan_runner.jobs.running("update-check")
         ):
             return _flash_response(
                 "Demo is busy",
@@ -3650,15 +3649,6 @@ def _periodic_rescan_if_idle(
     scan_runner.request_quiet_rescan()
 
 
-# Held for the duration of a pass, so a slow one cannot be started again on top
-# of itself. A pass is capped at a hundred albums and normally takes two
-# minutes, but a MusicBrainz that answers slowly rather than failing can stretch
-# it past the hour — and two passes at once would ask about the same albums
-# twice and spend twice the budget doing it.
-_update_check_lock = threading.Lock()
-_artwork_check_lock = threading.Lock()
-
-
 def _artwork_check_if_idle(
     app: FastAPI,
     sync_runner: SyncRunner,
@@ -3667,9 +3657,9 @@ def _artwork_check_if_idle(
     *,
     check: bool = True,
 ) -> None:
-    """CAA has its own worker and due dates; explicit watches also opt in.
+    """CAA has its own job and due dates; explicit watches also opt in.
 
-    A slow archive must not hold the tag worker's lock. Startup only warms
+    A slow archive must not block the tag check. Startup only warms
     durable observations, including when background network checks are off.
     """
     if not scan_runner.has_completed():
@@ -3682,8 +3672,6 @@ def _artwork_check_if_idle(
             and not any(artwork_watch.active(a.sidecar) for a in scan_runner.albums())
         )
     ):
-        return
-    if not _artwork_check_lock.acquire(blocking=False):
         return
 
     def run() -> None:
@@ -3698,11 +3686,8 @@ def _artwork_check_if_idle(
             # Worker boundary: a defect or failed cache must be visible, not
             # silently terminate future discovery or clear existing findings.
             log.exception("artwork update check failed")
-        finally:
-            _artwork_check_lock.release()
 
-    if not scan_runner.jobs.start("artwork-check", run):
-        _artwork_check_lock.release()
+    scan_runner.jobs.start("artwork-check", run)
 
 
 UpdateCheckWait = Literal["off", "busy", "unscanned", "running"]
@@ -3726,7 +3711,7 @@ def _update_check_waiting(
         return "busy"
     if not scan_runner.has_completed():
         return "unscanned"
-    if _update_check_lock.locked():
+    if scan_runner.jobs.running("update-check"):
         return "running"
     return None
 
@@ -3786,7 +3771,7 @@ def _update_check_if_idle(
         # is the expected state rather than news. The scan announces itself.
         log.debug("Skipping update check: the library has not been scanned yet")
         return "the library hasn't finished scanning yet"
-    if not _update_check_lock.acquire(blocking=False):
+    if scan_runner.jobs.running("update-check"):
         log.warning("Skipping update check: the previous pass is still running")
         return "a check is already running"
 
@@ -3800,12 +3785,9 @@ def _update_check_if_idle(
             # loud every time: at 3am the log is the only channel, and a pass
             # that has been dying quietly for a month is worth repeating.
             log.exception("update check failed")
-        finally:
-            _update_check_lock.release()
 
     if not scan_runner.jobs.start("update-check", _run):
-        _update_check_lock.release()
-        return "the application is stopping"
+        return "a check is already running or the application is stopping"
     return None
 
 

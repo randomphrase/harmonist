@@ -2360,15 +2360,28 @@ def test_a_pass_still_running_is_not_started_on_top_of_itself(monkeypatch):
     from harmonist.web import main as web_main
 
     done = _sweep_signal(monkeypatch)
-    web_main._update_check_lock.acquire()
+    entered, release = threading.Event(), threading.Event()
+    app = _stub_app()
+    args = (_stub_runner(), _stub_runner(), _stub_runner())
+
+    def held():
+        entered.set()
+        assert release.wait(5)
+
+    assert args[-1].jobs.start("update-check", held)
     try:
-        reason = web_main._update_check_if_idle(
-            _stub_app(), _stub_runner(), _stub_runner(), _stub_runner()
-        )
-        assert done.wait(0.25) is False
-        assert reason
+        assert entered.wait(5)
+        assert web_main._update_check_waiting(app, *args) == "running"
+        reason = web_main._update_check_if_idle(app, *args)
+        assert reason == "a check is already running"
     finally:
-        web_main._update_check_lock.release()
+        release.set()
+        asyncio.run(args[-1].jobs.wait_idle())
+    assert not done.is_set()
+    assert web_main._update_check_waiting(app, *args) is None
+    assert web_main._update_check_if_idle(app, *args) is None
+    asyncio.run(args[-1].jobs.wait_idle())
+    assert done.is_set()
 
 
 @contextmanager

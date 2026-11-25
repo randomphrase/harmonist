@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from threading import Event
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -345,6 +348,26 @@ def test_demo_reset_endpoint(demo_client):
     r = demo_client.post("/demo/reset")
     assert r.status_code == 200
     assert "reset" in r.text.lower()
+
+
+def test_demo_reset_waits_for_the_owned_update_check(demo_client):
+    entered, release = Event(), Event()
+    jobs = demo_client.app.state.scan_runner.jobs
+
+    def held():
+        entered.set()
+        assert release.wait(5)
+
+    assert jobs.start("update-check", held)
+    try:
+        assert entered.wait(5)
+        response = demo_client.post("/demo/reset")
+        assert response.status_code == 409
+        assert "Demo is busy" in response.text
+    finally:
+        release.set()
+        asyncio.run(jobs.wait_idle())
+    assert demo_client.post("/demo/reset").status_code == 200
 
 
 def test_demo_confirm_tags_album_end_to_end(demo_client):
