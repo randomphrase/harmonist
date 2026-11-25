@@ -33,6 +33,13 @@ the feed can show exactly the audit lines beneath it. The grouping is per
 *outcome*, not per run: a sync that downloads ten albums is ten actions, so each
 can be understood and undone on its own.
 
+An independent background job starts outside the triggering request's action,
+then groups its own outcomes. Otherwise a scan's discoveries can appear beneath
+an unrelated write, and later coalesced passes remain attached to that old
+request. Work completing an accepted write keeps the initiating action instead:
+its audit records, history and outcome still belong together if the request
+disconnects before the write finishes.
+
 **Records name the album as it was.** An entry keeps the album's name from the
 time it was written, and follows the album through re-identification by way of
 the recorded aliases (see [the model](model.md#identity)).

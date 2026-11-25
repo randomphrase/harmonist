@@ -23,6 +23,7 @@ request-time behaviour.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 import threading
 import time
@@ -627,7 +628,10 @@ class ScanRunner:
     def _start(self) -> None:
         if self._task is None or self._task.done():
             assert self._loop is not None
-            self._task = self._loop.create_task(self._run())
+            # A scan is an independent job, even when a request scheduled the
+            # kick. Do not inherit that request's action id: discovery scopes
+            # must mint their own ids, including on subsequent coalesced passes.
+            self._task = self._loop.create_task(self._run(), context=contextvars.Context())
 
     # ----- the scan itself -----
 

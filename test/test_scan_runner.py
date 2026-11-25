@@ -7,6 +7,8 @@ import shutil
 import threading
 from pathlib import Path
 
+import pytest
+
 from harmonist.web.scan_runner import ScanRunner
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -460,6 +462,111 @@ def test_the_discovery_entry_carries_its_albums_as_what_changed(tmp_path):
     assert len(detail) == 2  # one line per album, not one entry per album
     assert all(r.message.startswith(activity_store.DISCOVERY_EVENT) for r in detail)
     assert entry.album_id is None and entry.album_label is None  # several: none is "the" album
+
+
+@pytest.mark.parametrize(
+    "trigger", ["request_scan", "request_quiet_rescan", "reset_and_rescan", "request_refresh"]
+)
+@pytest.mark.parametrize("from_thread", [False, True], ids=["async-request", "sync-request"])
+def test_background_discoveries_have_their_own_action(tmp_path, trigger, from_thread):
+    """Scheduling a scan from a request must not attach discoveries to its action."""
+    from harmonist import activity, activity_store, audit, id_registry
+
+    music = tmp_path / "music"
+    music.mkdir()
+    activity_store.init(tmp_path / "activity.db")
+    id_registry.set_library_root(music)
+    runner = ScanRunner(music)
+
+    async def go() -> str:
+        runner.attach_loop()
+        await _await_scan(runner)
+        album = _album(music, "Discovered")
+        with activity_store.action() as request_action:
+            activity.info("Request outcome")
+            audit.record("request.write")
+
+            def request() -> None:
+                assert activity_store.current_action() == request_action
+                if trigger == "request_refresh":
+                    runner.request_refresh({album})  # An unknown directory needs a full scan.
+                else:
+                    getattr(runner, trigger)()
+
+            if from_thread:
+                await asyncio.to_thread(request)
+            else:
+                request()
+            # FIFO barrier: the scheduled kick has created the task before we await it.
+            kicked = asyncio.get_running_loop().create_future()
+            asyncio.get_running_loop().call_soon(kicked.set_result, None)
+            await kicked
+            await _await_scan(runner)
+            assert activity_store.current_action() == request_action
+        return request_action
+
+    request_action = asyncio.run(go())
+    discovery = next(e for e in activity.recent(20) if "Started tracking" in e.message)
+    assert discovery.action_id is not None and discovery.action_id != request_action
+    detail = activity_store.audit_by_action([request_action, discovery.action_id])
+    assert [e.message for e in detail[request_action]] == ["request.write"]
+    assert len(detail[discovery.action_id]) == 1
+    assert detail[discovery.action_id][0].message.startswith(activity_store.DISCOVERY_EVENT)
+    assert detail[discovery.action_id][0].album_id == runner.albums()[0].id
+
+
+def test_coalesced_scans_get_separate_discovery_actions(tmp_path, monkeypatch):
+    """A queued pass is its own outcome, even while the initiating request is alive."""
+    from harmonist import activity, activity_store, id_registry
+
+    music = tmp_path / "music"
+    _album(music, "First")
+    activity_store.init(tmp_path / "activity.db")
+    id_registry.set_library_root(music)
+    runner = ScanRunner(music)
+    first_done = asyncio.Event()
+    release = asyncio.Event()
+    scan_once = runner._scan_once
+    passes = 0
+
+    async def held_scan(*, visible: bool) -> None:
+        nonlocal passes
+        await scan_once(visible=visible)
+        passes += 1
+        if passes == 1:
+            first_done.set()
+            await release.wait()
+
+    monkeypatch.setattr(runner, "_scan_once", held_scan)
+
+    async def go() -> tuple[str, str]:
+        try:
+            with activity_store.action() as first_request:
+                runner.attach_loop()
+                await asyncio.wait_for(first_done.wait(), 5)
+                _album(music, "Second")
+            with activity_store.action() as second_request:
+                runner.request_scan()
+                kicked = asyncio.get_running_loop().create_future()
+                asyncio.get_running_loop().call_soon(kicked.set_result, None)
+                await kicked
+                release.set()
+                await _await_scan(runner)
+        finally:
+            release.set()
+        return first_request, second_request
+
+    request_actions = asyncio.run(go())
+    entries = [e for e in activity.recent(20) if "Started tracking" in e.message]
+    assert passes == 2
+    assert len(entries) == 2
+    actions = {e.action_id for e in entries}
+    assert None not in actions and len(actions) == 2
+    assert actions.isdisjoint(request_actions)
+    for entry in entries:
+        assert entry.action_id is not None
+        detail = activity_store.audit_by_action([entry.action_id])[entry.action_id]
+        assert len(detail) == 1 and detail[0].album_id == entry.album_id
 
 
 def test_a_lone_discovered_album_is_named_in_the_feed(tmp_path):
