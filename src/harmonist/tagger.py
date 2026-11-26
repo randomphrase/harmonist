@@ -961,6 +961,7 @@ def _prepare(
     # they stay out of the count and out of the ladder: the count would refuse
     # an album the user confirmed, and the ladder would guess them a track.
     left: list[Path] = []
+    pairs: list[tuple[Path, _FlatTrack]]
     if assignment is None:
         tags = [formats.read_tags(path) for path in files]
         review = assignment_review(release, tags)
@@ -974,13 +975,31 @@ def _prepare(
             for i, pair in enumerate(zip(files, tags, strict=True))
             if i not in review.left_unassigned
         ]
+        # Assigned against EVERY track, not just the taggable ones: a file that
+        # names a video track's id is a file in the wrong place, and quietly
+        # re-pointing it at an audio track would be the invention this ladder
+        # exists to avoid.
+        pairs, filmed = _assign_files_to_tracks(
+            [f for f, _ in counted],
+            flat_tracks,
+            [compare.identity_of(t) for _, t in counted],
+            videos=_videos_beside(album_dir, files),
+        )
+        # A track a video file on disk already is counts as on disk (#1056),
+        # as it does for the scan (#193) and the album page (#226). Only on a
+        # disc that is partly audio does this change the count, since a disc
+        # all of video is not expected at all — Fear Of Music's Blu-ray is hi-res
+        # mixes and two concert films, and counting the films as missing audio
+        # flagged a complete album as a Structural update.
+        on_video = len(_taggable_tracks(release, [flat_tracks[i] for i in sorted(filmed)]))
 
     # The messages and the error count every file on disk, as the user would.
-    if assignment is None and not incomplete and len(counted) != len(taggable):
+    if assignment is None and not incomplete and len(counted) + on_video != len(taggable):
+        videos = f" and {on_video} video{'s' if on_video != 1 else ''}" if on_video else ""
         raise TagMismatchError(
-            f"album {album_dir.name!r}: {len(files)} audio files but MB release "
-            f"has {len(taggable)} tracks",
-            files=len(files),
+            f"album {album_dir.name!r}: {len(files)} audio files{videos} but MB "
+            f"release has {len(taggable)} tracks",
+            files=len(files) + on_video,
             tracks=len(taggable),
         )
     if assignment is None and len(counted) > len(flat_tracks):
@@ -992,15 +1011,7 @@ def _prepare(
             tracks=len(flat_tracks),
         )
 
-    # Assigned against EVERY track, not just the taggable ones: a file that
-    # names a video track's id is a file in the wrong place, and quietly
-    # re-pointing it at an audio track would be the invention this ladder
-    # exists to avoid.
-    if assignment is None:
-        pairs = _assign_files_to_tracks(
-            [f for f, _ in counted], flat_tracks, [compare.identity_of(t) for _, t in counted]
-        )
-    else:
+    if assignment is not None:
         # Only explicitly paired files receive track metadata. Missing keys
         # are intentional gaps, never invitations to the automatic ladder.
         if (
@@ -2599,16 +2610,38 @@ def _build_tagset(
     )
 
 
+def _videos_beside(album_dir: Path, files: Sequence[Path]) -> list[Path]:
+    """The video files in the directories the album's audio is in.
+
+    The set the scan counts towards completeness (#193): an album directory is
+    one holding audio, so these are every video the album has. Read to place
+    them, never written (#66) — they are kept out of the file list the tagger
+    writes, and this is the only way it learns of them.
+    """
+    return album_files.videos_for_paths(sorted({f.parent for f in files}) or [album_dir])
+
+
 def _assign_files_to_tracks(
     files: list[Path],
     flat_tracks: list[_FlatTrack],
     identities: Sequence[compare.TrackIdentity],
-) -> list[tuple[Path, _FlatTrack]]:
-    """Which MusicBrainz track each file is, for an album missing some of them.
+    *,
+    videos: Sequence[Path] = (),
+) -> tuple[list[tuple[Path, _FlatTrack]], frozenset[int]]:
+    """Which MusicBrainz track each file is, for an album missing some of them,
+    and which tracks (by index) the `videos` are.
 
     Through `compare.assign` — the same ladder the album page uses, so a file
     cannot be one track in the tracklist and a different one in the tagger
     (#232). Release track id, then disc-and-track number, then file order.
+
+    The videos are placed in the same pass, as the page's tracklist places them,
+    and for the same reason: a track a video is can't also be an audio file's
+    (#1056). Placing the audio alone dealt the next free track in file order to
+    whichever audio file was left, and on a disc that opens with its concert
+    film that track is the film. Then the audio and video are dealt in track
+    order together, as the page has them (`_in_track_order`); without a video
+    the order is the one given, as it always was.
 
     This used to assign by **length similarity**, which is why it is worth
     saying what changed: on *TISM — The White Albun* that rule bound
@@ -2620,11 +2653,28 @@ def _assign_files_to_tracks(
 
     Reuses the identities read for the confirmed-release guard.
     """
-    slots = compare.assign(identities, [_identity_of(t) for t in flat_tracks])
+    entries = [
+        *zip(files, identities, strict=True),
+        *((v, compare.identity_of(formats.read_video_tags(v))) for v in videos),
+    ]
+    order = (
+        sorted(range(len(entries)), key=lambda i: album_files.sort_key(entries[i][0]))
+        if videos
+        else range(len(entries))
+    )
+    dealt = compare.assign([entries[i][1] for i in order], [_identity_of(t) for t in flat_tracks])
+    slots: list[int | None] = [None] * len(entries)
+    for i, slot in zip(order, dealt, strict=True):
+        slots[i] = slot
     # A file with no slot is not tagged at all. It can only happen with more
-    # files than tracks, which the caller has already refused — but
-    # leaving one alone beats writing another track's metadata into it.
-    return [(f, flat_tracks[s]) for f, s in zip(files, slots, strict=True) if s is not None]
+    # files than tracks, which the caller refuses — but leaving one alone beats
+    # writing another track's metadata into it.
+    pairs = [
+        (f, flat_tracks[s])
+        for f, s in zip(files, slots[: len(files)], strict=True)
+        if s is not None
+    ]
+    return pairs, frozenset(s for s in slots[len(files) :] if s is not None)
 
 
 def _identity_of(flat: _FlatTrack) -> compare.TrackIdentity:

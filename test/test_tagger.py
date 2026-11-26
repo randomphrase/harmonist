@@ -50,7 +50,7 @@ from harmonist.tagger import (
 )
 from harmonist.transforms import TaggingChoices
 from test.conftest import FIXTURES_DIR
-from test.helpers import keep_one
+from test.helpers import keep_one, write_picard_video
 
 
 def _update_artwork(
@@ -1578,6 +1578,83 @@ def test_tag_album_asks_the_release_not_the_sidecar_about_video(album_with_track
     _with_video_media(album_dir, recorded)
 
     assert tagger.tag_album(album_dir, _release_cd_plus_dvd()) == 2
+
+
+# ---------- a video on a mixed disc is a track on disk (#1056) ----------
+
+
+def _release_cd_plus_bluray(*, flagged: bool) -> dict:
+    """The 2-track CD and a Blu-ray of concert footage and a hi-res mix —
+    *Fear Of Music (Super Deluxe Edition)* in miniature.
+
+    The video comes FIRST on the disc, so an audio file dealt onto the next
+    free track in file order would land on it.
+
+    `flagged` is whether MusicBrainz marks the recording as video. Either way
+    the disc is not all video, so it is never left out as a video medium.
+    """
+    release = _release_2_tracks()
+    concert: dict = {"id": "rec-v1", "title": "Concert", "length": "300000"}
+    if flagged:
+        concert["video"] = "true"
+    release["medium-list"].append(
+        {
+            "position": "2",
+            "format": "Blu-ray",
+            "track-list": [
+                {"id": "rt-v1", "position": "1", "title": "Concert", "recording": concert},
+                {
+                    "id": "rt-003",
+                    "position": "2",
+                    "title": "Track 3",
+                    "recording": {"id": "rec-003", "title": "Track 3"},
+                },
+            ],
+        }
+    )
+    return release
+
+
+def _concert_video(album_dir: Path) -> Path:
+    return write_picard_video(
+        album_dir / "2-01 Concert.m4v",
+        album_id="rel-aaa",
+        release_track_id="rt-v1",
+        disc=2,
+        track=1,
+        track_total=2,
+        disc_total=2,
+    )
+
+
+@pytest.mark.parametrize("flagged", [False, True])
+def test_a_video_on_disk_is_its_track_on_a_mixed_disc(album_with_tracks, flagged):
+    """Every track is on disk, two halves of the disc in two formats. The guard
+    used to count only the audio against the release — "3 audio files but MB
+    release has 4 tracks" — so the album page said Complete while the Library
+    flagged a Structural update, and the re-tag was refused."""
+    album_dir = album_with_tracks(3)
+    video = _concert_video(album_dir)
+    untouched = video.read_bytes()
+
+    assert tagger.tag_album(album_dir, _release_cd_plus_bluray(flagged=flagged)) == 3
+
+    third = MP4(album_dir / "03 Track 3.m4a")
+    assert _atom_str(third, ATOM_MB_RELEASE_TRACK_ID) == "rt-003", (
+        "the next free track in file order is the video's, and an audio file must never take it"
+    )
+    assert third["disk"][0][0] == 2
+    assert video.read_bytes() == untouched, "a video is read, never written (#66)"
+
+
+@pytest.mark.parametrize("flagged", [False, True])
+def test_a_missing_video_on_a_mixed_disc_is_still_missing(album_with_tracks, flagged):
+    """The control. Crediting the video that IS on disk must not forgive one
+    that isn't: a partly present disc still counts (docs/design/model.md)."""
+    album_dir = album_with_tracks(3)
+
+    with pytest.raises(TagMismatchError, match="3 audio files but MB release has 4 tracks"):
+        tagger.tag_album(album_dir, _release_cd_plus_bluray(flagged=flagged))
 
 
 # ---------- the dry run (#266) ----------

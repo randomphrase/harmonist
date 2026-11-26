@@ -37,9 +37,10 @@ from harmonist import (
 from harmonist import sidecar as sc
 from harmonist.config import GardenerConfig
 from harmonist.formats import owned
-from harmonist.models import Album, Sidecar
+from harmonist.models import Album, AlbumState, Sidecar
 from harmonist.transforms import ArtistNames, TaggingChoices, TagTransform
 from harmonist.web.scan_runner import ScanRunner
+from test.helpers import write_picard_video
 
 SINE_M4A = Path(__file__).parent / "fixtures" / "sine.m4a"
 
@@ -2584,6 +2585,56 @@ def test_a_tracklist_that_no_longer_fits_is_a_structural_verdict(tmp_path):
     album = gardener.refresh_flag(album, _release(tracks=3)).album
     assert album.update_available is True
     assert album.update_significance == "structure"
+
+
+def test_a_ripped_video_on_a_mixed_disc_is_not_a_structural_verdict(tmp_path):
+    """*Fear Of Music (Super Deluxe Edition)* (#1056): a Blu-ray of audio and
+    concert footage, every track of it on disk. The scan counts the video as
+    the track it is (#193), so the album is Complete — and the verdict has to
+    agree, or the Library flags a Structural update the album page can't show."""
+    release = _release(tracks=1)
+    release["medium-list"].append(
+        {
+            "position": "2",
+            "format": "Blu-ray",
+            "track-list": [
+                {
+                    "id": "rt-002",
+                    "position": "1",
+                    "title": "Track 2",
+                    "recording": {"id": "rec-002", "title": "Track 2"},
+                },
+                {
+                    "id": "rt-v1",
+                    "position": "2",
+                    "title": "Concert",
+                    # Unflagged, as Fear Of Music's footage was: the disc is not
+                    # all video either way, so the flag can't be what settles it.
+                    "recording": {"id": "rec-v1", "title": "Concert"},
+                },
+            ],
+        }
+    )
+    d = _album_dir(tmp_path, tracks=2)
+    # Incomplete, because two audio files are all a tagging can write; the
+    # video is then added the way Picard leaves one.
+    tagger.tag_album(d, release, incomplete=True)
+    write_picard_video(
+        d / "2-02 Concert.m4v",
+        album_id="rel-aaa",
+        release_track_id="rt-v1",
+        disc=2,
+        track=2,
+        track_total=2,
+        disc_total=2,
+    )
+    sc.write(d, Sidecar(mb_release_id="rel-aaa", tagged_at=datetime.now(UTC)))
+    album = next(a for a in scanner.scan(tmp_path) if a.path == d)
+    # What makes the verdict ask the full question rather than the incomplete one.
+    assert album.state is AlbumState.COMPLETE
+
+    judged = gardener.refresh_flag(album, release).album
+    assert (judged.update_available, judged.update_significance) == (False, None)
 
 
 def test_an_album_with_nothing_outstanding_has_no_verdict(tmp_path):

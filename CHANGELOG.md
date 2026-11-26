@@ -20,6 +20,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- A disc of both audio and video, with its videos ripped, is no longer flagged as a Structural update (#1056).
 - An action that gets no answer, such as a reverse proxy timing out on a long confirm, now says so in the status bar instead of showing nothing (#1052).
 - Tag-update assessments overtaken by a scan, setting or MusicBrainz change are rechecked from cache without replacing newer library readings (#1048).
 - Background scan discoveries keep their own Activity and audit grouping instead of appearing beneath the action that triggered the scan (#1044).

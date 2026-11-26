@@ -57,6 +57,36 @@ def write_track_totals(
         audio.save()
 
 
+def write_picard_video(
+    path: Path,
+    *,
+    album_id: str,
+    release_track_id: str,
+    disc: int,
+    track: int,
+    track_total: int,
+    disc_total: int,
+) -> Path:
+    """An `.m4v` at `path`, tagged as Picard leaves a ripped video: its disc,
+    its position and the MusicBrainz ids that place it on the release.
+
+    Harmonist reads these and never writes them (#66), so a test can only get
+    one onto disk this way.
+    """
+    import shutil
+
+    from mutagen.mp4 import MP4
+
+    shutil.copy(Path(__file__).parent / "fixtures" / "sine.m4a", path)
+    video = MP4(path)
+    video["trkn"] = [(track, track_total)]
+    video["disk"] = [(disc, disc_total)]
+    video["----:com.apple.iTunes:MusicBrainz Album Id"] = [album_id.encode()]
+    video["----:com.apple.iTunes:MusicBrainz Release Track Id"] = [release_track_id.encode()]
+    video.save()
+    return path
+
+
 def write_provenance_tags(album_dir: Path, ext: str, tags: Mapping[str, Sequence[str]]) -> None:
     """Add tags to every track the way each format's own tools store them:
     an MP4 freeform atom, an ID3 `TXXX` (or `COMM`, one frame per comment), a
