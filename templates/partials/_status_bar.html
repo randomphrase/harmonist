@@ -414,6 +414,51 @@
         showActionMessage(verb, details, level, d.album || null);
         renderStatus();
     });
+    // ----- A request that failed without an answer (#1052) -----
+    // An action that fails on the server reports it with `harmonist-status`,
+    // which htmx raises before it reports the error status, so that report
+    // stands. What is left is a failure nothing answered for: a reverse proxy
+    // that gave up waiting, a dropped connection, an error Harmonist raised
+    // without a message of its own. htmx swaps none of them, so the page used
+    // to show nothing: a confirm that outlived a proxy's 60 s timeout left its
+    // review as if Confirm had not been pressed, while the server went on to
+    // finish the write. The page can't know whether the action finished, so it
+    // says so; Activity is the record of what was done.
+    //
+    // Polls (.hx-poll, held to it by template-lint) are left out: nobody is
+    // waiting on one, and while Harmonist restarts /status fails every tick.
+    const UNANSWERED = new Set([0, 502, 503, 504]);
+    function reportFailedRequest(evt) {
+        if (evt.detail.elt.classList.contains('hx-poll')) return;
+        const xhr = evt.detail.xhr;
+        if (/harmonist-status/.test(xhr.getResponseHeader('HX-Trigger') || '')) return;
+        const status = xhr.status;
+        const code = status ? ` (${status})` : '';
+        // FastAPI's answer to an HTTPException: Harmonist answered, and said why.
+        let detail = null;
+        if ((xhr.getResponseHeader('Content-Type') || '').startsWith('application/json')) {
+            try {
+                detail = JSON.parse(xhr.responseText).detail;
+            } catch (e) {
+                // A body that isn't the JSON it claims has no reason to give;
+                // the status below still reports the failure.
+            }
+        }
+        if (typeof detail === 'string' && detail) {
+            showActionMessage('Failed', detail, 'error');
+        } else if (UNANSWERED.has(status)) {
+            showActionMessage('No answer',
+                `Harmonist didn't answer${code}. It may still have finished; Activity shows what was done.`,
+                'error');
+        } else {
+            showActionMessage('Failed',
+                `Harmonist answered with an error${code}. Activity shows what was done.`,
+                'error');
+        }
+        renderStatus();
+    }
+    document.body.addEventListener('htmx:responseError', reportFailedRequest);
+    document.body.addEventListener('htmx:sendError', reportFailedRequest);
     document.body.addEventListener('harmonist-page-changed', function (evt) {
         const d = evt.detail || {};
         pageReload = d.reload;

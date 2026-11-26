@@ -17,6 +17,12 @@
    control and renders perfectly. The macro exists because that failure had
    already happened by hand; this makes it impossible to reintroduce (#180).
 
+3. **An element that polls (`hx-trigger` with `every`) carries `hx-poll`.** The
+   class marks a request nobody is waiting on: the in-progress dimming leaves it
+   alone (#118), and so does the status bar's report of a request that failed
+   without an answer (#1052), which would otherwise say so on every tick while
+   Harmonist restarts. A poll without it renders and works perfectly.
+
 Mechanical rules, so they live here (Makefile `check`) rather than in the
 review-gate skill — see AGENTS.md "Working conventions".
 
@@ -43,6 +49,13 @@ HX_ATTR = re.compile(r"\bhx-[a-z:.-]+\s*=", re.IGNORECASE)
 LIBRARY_QUERY_CALL = re.compile(r"\blibrary_query\(([^()]*)\)")
 LIBRARY_QUERY_ARGS = 4
 
+# Attribute values run to their own closing quote: the Inbox's poll conditions
+# quote selectors inside them.
+POLL_TRIGGER = re.compile(r"""\bhx-trigger\s*=\s*(["'])(?:(?!\1).)*?\bevery\s""", re.DOTALL)
+POLL_CLASS = re.compile(
+    r"""\bclass\s*=\s*(["'])(?:(?!\1).)*?(?<![\w-])hx-poll(?![\w-])(?:(?!\1).)*\1""", re.DOTALL
+)
+
 
 def _onclick_failures(rel: str, text: str) -> list[str]:
     out = []
@@ -68,6 +81,16 @@ def _library_query_failures(rel: str, text: str) -> list[str]:
     return out
 
 
+def _poll_failures(rel: str, text: str) -> list[str]:
+    out = []
+    for match in OPEN_TAG.finditer(text):
+        tag = match.group(0)
+        if POLL_TRIGGER.search(tag) and not POLL_CLASS.search(tag):
+            line = text.count("\n", 0, match.start()) + 1
+            out.append(f"{rel}:{line}: element polls without the hx-poll class")
+    return out
+
+
 def main() -> int:
     failures: list[str] = []
     for path in sorted(TEMPLATES.rglob("*.html")):
@@ -75,11 +98,14 @@ def main() -> int:
         rel = str(path.relative_to(TEMPLATES.parent))
         failures += _onclick_failures(rel, text)
         failures += _library_query_failures(rel, text)
+        failures += _poll_failures(rel, text)
     if failures:
         print("template-lint: failures")
         print("(onclick must not share an element with hx-* — it runs before htmx's")
         print(" delegated handler, see #40; library_query() must name every parameter")
-        print(" of the Library view, since Jinja silently drops a missing one, see #180)\n")
+        print(" of the Library view, since Jinja silently drops a missing one, see #180;")
+        print(" a polling element carries hx-poll, so neither the in-progress dimming")
+        print(" nor a failed-request report fires for it, see #118 and #1052)\n")
         print("\n".join(failures))
         return 1
     return 0
