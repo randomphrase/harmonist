@@ -1,26 +1,31 @@
 # Harmonist
 
-**A self-hosted music librarian that tends your collection's metadata and artwork
-using [MusicBrainz](https://musicbrainz.org/), with changes previewed, logged, and
-reversible.**
+**A self-hosted music librarian that keeps your collection's metadata current
+with [MusicBrainz](https://musicbrainz.org/), letting you automate small updates
+and review substantial changes.**
 
-- **Tag all your music**, from CD rips to store downloads, with
-  [Picard](https://picard.musicbrainz.org)-compatible metadata.
-- **Keep your own folders and formats**: FLAC, MP3, AAC, ALAC, Ogg Vorbis or Opus.
-- **Link your albums to MusicBrainz** by store link, barcode or CD disc ID.
-- **Keep your tags current** as Harmonist finds updates on MusicBrainz for you
-  to review and apply.
-- **Fill missing covers and upgrade your artwork** from your files and the Cover
-  Art Archive.
-- **Fill in [artist biographies, pictures and related data](docs/how-it-works.md#artists-and-local-metadata)**
-  *(preliminary)* from MusicBrainz, Wikipedia and fanart.tv.
-- **Satisfy your inner perfectionist** with [focused library filters](docs/how-it-works.md#the-library)
-  that find the gaps in your collection.
-- **Undo tag, artwork and artist changes**, seeing exactly what changed.
-- **Give back to MusicBrainz** where your collection can improve the metadata
-  everyone shares.
-- **Download and tag your Bandcamp purchases**, re-downloading to upgrade audio
-  quality or pick up new tracks.
+- [Keep your tags current](docs/how-it-works.md#keeping-tags-up-to-date)
+  with background checks for MusicBrainz updates.
+- [Automate cosmetic fixes and review substantial changes](docs/how-it-works.md#keeping-tags-up-to-date):
+  you choose which significance levels to apply automatically. Tracklist changes
+  always need review.
+- [Tag all your music](docs/how-it-works.md#musicbrainz-is-the-source-of-truth),
+  from CD rips to store downloads, with Picard-compatible metadata.
+- [Keep your own folders and formats](docs/how-it-works.md#what-harmonist-changes-and-what-it-never-touches):
+  FLAC, MP3, AAC, ALAC, Ogg Vorbis or Opus.
+- [Link your albums to MusicBrainz](docs/getting-started.md#matching-whats-in-the-inbox)
+  by store link, barcode or CD disc ID.
+- [Fill missing covers and upgrade your artwork](docs/how-it-works.md#artwork)
+  from your files and the Cover Art Archive.
+- [Fill in artist biographies, pictures and related data](docs/how-it-works.md#artists-and-local-metadata) from MusicBrainz, Wikipedia and fanart.tv.
+- [Satisfy your inner perfectionist](docs/how-it-works.md#the-library)
+  with focused library filters that find the gaps in your collection.
+- [Undo tag, artwork and artist changes](docs/how-it-works.md#undo-and-history),
+  seeing exactly what changed.
+- [Give back to MusicBrainz](docs/how-it-works.md#giving-back-to-musicbrainz)
+  where your collection can improve the metadata everyone shares.
+- [Download and tag your Bandcamp purchases](docs/how-it-works.md#bandcamp-sync),
+  re-downloading to upgrade audio quality or pick up new tracks.
 
 Manage everything from your browser, with an **Inbox** for albums and artists
 that need attention, a **Library** and an **Artists** page to browse your
