@@ -73,6 +73,7 @@ loopback only. Demo mode supplies sample albums and mocks Bandcamp/MusicBrainz;
 no account or music files are needed. `make demo` enables live reload and keeps
 demo settings in `.dev-data/demo-config/`. Stop the server with Ctrl+C. From
 Emacs, use `C-x p c` with `make demo` and `M-x kill-compilation` to stop it.
+The [README recording guide](demo.md) has the setup and shot list for each clip.
 
 For ordinary development, run
 `uvicorn harmonist.web.main:app --reload --host 0.0.0.0`. Music goes in `music/`

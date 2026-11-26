@@ -33,11 +33,20 @@ collection, and an **Activity** feed to see what's changed.
 
 ## Demo
 
-A short walk-through of the flow — inbox triage, matching, and a link-only sync:
+**Keep your library current.** Preview a MusicBrainz tag update, apply it,
+and undo it from the album’s history.
 
-**This video is quite out of date; an updated walkthrough is coming soon.**
+https://github.com/user-attachments/assets/f1365e7e-829a-490f-b769-4a8f7cbaa67b
 
-https://github.com/user-attachments/assets/dc08c85f-43f8-402a-85a5-09388200c239
+**Choose your artwork.** Compare the embedded cover with the archive image
+side by side, then choose which version to keep.
+
+https://github.com/user-attachments/assets/e742beac-a18e-4f0e-a22a-0db3f95a75b6
+
+**Sync your Bandcamp purchases.** Link an album you already own and download
+a new purchase.
+
+https://github.com/user-attachments/assets/c16415ef-d0a6-4ffc-9926-c94cb6f30d1c
 
 ## Quickstart
 
