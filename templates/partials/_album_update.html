@@ -2,17 +2,25 @@
 {# MusicBrainz owns this finding. Artwork owns its finding in _artwork_note.html;
    album.html keeps the inclusion control outside both swaps (#509). Either
    source can refresh without replacing the other's answer. CSS shows the artwork-only
-   primary action only when this combined action is absent. #}
+   primary action only when this combined action is absent.
+
+   Also drawn for an update with no field diff, even where the comparison finds
+   nothing (#1057). That verdict is the tagger's refusal of the files
+   (`update_note`), not this comparison, and the two can part. The Ignore
+   footer is keyed on the update alone, so without this it sat under an empty
+   band. Such an update has no plan, so there is no Apply button and the merged
+   note's Re-tag stays the only one. #}
 <div id="album-update-{{ album.id }}" hx-swap-oob="true">
     {% set review_tracks = assignment_review and assignment_review.required %}
-    {% if review_tracks or not advisory(comparison, tracklist) %}
+    {% set clean = advisory(comparison, tracklist) %}
+    {% if review_tracks or not clean or album.update_note %}
     <div class="album-finding">
         <span class="album-update__key">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="var(--color-mb-orange)" aria-hidden="true">
                 <path d="M12 2L21 7L21 17L12 22L3 17L3 7Z"/>
             </svg>
         </span>
-        <h2 class="album-update__legend">{% if review_tracks %}Track assignments need review{% else %}{{ headline(comparison, tracklist) }}{% endif %}</h2>
+        <h2 class="album-update__legend">{% if review_tracks %}Track assignments need review{% elif clean and album.update_note %}{{ album.update_note }}{% else %}{{ headline(comparison, tracklist) }}{% endif %}</h2>
         {% if album.update_significance %}{{ severity_chip(album.update_significance) }}{% endif %}
         {% if comparison.mb_available and album.sidecar and album.sidecar.mb_release_id %}
         {% if review_tracks %}

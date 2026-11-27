@@ -57,6 +57,7 @@ from harmonist.tagger import (
     ATOM_MB_ALBUM_ID,
     ATOM_TITLE,
     ATOM_TRACK_NUM,
+    AlbumPlan,
 )
 from harmonist.transforms import TagTransform
 from harmonist.web.main import create_app
@@ -7855,6 +7856,10 @@ def test_an_album_with_nothing_to_act_on_gets_no_note_at_all(client, cfg, monkey
     from harmonist.track_structure import Review
 
     monkeypatch.setattr("harmonist.web.main.tagger_mod.assignment_review", lambda *args: Review())
+    # Nothing to act on has to hold for the update verdict too. A release with
+    # no tracks would have the dry run refuse the album's one file, and that
+    # refusal is a Structural update the band must state (#1057).
+    monkeypatch.setattr("harmonist.gardener.plan_for", lambda *a, **k: AlbumPlan(changes={}))
 
     body = client.get(f"/library/{album_id}/compare").text
 

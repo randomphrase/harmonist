@@ -344,8 +344,10 @@ def refresh_flag(album: Album, release: Release) -> Assessment:
     **A missing plan is not "nothing to take"**, and the two ways of missing one
     are not the same either — see `Assessment`, which is the whole reason this
     returns one rather than the plan alone. (The structural case is not left
-    unexplained on screen: the album page reports it through `_shape_mismatch`
-    and `absent_media`, which say far more about it than a field diff could.)
+    unexplained on screen. Where the album page's own comparison sees what
+    parts the files from the release — missing tracks, `_shape_mismatch`,
+    `absent_media` — it says far more than a field diff could; where it sees
+    nothing, the page states `update_note` instead (#1057).)
 
     The configured owner publishes the value only while its local reading and
     settings are current. Without an owner, the caller consumes `result.album`.

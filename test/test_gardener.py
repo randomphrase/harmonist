@@ -2755,6 +2755,38 @@ def test_the_album_page_offers_ignore_and_the_way_to_fix_it_upstream(engaged, mo
     assert 'name="ignore"' in body, "a checkbox, not a button (#366)"
 
 
+def test_an_update_the_comparison_cannot_see_is_stated_above_its_ignore_box(engaged, monkeypatch):
+    """#1057: the Library flagged a Structural update while the album page
+    showed nothing but an ignore box, with no finding above it to ignore.
+
+    The verdict comes from the tagger's count guard and the page's account from
+    its own comparison, and those two readings can part — they did over Fear Of
+    Music's concert films (#1056). Whatever parts them, the page has to say what
+    the Library is flagging, and the box has to sit under it. Here the guard is
+    made to refuse an album the comparison finds clean, which is that state."""
+    cfg, engage = engaged
+    release = _release()
+    _tagged(cfg.paths.music_dir, release)
+    monkeypatch.setattr(mb_lookup, "fetch_release", lambda *a, **k: release)
+
+    def refused(*a, **k):
+        raise tagger.TagMismatchError("refused", files=1, tracks=2)
+
+    monkeypatch.setattr(gardener, "plan_for", refused)
+    client, runner = engage()
+    album = _flagged(runner)
+
+    body = client.get(f"/library/{album.id}/compare").text
+
+    band = re.search(rf'<div id="album-update-{album.id}".*?</div>\s*</div>', body, re.DOTALL)
+    assert band is not None
+    legend = re.search(r'<h2 class="album-update__legend">(.*?)</h2>', band.group(0), re.DOTALL)
+    assert legend is not None, "the band states the update rather than rendering empty"
+    assert legend.group(1).strip() == "MusicBrainz lists 2 tracks, 1 on disk"
+    assert "sev--structure" in band.group(0), "with the level the Library badged it at"
+    assert "Ignore until MusicBrainz changes" in body
+
+
 def test_an_album_with_nothing_outstanding_is_offered_neither(engaged, monkeypatch):
     """The block is about an update, so an album that has none must not carry
     it. The same template renders both, so this is the condition being tested

@@ -20,6 +20,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Fixed
 
+- An album page whose track list shows nothing wrong now says what its Structural update is, instead of an Ignore box with nothing above it (#1057).
 - A disc of both audio and video, with its videos ripped, is no longer flagged as a Structural update (#1056).
 - An action that gets no answer, such as a reverse proxy timing out on a long confirm, now says so in the status bar instead of showing nothing (#1052).
 - Tag-update assessments overtaken by a scan, setting or MusicBrainz change are rechecked from cache without replacing newer library readings (#1048).
