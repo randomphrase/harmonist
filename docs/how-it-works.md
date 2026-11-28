@@ -280,7 +280,9 @@ of the music folder first, and the new copy keeps the same match.
 MusicBrainz keeps improving: a date gets corrected, ISRCs get filled in, a
 duplicate release gets merged into another. When an album's tags fall behind, it
 appears in the Library's **Tag updates** filter, and its page shows exactly
-what would change. Nothing is written until **Apply updates** is pressed.
+what would change. Nothing is written until **Apply updates** is pressed, and
+then it writes what the page showed: if MusicBrainz has changed in between,
+nothing is written and the page shows the new update instead.
 
 Harmonist checks an album whenever its page is opened. Setting **Check
 MusicBrainz for updates** to **In the background** in Settings extends that to

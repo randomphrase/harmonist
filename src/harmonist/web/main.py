@@ -7243,12 +7243,13 @@ def _register_routes(app: FastAPI) -> None:
         # every file again; it is rendered from here now, so a page view reads
         # the album once instead of twice.
         reads = _album_file_tags(album.path, album.folders)
+        tagging = _tagging(request, album)
         comparison, tracks = _album_comparison(
             album.path,
             release,
             album.folders,
             reads=reads,
-            tagging=_tagging(request, album),
+            tagging=tagging,
             included_pregaps=album.sidecar.included_pregaps if album.sidecar else (),
         )
         # Opening an album is a look at exactly the question the Library filter
@@ -7316,6 +7317,10 @@ def _register_routes(app: FastAPI) -> None:
             # (#685), which the section says so they look to Settings for it.
             follows_settings=plan is not None and gardener.follows_settings(plan),
             tag_updates=plan is not None and not plan.empty,
+            # The release this update was judged against, for Apply to write
+            # exactly that or nothing: a reviewed write (#532, #1060). Taken
+            # under the choices `/retag` checks it with, as the apply pass's is.
+            release_fingerprint=retag_mod.release_fingerprint(release, mbid, tagging),
             contribution=contributions.assess(album),
             comparison=comparison,
             tracklist=tracks,
@@ -7554,8 +7559,17 @@ def _register_routes(app: FastAPI) -> None:
         include_artwork: Literal["true", "false"] = Form("true"),
         artwork_scope: str = Form("additions"),
         use: str = Form(""),
+        release_fingerprint: str = Form(""),
     ) -> Response:
         """Re-tag a Library album from the MusicBrainz release it names.
+
+        `release_fingerprint` is the release the album page's update was
+        judged against, from its **Apply updates** (#1060). With it this is a
+        reviewed write (#532): exactly that stored release, whatever its age,
+        with no request, or nothing at all if a newer one has been stored
+        since, and the page is drawn again to show it. Without it, from a
+        control that shows no update, the release is fetched fresh, as an
+        unreviewed write's must be.
 
         `accept_short=True` is the user's answer to the offer this endpoint makes
         when the guard refuses (#252) — tag the files against a release that lists
@@ -7650,6 +7664,21 @@ def _register_routes(app: FastAPI) -> None:
                 # same reason — `parse_choices` is the one spelling the
                 # section's render and this share (#472, #659).
                 choices=artwork.parse_choices(use),
+                expected_release=release_fingerprint or None,
+            )
+        except retag_mod.ConfirmationChanged:
+            # The page showed an update judged against a release that is no
+            # longer the stored one (#1060). Nothing was written; the page is
+            # drawn again, as after a re-tag, so the update it shows now is the
+            # one Apply would write.
+            request.state.skip_rescan = True
+            return _flash_response(
+                "Not re-tagged",
+                "MusicBrainz's release changed since the page showed it, so nothing was written",
+                level=Level.WARNING,
+                tasks_changed=False,
+                album=album,
+                extra_triggers=_retagged_trigger(album),
             )
         except mb_lookup.ReleaseGoneError:
             # Not a failure to report as one: MusicBrainz has deleted the release

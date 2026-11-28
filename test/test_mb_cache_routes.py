@@ -6,17 +6,21 @@ and shows the user stale data; a route wrongly uncached works perfectly and
 quietly burns the 1-req/sec budget it was built to protect. Neither shows up as
 a failure anywhere else, so the request count is asserted directly.
 
-The rule under test: **reads that display or compare may be cached; writes, and
-anything the user pressed to force a re-check, fetch fresh.**
+The rule under test: **reads that display or compare may be cached; writes
+nobody reviewed, and anything the user pressed to force a re-check, fetch
+fresh; a write of what the page showed uses exactly that stored release** (#532,
+#1060).
 """
 
 from __future__ import annotations
 
+import json
 import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
 from mutagen.mp4 import MP4
 
@@ -495,3 +499,56 @@ def test_a_first_fetch_logs_nothing(client, cfg, monkeypatch):
 
     assert "Test Album (remastered)" in body
     assert _logged_updates() == []
+
+
+def _apply_form(body: str) -> dict[str, str]:
+    """What the update finding's **Apply updates** posts of its own."""
+    form = BeautifulSoup(body, "html.parser").select_one("form.album-tag-apply")
+    assert form is not None, "no Apply updates on the comparison"
+    return {str(i["name"]): str(i.get("value", "")) for i in form.select("input[name]")}
+
+
+def _album_tag(album) -> list[str]:
+    return list(MP4(next(album.path.glob("*.m4a")))["\xa9alb"])
+
+
+def _status(response) -> dict:
+    return json.loads(response.headers["HX-Trigger"])
+
+
+def test_apply_updates_writes_the_release_it_showed_without_asking(client, cfg, monkeypatch):
+    """The page's Apply is a reviewed write (#532, #1060): the stored release
+    the comparison was drawn from, whatever its age by the time it's pressed,
+    and no request."""
+    album = tagged_album(cfg.paths.music_dir, tagged_release())
+    fetch = _Counter(tagged_release("Test Album (remastered)"))
+    monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
+    form = _apply_form(client.get(f"/library/{album.id}/compare").text)
+    assert fetch.calls == 1 and form["release_fingerprint"]
+    _age_stored_release(timedelta(hours=20))
+
+    response = client.post(f"/retag/{album.id}", data=form)
+
+    assert _status(response)["harmonist-status"]["verb"] == "Re-tagged"
+    assert fetch.calls == 1, "Apply asked MusicBrainz again"
+    assert _album_tag(album) == ["Test Album (remastered)"]
+
+
+def test_apply_updates_writes_nothing_once_the_release_has_moved(client, cfg, monkeypatch):
+    """A newer answer stored since the page was drawn isn't what was shown:
+    nothing is written, and the page is drawn again to show what there is."""
+    album = tagged_album(cfg.paths.music_dir, tagged_release())
+    fetch = _Counter(tagged_release("Test Album (remastered)"))
+    monkeypatch.setattr(mb_lookup, "fetch_release", fetch)
+    form = _apply_form(client.get(f"/library/{album.id}/compare").text)
+    fetch.payload = tagged_release("Test Album (remastered, again)")
+    client.get(f"/library/{album.id}/compare?reread=1")
+
+    response = client.post(f"/retag/{album.id}", data=form)
+
+    triggers = _status(response)
+    assert triggers["harmonist-status"]["verb"] == "Not re-tagged"
+    assert triggers["harmonist-status"]["level"] == "warning"
+    assert "album-retagged" in triggers
+    assert fetch.calls == 2
+    assert _album_tag(album) == ["Test Album"]

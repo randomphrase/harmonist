@@ -18,6 +18,9 @@ versions follow [semantic versioning](https://semver.org).
 - Artist Identify and Refresh give lookups 30 seconds, preserve completed optional results, and finish accepted writes and their history during graceful shutdown (#1040).
 - **A track's work has a column in the track list** when the other tags leave
   one free, rather than a line under the track (#1035).
+- **An album page's Apply updates writes the update it showed**, without asking
+  MusicBrainz again; if the release has changed since, nothing is written and
+  the page shows the new update (#1060).
 
 ### Fixed
 

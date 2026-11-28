@@ -174,6 +174,17 @@ Harmonist restarts.
 **One action per album.** Each write opens its own action scope, so its History
 entry carries its own tag changes and its own Undo.
 
+### Applying from the album page
+
+**Apply updates writes the update the page shows** (#1060), from the stored
+release it was judged against, as the unattended pass and a selection do.
+Pressing it is a review of what's on the page, so that release travels with the
+button: if a newer one has been stored since, nothing is written and the page is
+drawn again with the update there is now. It asks MusicBrainz nothing, since the
+page has already read a release past its TTL again, holding Apply until it
+answered ([external services](external-services.md#the-cache)). Fetching afresh
+at the press could write a release nobody had looked at.
+
 ### Applying a selection
 
 Updates waiting in the Inbox can be selected and applied together. It is the

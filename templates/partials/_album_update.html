@@ -37,6 +37,9 @@
               hx-include=".apply-art-{{ album.id }}, #include-artwork-{{ album.id }}"
               hx-indicator="#tagging-{{ album.id }}"
               class="album-finding__act-form album-tag-apply">
+            {# The release this update was judged against, so Apply writes
+               what's shown here or nothing (#1060), as an artist's does. #}
+            <input type="hidden" name="release_fingerprint" value="{{ release_fingerprint }}">
             <button id="retag-btn-{{ album.id }}" type="submit"
                     class="album-finding__act"
                     title="Apply the tag updates and any included artwork shown in the Artwork section.">
