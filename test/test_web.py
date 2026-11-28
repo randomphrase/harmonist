@@ -61,7 +61,7 @@ from harmonist.tagger import (
 )
 from harmonist.transforms import TagTransform
 from harmonist.web.main import create_app
-from test.helpers import keep_one
+from test.helpers import finish_writes, keep_one
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -297,6 +297,7 @@ def test_consolidated_status_endpoint(client):
         "pending",
         "artwork_revision",
         "progress",
+        "writes",
     }
     assert body["sync"]["state"] == "idle"
     assert body["reconcile"]["state"] == "idle"
@@ -1802,11 +1803,13 @@ def test_name_search_use_reviews_before_writing_and_confirms_without_refetching(
     monkeypatch.setattr("harmonist.cover_art.front_image", unexpected_fetch)
     applied = client.post(confirm["hx-post"], data=payload)
     assert applied.status_code == 200
+    finish_writes(client.app)
     assert formats.read_album_id(audio) == mbid
     assert sc.read(folder).mb_match_candidate is None
     assert fetches == [mbid]
     after = audio.read_bytes()
     replay = client.post(confirm["hx-post"], data=payload)
+    finish_writes(client.app)
     assert replay.status_code == 200
     assert "Files changed since the review" in replay.text
     assert audio.read_bytes() == after
@@ -1952,7 +1955,8 @@ _ASSIGN_MBID = "abc12345-1234-1234-1234-1234567890ab"
 def _paste_and_confirm(client, aid: str, mbid: str = _ASSIGN_MBID):
     """Paste `mbid` into the card's box, then confirm the review it opens
     (#880, #933) — the way a pasted release gets tagged. Nothing is stored
-    before the confirm. Returns the confirm response."""
+    before the confirm. Returns the confirm response, once the write it started
+    in the background has finished (#1053)."""
     from bs4 import BeautifulSoup
 
     paste = BeautifulSoup(client.get("/tasks").text, "html.parser").select_one(
@@ -1970,7 +1974,9 @@ def _paste_and_confirm(client, aid: str, mbid: str = _ASSIGN_MBID):
     assert confirm is not None, review.text
     form = confirm.find_parent("form")
     payload = {field["name"]: field.get("value", "") for field in form.select("input[name]")}
-    return client.post(confirm["hx-post"], data=payload)
+    response = client.post(confirm["hx-post"], data=payload)
+    finish_writes(client.app)
+    return response
 
 
 def _state_of(cfg, album_dir):
@@ -4149,6 +4155,7 @@ def test_a_cover_created_by_a_first_tagging_reaches_the_albums_history(client, c
     _, _, fields = _review_with_artwork(client, old_id)
     fields["include_artwork"] = "true"
     assert client.post(f"/confirm/{old_id}", data=fields).status_code == 200
+    finish_writes(client.app)
     assert (d / "cover.png").read_bytes() == image
     new_id = _id_for(cfg, d)
     assert new_id != old_id, "the identity has to move, or this proves nothing"
@@ -4204,6 +4211,7 @@ def test_a_tagging_creates_no_folder_cover_under_the_shipped_default(client, cfg
     _, _, fields = _review_with_artwork(client, album_id)
     fields["include_artwork"] = "true"
     assert client.post(f"/confirm/{album_id}", data=fields).status_code == 200
+    finish_writes(client.app)
 
     assert not (d / "cover.png").exists()
     assert not (d / "cover.jpg").exists()
@@ -5051,6 +5059,7 @@ def test_action_records_an_id_that_still_resolves_after_tagging(client, cfg, mon
 
     # Confirming TAGS it: temp_uid is dropped, the id becomes the MBID.
     assert client.post(f"/confirm/{aid}").status_code == 200
+    finish_writes(client.app)
     assert _id_for(cfg, d) != aid  # the identity really did move
     assert sc.read(d).temp_uid is None  # ...and the old id is gone from disk
 
@@ -5497,6 +5506,7 @@ def test_retag_recomputes_count_and_promotes_incomplete_to_complete(client, cfg,
     editor = client.get(f"/assignments/{aid}?album_tracks=true&on_album_page=true")
     accepted = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(editor.text))
     assert "confirmation-applied" in accepted.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
 
     after = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == d)
     assert after.expected_track_count == 1, "the re-tag rewrote the total into the file"
@@ -5610,6 +5620,7 @@ def test_forgotten_album_can_review_another_release(client, cfg, monkeypatch, on
     payload = {field["name"]: field.get("value", "") for field in form.select("input[name]")}
     applied = client.post(confirm["hx-post"], data=payload)
     assert applied.status_code == 200
+    finish_writes(client.app)
     assert formats.read_album_id(audio) == _ASSIGN_MBID
     current = sc.read(d)
     assert current.mb_release_id == _ASSIGN_MBID
@@ -5784,10 +5795,13 @@ def test_confirm_incomplete_tags_and_persists_expected_count(client, cfg, monkey
     monkeypatch.setattr("harmonist.mb_lookup.fetch_release", fake_release)
     monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
 
+    from harmonist import activity
+
     aid = _id_for(cfg, d)
     r = client.post(f"/confirm/{aid}/incomplete")
     assert r.status_code == 200
-    assert "incomplete" in r.text.lower()
+    finish_writes(client.app)
+    assert any(e.message.startswith("Matched as incomplete") for e in activity.recent())
 
     loaded = sc.read(d)
     assert loaded.mb_release_id == "rel-mbid"
@@ -5834,6 +5848,7 @@ def test_confirm_mistag_adopts_owned_store_url(client, cfg, monkeypatch):
     aid = _id_for(cfg, d)
     r = client.post(f"/confirm/{aid}")
     assert r.status_code == 200
+    finish_writes(client.app)
     loaded = sc.read(d)
     assert loaded.mb_release_id == "rel-standard"
     # store_url now points at the edition the user actually purchased.
@@ -5863,6 +5878,8 @@ def test_confirm_normal_candidate_keeps_store_url(client, cfg, monkeypatch):
     monkeypatch.setattr("harmonist.cover_art.front_image", lambda *a, **kw: None)
     aid = _id_for(cfg, d)
     client.post(f"/confirm/{aid}")
+    finish_writes(client.app)
+    assert sc.read(d).mb_release_id == "rel-keep", "confirmed, or this proves nothing"
     assert sc.read(d).store_url == "https://x.bandcamp.com/album/keep-me"
 
 
@@ -9246,6 +9263,9 @@ def test_request_scope_correlates_the_action_with_its_audit_records(client, cfg,
     activity.clear()
 
     assert client.post(f"/confirm/{aid}").status_code == 200
+    # The write that finishes the request's action runs after it has answered,
+    # and keeps its action (#1053).
+    finish_writes(client.app)
 
     entry = next(e for e in activity.recent(10) if e.message.startswith("Matched"))
     assert entry.action_id, "the request opened no action scope"
@@ -13974,11 +13994,21 @@ def test_confirmation_applies_the_reviewed_smaller_archive_image(
             "include_artwork": "true",
         },
     )
-    assert "Matched" in result.text
+    assert "confirmation-applied" in result.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
+    assert _matched_messages()
     assert formats.read_cover(files[0]) == (small, "image/png")
     assert formats.read_cover(files[1]) == (small, "image/png")
     assert (d / "cover.png").read_bytes() == small
     assert sc.read(d).mb_release_id == release["id"]
+
+
+def _matched_messages() -> list[str]:
+    """The Activity entries confirmed reviews wrote, newest first. A confirm's
+    write records its outcome when it ends, after the request answered (#1053)."""
+    from harmonist import activity
+
+    return [e.message for e in activity.recent() if e.message.startswith("Matched")]
 
 
 def _confirmation_setup(
@@ -14195,8 +14225,9 @@ def test_confirmation_checkbox_controls_the_actual_write(client, cfg, monkeypatc
     aid = _id_for(cfg, d)
     _, _, fields = _review_with_artwork(client, aid)
     data = fields | {"include_artwork": str(included).lower()}
-    result = client.post(f"/confirm/{aid}", data=data)
-    assert "Matched" in result.text
+    client.post(f"/confirm/{aid}", data=data)
+    finish_writes(client.app)
+    assert _matched_messages()
     folder = d / ("cover.png" if included else "cover.jpg")
     assert folder.read_bytes() == (small if included else big)
     for path in d.glob("*.m4a"):
@@ -14233,8 +14264,9 @@ def test_confirmation_without_a_candidate_still_tags_and_keeps_art(
     ) in artwork.text
     assert fields["release_fingerprint"]
     assert ">Done</button>" in preview.text
-    result = client.post(f"/confirm/{aid}", data=fields)
-    assert "Matched" in result.text
+    client.post(f"/confirm/{aid}", data=fields)
+    finish_writes(client.app)
+    assert _matched_messages()
     assert (d / "cover.jpg").read_bytes() == big
     assert sc.read(d).mb_release_id == release["id"]
 
@@ -14254,8 +14286,9 @@ def test_confirmation_preserves_per_track_artwork(client, cfg, monkeypatch):
     before = [formats.read_cover(p) for p in sorted(d.glob("*.m4a"))]
     _, artwork, fields = _review_with_artwork(client, aid)
     assert "Differing per-track artwork is preserved" in artwork.text
-    result = client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
-    assert "Matched" in result.text
+    client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
+    finish_writes(client.app)
+    assert _matched_messages()
     assert [formats.read_cover(p) for p in sorted(d.glob("*.m4a"))] == before
     assert (d / "cover.png").read_bytes() == small
 
@@ -14291,6 +14324,7 @@ def test_confirmation_withholds_artwork_changed_since_review(client, cfg, monkey
         (d / "cover.jpg").write_bytes(newer)
     before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
     result = client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
+    finish_writes(client.app)
     assert "Artwork changed" in result.text
     assert "confirmation-applied" not in result.headers.get("HX-Trigger", "")
     assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
@@ -14344,6 +14378,7 @@ def test_confirmation_cannot_apply_a_replaced_suggestion(client, cfg, monkeypatc
     )
     before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
     result = client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
+    finish_writes(client.app)
     assert "The selected release changed" in result.text
     assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
 
@@ -14353,11 +14388,14 @@ def test_repeating_confirmation_writes_nothing_twice(client, cfg, monkeypatch):
     aid = _id_for(cfg, d)
     _, _, fields = _review_with_artwork(client, aid)
     fields["include_artwork"] = "true"
-    assert "Matched" in client.post(f"/confirm/{aid}", data=fields).text
+    client.post(f"/confirm/{aid}", data=fields)
+    finish_writes(client.app)
+    assert _matched_messages()
     before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
     history = activity_store.album_history(release["id"])
     request_count = len(calls)
     repeated = client.post(f"/confirm/{aid}", data=fields)
+    finish_writes(client.app)
     assert "confirmation-applied" not in repeated.headers.get("HX-Trigger", "")
     assert before == {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
     assert activity_store.album_history(release["id"]) == history
@@ -14379,11 +14417,12 @@ def test_confirmation_reports_artwork_failure_separately(client, cfg, monkeypatc
             raise PermissionError("cannot write embedded art")
 
         monkeypatch.setattr(formats, "write_cover", deny)
-    result = client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
-    assert "Matched" in result.text
+    client.post(f"/confirm/{aid}", data=fields | {"include_artwork": "true"})
+    finish_writes(client.app)
+    (matched,) = _matched_messages()
     assert (
         "no backup could be kept" if failure == "backup" else "artwork could not be written"
-    ) in result.text
+    ) in matched
     assert sc.read(d).tagged_at is not None
     for path in d.glob("*.m4a"):
         assert formats.read_owned(path)["mb_album_id"] == release["id"]

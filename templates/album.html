@@ -348,7 +348,12 @@
             input.checked = input.value === selected.value;
         }
     });
+    // Once per page: two of the page's watches can see the same change, and a
+    // second navigation aborts the first.
+    let reloading = false;
     function reloadAt(now) {
+        if (reloading) return;
+        reloading = true;
         if (now && now !== {{ album.id | tojson }}) {
             window.location.replace('/album/' + encodeURIComponent(now) + window.location.search);
             return;
@@ -357,6 +362,53 @@
     }
     document.body.addEventListener('album-retagged', function (event) {
         reloadAt(event.detail && event.detail.album_id);
+    });
+    // A confirmed review is written in the background (#1053). The page keeps
+    // its cover up and its actions off until the write ends, then redraws
+    // where the album is now, since a match moves a re-identified album's
+    // address. Asked at once, and again after each scan the status bar hears
+    // of: the write publishes one when it ends, after releasing the album.
+    let awaitingWrite = false;
+    function awaitConfirmedWrite() {
+        writeOverlay.dataset.writing = '';
+        disableWriteActions();
+        let waiting = true;
+        async function ask() {
+            if (!waiting) return;
+            let now = null;
+            try {
+                const response = await fetch('/album/' + encodeURIComponent({{ album.id | tojson }}) + '/revision');
+                if (response.ok) now = await response.json();
+            } catch (error) {
+                return;  // Moot: the next scan asks again.
+            }
+            if (waiting && now && !now.writing) {
+                waiting = false;
+                reloadAt(now.album_id);
+            }
+        }
+        document.body.addEventListener('tasks-changed', ask);
+        ask();
+    }
+    // Hooked on the confirm's request rather than its `confirmation-applied`
+    // event: htmx raises that on the control that sent it, and a control the
+    // editor has redrawn meanwhile is no longer in the page to pass it on. The
+    // page's watch stands aside from the send, since its own write is coming,
+    // and the wait starts once the request has ended, so the lock htmx
+    // releases then doesn't take this one with it.
+    document.body.addEventListener('htmx:beforeSend', function (event) {
+        const config = event.detail.requestConfig;
+        const path = new URL(config.path, window.location.href).pathname;
+        if (config.verb !== 'post' || !path.startsWith('/confirm/')) return;
+        const xhr = event.detail.xhr;
+        awaitingWrite = true;
+        xhr.addEventListener('loadend', function () {
+            if (xhr.status === 200 && /confirmation-applied/.test(xhr.getResponseHeader('HX-Trigger') || '')) {
+                setTimeout(awaitConfirmedWrite, 0);
+            } else {
+                awaitingWrite = false;
+            }
+        });
     });
     // An album something else writes into while this page is open (#975): the
     // apply pass, a sync, a reconcile. The status bar's `tasks-changed` says a
@@ -394,7 +446,8 @@
     }
     function checkRevision(own) {
         revisionChecks = revisionChecks.then(async function () {
-            if (changedUnderUs) return;
+            // The page's own confirmed write redraws it when it ends (#1053).
+            if (changedUnderUs || awaitingWrite) return;
             const writesBefore = writeEvents;
             let now;
             try {

@@ -17,6 +17,7 @@ from harmonist.activity_store import Source
 from harmonist.models import AlbumState, FoundBy, MatchCandidate, Sidecar
 from test import test_barcode_discovery as barcode_album
 from test import test_web
+from test.helpers import finish_writes
 from test.test_web import (
     ATOM_MB_ALBUM_ID,
     _confirmation_fields,
@@ -135,6 +136,8 @@ def _confirm(client, cfg, root) -> None:
     fields = _confirmation_fields(client.get(f"/assignments/{aid}").text)
     response = client.post(f"/confirm/{aid}", data=fields)
     assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
+    # The outcome is recorded when the write ends, after the request (#1053).
+    finish_writes(client.app)
 
 
 def test_confirming_records_the_release_and_how_it_was_found(client, cfg, monkeypatch):

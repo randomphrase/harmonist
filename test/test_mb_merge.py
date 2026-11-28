@@ -30,6 +30,7 @@ from harmonist import sidecar as sidecar_mod
 from harmonist.config import BandcampConfig, Config, PathsConfig, ServerConfig, TestConfig
 from harmonist.models import AlbumState, Sidecar
 from harmonist.web.main import create_app
+from test.helpers import finish_writes
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SINE_M4A = FIXTURES_DIR / "sine.m4a"
@@ -485,6 +486,10 @@ def test_merged_assignment_review_uses_canonical_snapshot_without_refetch(client
         assert fields["disk_order"] == order
     assert [p.read_bytes() for p in sorted(d.glob("*.m4a"))] == before
     accepted = client.post(f"/confirm/{OLD_MBID}/accept", data=fields)
-    assert accepted.headers["HX-Redirect"] == f"/album/{NEW_MBID}"
+    assert "confirmation-applied" in accepted.headers.get("HX-Trigger", "")
+    # The page waits out the write (#1053) and then follows the album to the
+    # release MusicBrainz merged it into.
+    finish_writes(client.app)
+    assert client.get(f"/album/{OLD_MBID}/revision").json()["album_id"] == NEW_MBID
     assert _file_mbids(d) == {NEW_MBID}
     assert calls == [OLD_MBID]

@@ -47,6 +47,7 @@ from harmonist import (
     activity,
     activity_store,
     album_files,
+    album_writes,
     archive,
     artist_fill,
     artist_nfo,
@@ -916,6 +917,7 @@ def create_app(
     templates.env.globals["artwork_queued"] = auto_apply.artwork_queued
     templates.env.globals["update_queued"] = auto_apply.queued
     templates.env.globals["applying_updates"] = auto_apply.is_applying
+    templates.env.globals["album_writing"] = album_writes.writing
     templates.env.globals["store_name"] = store_name
     templates.env.globals["display_path"] = _display_path
     templates.env.globals["rel_path"] = _rel_path
@@ -1146,6 +1148,7 @@ def create_app(
         # At worst the page redraws once for nothing; it never misses a change.
         request.state.scan_seq = request.app.state.scan_runner.seq
         request.state.artwork_revision = artwork_updates.revision()
+        request.state.writes_ended = album_writes.ended()
         # One action scope per state-changing request, so the activity entry the
         # handler writes and every audit record beneath it share an action_id
         # (#84). Opened HERE, before call_next, because the id must be in scope
@@ -1265,6 +1268,7 @@ def _register_demo_routes(app: FastAPI) -> None:
             or request.app.state.reconcile_runner.is_running
             or request.app.state.scan_runner.status()["state"] == "scanning"
             or request.app.state.scan_runner.jobs.running("update-check")
+            or album_writes.any_writing()
         ):
             return _flash_response(
                 "Demo is busy",
@@ -3328,8 +3332,13 @@ def _artwork_view(
 
 
 def _albums(request: Request) -> list[Album]:
-    cfg: config_mod.Config = request.app.state.cfg
-    runner: ScanRunner = request.app.state.scan_runner
+    return _library_albums(request.app)
+
+
+def _library_albums(app: FastAPI) -> list[Album]:
+    """`_albums`, for work that outlives its request (#1053)."""
+    cfg: config_mod.Config = app.state.cfg
+    runner: ScanRunner = app.state.scan_runner
     # In production the background scanner is engaged (lifespan ran): serve its
     # snapshot instantly — never walk the tree on the request path. In unit
     # tests the TestClient is built without the lifespan, so the runner isn't
@@ -3927,6 +3936,147 @@ def _start_bulk_artwork_apply(app: FastAPI, chosen: Mapping[str, str]) -> str | 
         auto_apply.release_artwork_claim()
         return "the application is stopping"
     return None
+
+
+def _start_confirm_write(
+    app: FastAPI,
+    album: Album,
+    folders: Sequence[Path],
+    added: Sequence[Album],
+    write: Callable[[], tagger_mod.TaggingOutcome],
+    *,
+    mbid: str,
+    how: str | None,
+) -> str | None:
+    """Write a confirmed review in the background (#1053). `None` when the
+    write was started, otherwise why not.
+
+    The review has been checked by now (`retag.check_review`), so nothing is
+    left for the user to decide and the request answers at once. Written within
+    the request, a three-disc album on a NAS took over a minute: long enough for
+    a reverse proxy to give up and leave the review stranded, modal, while the
+    server finished. The write keeps the request's action, as an accepted write
+    does (docs/design/history.md), and reports its outcome where the other
+    background writes report theirs: Activity, and the status bar's closing line.
+
+    Holds every folder it writes (`album_writes`), so a second confirm of the
+    album, or of a folder the review added to it, is refused until it ends.
+    """
+    if not album_writes.hold(folders):
+        return "This album is already being written"
+    action_id = activity_store.current_action()
+    _, label = _live_album_ref(album)
+
+    def _run() -> None:
+        try:
+            with activity_store.continued(action_id), progress.job("Matching", total=1) as job:
+                job.item = label
+                _write_confirmed(app, album, folders, added, write, job, mbid=mbid, how=how)
+        finally:
+            # Held until the album has been read again and the outcome recorded,
+            # so a page that asks is never told the write is over while the
+            # album is still at its old address.
+            album_writes.release(folders)
+            album_writes.finished()
+
+    if not app.state.scan_runner.jobs.start(f"confirm:{album.path}", _run):
+        album_writes.release(folders)
+        album_writes.finished()
+        return "Harmonist is stopping"
+    return None
+
+
+def _write_confirmed(
+    app: FastAPI,
+    album: Album,
+    folders: Sequence[Path],
+    added: Sequence[Album],
+    write: Callable[[], tagger_mod.TaggingOutcome],
+    job: progress.Job,
+    *,
+    mbid: str,
+    how: str | None,
+) -> None:
+    """`_start_confirm_write`'s work, on the job's thread."""
+    outcome: tagger_mod.TaggingOutcome | None = None
+    failure: tuple[str, str, Level] | None = None
+    try:
+        outcome = write()
+    except (retag_mod.ConfirmationChanged, track_assignment.AssignmentChanged) as e:
+        # The review was checked when it was confirmed. This is what changed
+        # since, and nothing was written.
+        log.warning("could not apply reviewed changes: %s", e, extra=_LOG_ONLY)
+        failure = ("Not matched", str(e), Level.WARNING)
+    except Exception as e:
+        # Per-album boundary. The write is the user's work, so its failure is
+        # reported in Activity and the status bar rather than ending with the
+        # thread; the traceback stays in the log, out of the feed.
+        log.exception("confirmation tagging failed", extra=_LOG_ONLY)
+        failure = ("Tagging failed", str(e), Level.ERROR)
+    # Refreshed whatever happened: a failure can leave some files written.
+    current = _refreshed_album(app, album, folders)
+    album_id, label = _live_album_ref(album)
+    if failure is None:
+        assert outcome is not None
+        if current is not None:
+            # Confirmation can change the album's canonical id; links to the old
+            # one, and to each folder the review added, lead to the album now.
+            if current.id != sidecar_mod.album_id_for(album.path):
+                activity_store.record_alias(album.id, current.id)
+            for part in added:
+                activity_store.record_alias(part.id, current.id)
+        incomplete = current is not None and current.state == AlbumState.INCOMPLETE
+        verb = "Matched as incomplete" if incomplete else "Matched"
+        details = _confirmed_details(mbid, how, outcome)
+        level = Level.INFO
+    else:
+        verb, details, level = failure
+    activity.record(f"{verb} — {details}", level, album_id=album_id, album_label=label)
+    job.closing_verb = verb
+    job.closing = f"{label} — {details}"
+    job.closing_level = level
+    job.advance()
+
+
+def _refreshed_album(app: FastAPI, album: Album, folders: Sequence[Path]) -> Album | None:
+    """`album` as its folders read now, with the snapshot and the open pages
+    told, as `_refresher` tells them after each album an apply pass writes."""
+    runner: ScanRunner = app.state.scan_runner
+    if runner.is_engaged():
+        try:
+            if not runner.refresh_album(folders, notify=True):
+                runner.request_scan()
+        except Exception:
+            # Incidental to the write, which is done: the next scan publishes it.
+            log.exception("Could not refresh confirmed album %s", album.path)
+            runner.request_scan()
+    return next((a for a in _library_albums(app) if album.path in a.folders), None)
+
+
+def _confirmed_details(mbid: str, how: str | None, outcome: tagger_mod.TaggingOutcome) -> str:
+    """What a confirmed review's write did: which release and how it was found
+    (#639), and whatever happened to the tags and artwork the user would not
+    otherwise know."""
+    details = [_matched_detail(mbid, how)]
+    if not outcome.tags_changed:
+        details.append("tags already matched")
+    if outcome.artwork_withheld:
+        details.append(
+            "artwork changed since the preview and was left alone; review it on the album page"
+        )
+    if outcome.artwork_unavailable:
+        details.append("could not prepare artwork; images left alone")
+    if outcome.artwork.changed:
+        details.append(f"artwork written to {outcome.artwork.changed} files")
+    if outcome.artwork.failed:
+        details.append("artwork could not be written: " + ", ".join(outcome.artwork.failed))
+    if outcome.artwork.unkept:
+        details.append(
+            "artwork not replaced, no backup could be kept: " + ", ".join(outcome.artwork.unkept)
+        )
+    if outcome.artwork.stale:
+        details.append("artwork left alone, changed since: " + ", ".join(outcome.artwork.stale))
+    return "; ".join(details)
 
 
 def _start_flag_warm_up(scan_runner: ScanRunner) -> None:
@@ -6217,6 +6367,9 @@ def _register_routes(app: FastAPI) -> None:
                 "artwork_revision": artwork_updates.revision(),
                 # Bulk background work and the last one's closing line (#757).
                 "progress": progress.status(),
+                # Confirmed reviews' background writes that have ended (#1053),
+                # including any that published no new scan.
+                "writes": album_writes.ended(),
             }
         )
 
@@ -6409,6 +6562,10 @@ def _register_routes(app: FastAPI) -> None:
         revision of (#1003): `redownloading` says its page is still waiting.
         Only a question here. The page's own route is what sends it on to the
         replacement, and settles the wait.
+
+        `writing` says a confirmed review is still being written into the album
+        in the background (#1053). Its files are part-written, so the page waits
+        for the write to end rather than redrawing half of it.
         """
         album: Album | None = None
         if (awaited := _awaited_redownload(request, album_id)) is not None:
@@ -6416,6 +6573,8 @@ def _register_routes(app: FastAPI) -> None:
             if album is None:
                 return JSONResponse({"revision": None, "album_id": album_id, "redownloading": True})
         album = album or _find_album(request, album_id)
+        if album_writes.writing(album):
+            return JSONResponse({"revision": None, "album_id": album.id, "writing": True})
         return JSONResponse({"revision": _album_revision(album), "album_id": album.id})
 
     @app.get("/album/{album_id}", response_class=HTMLResponse)
@@ -6620,8 +6779,11 @@ def _register_routes(app: FastAPI) -> None:
         )
         ctx["edit_assignments"] = edit_assignments
         # What the page is drawn from, so it can tell when the album changes
-        # under it (#975): see `album_revision`.
-        ctx["album_revision"] = _album_revision(album)
+        # under it (#975): see `album_revision`. A page drawn while a confirmed
+        # review is written into the album (#1053) is drawn from no finished
+        # state, so whatever the write leaves differs from it, even when the
+        # write had finished with the files by the time this read them.
+        ctx["album_revision"] = "writing" if album_writes.writing(album) else _album_revision(album)
         # Format evidence exists before a release is chosen too. Keep the
         # header's link useful on an unmatched album, using files alone (#720).
         if not (album.sidecar and album.sidecar.mb_release_id):
@@ -9243,7 +9405,6 @@ def _register_routes(app: FastAPI) -> None:
         release_fingerprint: str = Form(""),
         art_plan: str = Form(""),
         include_artwork: bool = Form(False),
-        on_album_page: bool = Form(False),
         disk_order: str = Form(""),
         mb_order: str = Form(""),
         disk_fingerprint: str = Form(""),
@@ -9299,11 +9460,44 @@ def _register_routes(app: FastAPI) -> None:
                     raise retag_mod.ConfirmationChanged(
                         "Artwork changed since the review. Go back and review the artwork again."
                     )
-            outcome = retag_mod.tag_with_release(
+            if release_fingerprint:
+                # Answered here, while the review is open to show it: the write
+                # runs after the request has answered (#1053).
+                retag_mod.check_review(
+                    album.path,
+                    candidate.mb_release_id,
+                    request.app.state.cfg,
+                    paths=folders,
+                    expected_release=release_fingerprint,
+                    assignment_draft=draft,
+                )
+        except (retag_mod.ConfirmationChanged, track_assignment.AssignmentChanged) as e:
+            log.warning("could not apply reviewed changes: %s", e, extra=_LOG_ONLY)
+            return _confirmation_error(request, str(e))
+        except Exception as e:
+            # Per-album request boundary: retain the review and report the failure.
+            log.exception("confirmation check failed", extra=_LOG_ONLY)
+            if release_fingerprint:
+                return _confirmation_error(request, f"Tagging failed: {e}")
+            return _flash_response(
+                "Tagging failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
+            )
+        cfg = request.app.state.cfg
+        tagger = request.app.state.tagger
+        replacement = bool(request.query_params.get("replacement"))
+        # A release chosen from the album page's release review (#618), or for
+        # a tagged album whose match was cleared or forgotten: a chosen release
+        # stores no sidecar first (#933), so a forgotten album may have none.
+        accept_release = replacement or bool(
+            album.has_tag_mbid and not (album.sidecar and album.sidecar.mb_release_id)
+        )
+
+        def write() -> tagger_mod.TaggingOutcome:
+            return retag_mod.tag_with_release(
                 album.path,
                 candidate.mb_release_id,
-                request.app.state.cfg,
-                request.app.state.tagger,
+                cfg,
+                tagger,
                 incomplete=incomplete,
                 store_url_override=candidate.mistag_owned_url,
                 paths=folders,
@@ -9313,29 +9507,13 @@ def _register_routes(app: FastAPI) -> None:
                 scope=artwork.Scope.ALL,
                 chosen=artwork.Source.ARCHIVE,
                 assignment_draft=draft,
-                release_artwork_only=bool(request.query_params.get("replacement")),
-                # A release chosen from the album page's release review (#618),
-                # or for a tagged album whose match was cleared or forgotten:
-                # a chosen release stores no sidecar first (#933), so a
-                # forgotten album may have none.
-                accept_release=bool(request.query_params.get("replacement"))
-                or bool(album.has_tag_mbid and not (album.sidecar and album.sidecar.mb_release_id)),
+                release_artwork_only=replacement,
+                accept_release=accept_release,
             )
-        except (retag_mod.ConfirmationChanged, track_assignment.AssignmentChanged) as e:
-            log.warning("could not apply reviewed changes: %s", e, extra=_LOG_ONLY)
-            return _confirmation_error(request, str(e))
-        except Exception as e:
-            # Per-album request boundary: retain the review and report the failure.
-            log.exception("confirmation tagging failed", extra=_LOG_ONLY)
-            if release_fingerprint:
-                return _confirmation_error(request, f"Tagging failed: {e}")
-            return _flash_response(
-                "Tagging failed", str(e), level=Level.ERROR, tasks_changed=False, album=album
-            )
+
         # The decision is the event (#639): which release, and how it was found.
         # A release chosen from the album page's release review carries no
         # stored suggestion, so the review itself is how it was found.
-        replacement = bool(request.query_params.get("replacement"))
         how = (
             "chosen from its release group"
             if replacement
@@ -9343,46 +9521,34 @@ def _register_routes(app: FastAPI) -> None:
             if candidate.found_by
             else None
         )
-        details = [_matched_detail(candidate.mb_release_id, how)]
-        if not outcome.tags_changed:
-            details.append("tags already matched")
-        if outcome.artwork_withheld:
-            details.append(
-                "artwork changed since the preview and was left alone; review it on the album page"
+        refused = _start_confirm_write(
+            request.app,
+            album,
+            folders,
+            list(added.values()),
+            write,
+            mbid=candidate.mb_release_id,
+            how=how,
+        )
+        # Nothing is written yet: the write refreshes the album when it ends.
+        request.state.skip_rescan = True
+        if refused is not None:
+            if release_fingerprint:
+                return _confirmation_error(request, refused)
+            return _flash_response(
+                "Not matched", refused, level=Level.WARNING, tasks_changed=False, album=album
             )
-        if outcome.artwork_unavailable:
-            details.append("could not prepare artwork; images left alone")
-        if outcome.artwork.changed:
-            details.append(f"artwork written to {outcome.artwork.changed} files")
-        if outcome.artwork.failed:
-            details.append("artwork could not be written: " + ", ".join(outcome.artwork.failed))
-        if outcome.artwork.unkept:
-            details.append(
-                "artwork not replaced, no backup could be kept: "
-                + ", ".join(outcome.artwork.unkept)
-            )
-        if outcome.artwork.stale:
-            details.append("artwork left alone, changed since: " + ", ".join(outcome.artwork.stale))
-        # Confirmation can change the album's canonical id. Make that identity
-        # visible before the page refreshes or redirects to its new album URL.
-        runner = request.app.state.scan_runner
-        if runner.is_engaged():
-            request.state.skip_rescan = runner.refresh_album(folders, notify=True)
-        current = next(a for a in _albums(request) if album.path in a.folders)
-        if current.id != sidecar_mod.album_id_for(album.path):
-            activity_store.record_alias(album.id, current.id)
-        for part in added.values():
-            # A link to the folder's own album now leads to the one it joined.
-            activity_store.record_alias(part.id, current.id)
-        response = _flash_response(
-            "Matched as incomplete" if current.state == AlbumState.INCOMPLETE else "Matched",
-            "; ".join(details),
+        # The outcome is the write's to record, once there is one. This only
+        # closes the review and redraws the Inbox, which covers the album's card
+        # while its folders are held. An album page keeps its own cover up until
+        # the write ends and then redraws where the album is (album.html): a
+        # redirect now would draw it half-written, or at an address it has left.
+        return _flash_response(
+            "Matching",
             album=album,
+            record_activity=False,
             extra_triggers={"confirmation-applied": True},
         )
-        if on_album_page:
-            response.headers["HX-Redirect"] = _album_location(request, current.id)
-        return response
 
     @app.post("/reject/{album_id}", response_class=HTMLResponse)
     def reject_match(request: Request, album_id: str) -> Response:

@@ -8,7 +8,7 @@ from harmonist import activity_store, album_files, formats, tag_history, tagger
 from harmonist.formats import owned
 from harmonist.transforms import TaggingChoices
 from test import test_formats, test_web
-from test.helpers import write_ripper_tags, write_track_totals
+from test.helpers import finish_writes, write_ripper_tags, write_track_totals
 from test.test_tagger import _detail, _release_2_tracks
 
 cfg = test_web.cfg
@@ -202,6 +202,7 @@ def test_partial_confirmation_and_review_after_mb_adds_track(client, cfg, monkey
     editor = client.get(f"/assignments/{aid}")
     result = client.post(f"/confirm/{aid}/accept", data=test_web._confirmation_fields(editor.text))
     assert "confirmation-applied" in result.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
     assert [call for call in calls if call[0] == "mb"] == [("mb", release["id"])]
     left_alone = untouched | _album_values(release)
     assert not owned.diff(formats.read_owned(files[1]), left_alone)
@@ -245,6 +246,7 @@ def test_partial_confirmation_and_review_after_mb_adds_track(client, cfg, monkey
     assert "Proposed assignment" in editor.text
     result = client.post(f"/confirm/{album.id}/accept", data=fields)
     assert "confirmation-applied" in result.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
     assert formats.read_owned(files[1])["mb_release_track_id"] == later["id"]
     album = next(a for a in scanner.scan(cfg.paths.music_dir) if a.path == root)
     assert album.unassigned_track_count == 0

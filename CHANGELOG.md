@@ -13,6 +13,7 @@ versions follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- **Confirming a review closes it straight away**: the album is written in the background, its card covered until it is done, with progress and the result in the status bar and Activity (#1053).
 - Background jobs finish accepted album writes, history and library refreshes during graceful shutdown (#1048).
 - Artist Identify and Refresh give lookups 30 seconds, preserve completed optional results, and finish accepted writes and their history during graceful shutdown (#1040).
 - **A track's work has a column in the track list** when the other tags leave

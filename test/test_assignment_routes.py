@@ -6,6 +6,7 @@ import pytest
 
 from harmonist import album_files, formats
 from test import test_web
+from test.helpers import finish_writes
 from test.test_web import _confirmation_fields, _confirmation_setup, _id_for
 
 cfg = test_web.cfg
@@ -49,7 +50,10 @@ def test_assignment_drafts_do_not_rescan_or_write_files(client, cfg, monkeypatch
     if action == "review" and not stale:
         applied = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(response.text))
         assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
-        scan.assert_called_once()
+        # Confirming is what writes: in the background, which re-reads the
+        # album itself once it has (#1053).
+        finish_writes(client.app)
+        assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} != before
 
 
 def test_read_only_comparison_uses_the_editor_rows_without_network(client, cfg, monkeypatch):
@@ -156,6 +160,8 @@ def test_read_only_confirmation_uses_current_counts_and_displayed_mapping(
         assert "1 file unassigned" in preview.text
         applied = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(preview.text))
         assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
+        finish_writes(client.app)
+        assert test_web._matched_messages()
 
 
 def test_assignment_review_writes_the_pairing_the_user_moved(client, cfg, monkeypatch):
@@ -180,6 +186,7 @@ def test_assignment_review_writes_the_pairing_the_user_moved(client, cfg, monkey
     assert [f.read_bytes() for f in files] == before
     result = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(preview.text))
     assert "confirmation-applied" in result.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
     expected = release["medium-list"][0]["track-list"]
     assert formats.read_tags(files[0]).title == expected[1]["title"]
     assert formats.read_tags(files[0]).track_num == 2
@@ -218,6 +225,7 @@ def test_assignment_confirmation_refuses_changed_inputs(client, cfg, monkeypatch
         mb_cache.fetch_release(release["id"], max_age=mb_cache.FRESH)
     before = [f.read_bytes() for f in files]
     result = client.post(f"/confirm/{aid}/accept", data=fields)
+    finish_writes(client.app)
     assert "changed" in result.text.lower()
     assert "confirmation-applied" not in result.headers.get("HX-Trigger", "")
     assert [f.read_bytes() for f in files] == before
@@ -259,6 +267,7 @@ def test_extra_file_can_move_past_a_gap_but_cannot_be_silently_dropped(client, c
     assert fields["mb_order"] == "-,0"
     assert ">Done</button>" in moved.text
     attempted = client.post(f"/confirm/{aid}/accept", data=fields)
+    finish_writes(client.app)
     assert "unassigned file already has MusicBrainz track IDs" in attempted.text
     assert "confirmation-applied" not in attempted.headers.get("HX-Trigger", "")
     assert [f.read_bytes() for f in files] == before

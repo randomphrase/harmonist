@@ -498,6 +498,27 @@ def action() -> Iterator[str]:
         _current_action.reset(token)
 
 
+@contextmanager
+def continued(action_id: str | None) -> Iterator[str]:
+    """Finish on this thread an action a request began (#1053).
+
+    A request that accepts a write and hands it to a background job ends before
+    the write does, and the job starts with no action of its own. Continuing the
+    request's keeps the outcome with whatever the request recorded, and the
+    audit lines with both. With no id to continue, the job's own action is
+    opened, as `action()` opens one.
+    """
+    if action_id is None:
+        with action() as fresh:
+            yield fresh
+        return
+    token = _current_action.set(action_id)
+    try:
+        yield action_id
+    finally:
+        _current_action.reset(token)
+
+
 def current_action() -> str | None:
     """The action id in scope, or None outside one."""
     return _current_action.get()

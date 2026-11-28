@@ -11,6 +11,7 @@ from harmonist import sidecar as sc
 from harmonist.models import Album, AlbumState, MatchCandidate, Sidecar
 from test import test_web
 from test.conftest import SINE_M4A
+from test.helpers import finish_writes
 from test.test_web import _confirmation_fields, _id_for, _release_for_match
 
 cfg = test_web.cfg
@@ -192,6 +193,7 @@ def test_confirming_tags_both_folders_and_they_become_one_album(client, cfg, spl
     fields = _confirmation_fields(_review(client, aid))
     applied = client.post(f"/confirm/{aid}/accept", data=fields)
     assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
     for folder, disc in ((first, 1), (second, 2)):
         assert sc.read(folder).mb_release_id == MBID
         assert {formats.read_tags(f).disc_num for f in album_files.audio_files(folder)} == {disc}
@@ -231,6 +233,7 @@ def test_the_artwork_confirmed_with_the_review_reaches_the_added_folder_too(clie
     fields = _confirmation_fields(review) | _confirmation_fields(artwork.text)
     applied = client.post(f"/confirm/{aid}/accept", data=fields | {"include_artwork": "true"})
     assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
     for folder in (first, second):
         arts = {formats.read_tags(f).art for f in album_files.audio_files(folder)}
         assert {a.digest if a else None for a in arts} == {images.digest(image)}, folder
@@ -242,6 +245,7 @@ def test_a_folder_matched_since_the_review_is_not_taken(client, cfg, split):
     fields = _confirmation_fields(_review(client, aid))
     sc.write(second, Sidecar(mb_release_id="rel-elsewhere"))
     applied = client.post(f"/confirm/{aid}/accept", data=fields)
+    finish_writes(client.app)
     assert "has changed" in applied.text
     assert sc.read(second).mb_release_id == "rel-elsewhere"
     assert sc.read(first).mb_release_id is None

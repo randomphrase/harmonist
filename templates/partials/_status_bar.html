@@ -12,7 +12,7 @@
      hx-get="/status"
      hx-trigger="load, every 1500ms"
      hx-swap="innerHTML"
-     {% if request.state.scan_seq is defined %}data-scan-seq="{{ request.state.scan_seq }}" data-artwork-revision="{{ request.state.artwork_revision }}"{% endif %}
+     {% if request.state.scan_seq is defined %}data-scan-seq="{{ request.state.scan_seq }}" data-artwork-revision="{{ request.state.artwork_revision }}" data-writes-ended="{{ request.state.writes_ended }}"{% endif %}
      class="hidden hx-poll"></div>
 <script>
 // Single consolidated status bar (#harmonist-status). Three input sources:
@@ -51,6 +51,7 @@
     let lastInboxCount;  // last Inbox badge number (undefined until first poll)
     let lastArtworkRevision = drawn.artworkRevision === undefined
         ? undefined : Number(drawn.artworkRevision);
+    let lastWritesEnded = drawn.writesEnded === undefined ? undefined : Number(drawn.writesEnded);
     let syncDisplay = null;       // current running-sync HTML, or null
     let reconcileDisplay = null;  // current running-reconcile HTML, or null
     let scanDisplay = null;       // current library-scan HTML, or null
@@ -312,19 +313,25 @@
         // without the inbox ever refreshing — leaving a stale card whose cover
         // 404s because the album's id has moved on.
         const snapshotChanged = lastScanSeq !== undefined && scan.seq !== lastScanSeq;
-        if (snapshotChanged) {
+        // A confirmed review's background write that has ended (#1053) redraws
+        // what it covered while it ran, even when it published no new scan: a
+        // failed write, or one that only moved a track assignment.
+        const writeEnded = lastWritesEnded !== undefined && data.writes !== lastWritesEnded;
+        if (snapshotChanged || writeEnded) {
             document.body.dispatchEvent(new Event('tasks-changed'));
         }
         lastScanSeq = scan.seq;
+        lastWritesEnded = data.writes;
         // The Inbox list follows its badge (#273). A tag update can reach or leave
         // the Inbox with no scan behind it — the startup update check flags albums
         // one at a time — and the list would otherwise stay as the page loaded it
         // while the number climbed. Its own event, not `tasks-changed`, which also
         // re-renders the Library grid. Skipped when the list is already reloading:
-        // after a new snapshot, and while reconcile or a scan keeps it polling.
+        // after a new snapshot or a write's end, and while reconcile or a scan
+        // keeps it polling.
         const inboxCount = data.counts ? data.counts.inbox : undefined;
         if (lastInboxCount !== undefined && inboxCount !== lastInboxCount
-                && !snapshotChanged && !inboxBusy) {
+                && !snapshotChanged && !writeEnded && !inboxBusy) {
             document.body.dispatchEvent(new Event('inbox-changed'));
         }
         lastInboxCount = inboxCount;
@@ -367,7 +374,7 @@
         }
         const finished = progress.finished;
         if (finished && lastFinishedSeq !== undefined && finished.seq !== lastFinishedSeq) {
-            showActionMessage(finished.label, finished.message, 'info');
+            showActionMessage(finished.label, finished.message, finished.level || 'info');
         }
         lastFinishedSeq = finished ? finished.seq : null;
 

@@ -6,6 +6,7 @@ import pytest
 
 from harmonist import mb_cache
 from test import test_web
+from test.helpers import finish_writes
 from test.test_web import _confirmation_fields, _confirmation_setup, _id_for, _review_with_artwork
 
 cfg = test_web.cfg
@@ -26,6 +27,8 @@ def test_reviewed_confirmation_does_not_refetch_expired_data(
     endpoint = f"/confirm/{aid}" + ("" if action == "apply" else f"/{action}")
     response = client.post(endpoint, data=fields)
     assert response.status_code == 200
+    finish_writes(client.app)
+    assert test_web._matched_messages(), "confirmed, or the fetch count proves nothing"
     assert calls == []
     assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
 
@@ -44,6 +47,7 @@ def test_review_uses_its_snapshot_or_stops_without_fetching(client, cfg, monkeyp
         monkeypatch.setattr(mb_cache, "stored_release", lambda mbid: None)
     calls.clear()
     response = client.post(f"/confirm/{aid}", data=fields)
+    finish_writes(client.app)
     assert calls == []
     if missing:
         assert "reviewed release is no longer available" in response.text
@@ -69,6 +73,8 @@ def test_partial_review_marks_unassigned_files_and_applies_once(client, cfg, mon
     calls.clear()
     confirmation = client.post(f"/confirm/{aid}/accept", data=_confirmation_fields(editor.text))
     assert "confirmation-applied" in confirmation.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
+    assert len(test_web._matched_messages()) == 1
     assert calls == []
 
 
@@ -94,5 +100,6 @@ def test_reviewed_store_url_recovery_does_not_query_musicbrainz(client, cfg, mon
     monkeypatch.setattr("harmonist.mb_lookup.fetch_release_urls", fetch_urls)
     response = client.post(f"/confirm/{aid}", data=fields)
     assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
     fetch_urls.assert_not_called()
     assert sidecar.read(root).store_url == "https://example.bandcamp.com"

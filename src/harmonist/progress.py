@@ -37,6 +37,11 @@ class Job:
     #: the job, which knows its result; left unset when it fails, so a failure
     #: never reads as a result.
     closing: str | None = None
+    #: The closing line's verb and level, where the label and "info" don't say
+    #: them (#1053): one album's write ends "Matched" or "Tagging failed", and a
+    #: failure stays in the bar until something replaces it, as an action's does.
+    closing_verb: str | None = None
+    closing_level: str = "info"
     #: The job this one runs inside, if any (`_enclosing`).
     parent: Job | None = None
 
@@ -90,7 +95,12 @@ def job(label: str, total: int, *, foreground: bool = False) -> Iterator[Job]:
     with _lock:
         _running.remove(current)
         if current.closing is not None:
-            _finished = {"seq": next(_seq), "label": label, "message": current.closing}
+            _finished = {
+                "seq": next(_seq),
+                "label": current.closing_verb or label,
+                "message": current.closing,
+                "level": current.closing_level,
+            }
 
 
 def status() -> dict[str, Any]:

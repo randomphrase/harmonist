@@ -634,6 +634,7 @@ def test_album_page_browse_is_stored_for_the_filters_without_another_request(cli
 
 
 def test_confirmed_use_accepts_the_chosen_release(tmp_path, monkeypatch):
+    from test.helpers import finish_writes
     from test.test_gardener import _release
     from test.test_web import _confirmation_fields
 
@@ -643,6 +644,7 @@ def test_confirmed_use_accepts_the_chosen_release(tmp_path, monkeypatch):
     editor = client.get(f"/assignments/{MBID}?{query}&cancel=true&on_album_page=true")
     applied = client.post(f"/confirm/{MBID}/accept?{query}", data=_confirmation_fields(editor.text))
     assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
     sc = sidecar.read(folder)
     assert sc.mb_release_id == sc.accepted_release_id == "digital"
 

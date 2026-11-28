@@ -14,6 +14,7 @@ from harmonist.formats.owned import Significance
 from harmonist.models import AlbumState
 from harmonist.transforms import ArtistNames, TaggingChoices, TagTransform
 from harmonist.web.main import create_app
+from test.helpers import finish_writes
 
 
 @pytest.fixture
@@ -327,6 +328,7 @@ def test_multifolder_rematch_keeps_every_sidecar_and_the_scanned_album_together(
     response = client.post(f"/confirm/{old_id}/accept?{query}", data=fields)
 
     assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
     for folder, original in before.items():
         updated = sidecar.read(folder)
         assert updated is not None
@@ -361,6 +363,7 @@ def test_multifolder_rematch_keeps_every_sidecar_and_the_scanned_album_together(
     assert updates[0].action_id is not None
     after = {path: path.read_bytes() for folder in album.folders for path in folder.iterdir()}
     repeated = client.post(f"/confirm/{old_id}/accept?{query}", data=fields)
+    finish_writes(client.app)
     assert "confirmation-applied" not in repeated.headers.get("HX-Trigger", "")
     assert {path: path.read_bytes() for path in after} == after
     assert activity_store.album_history(new_id) == events

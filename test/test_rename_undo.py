@@ -6,6 +6,7 @@ import pytest
 
 from harmonist import activity_store, album_files, formats, tag_history, tagger
 from test import test_web
+from test.helpers import finish_writes
 from test.test_tagger import _detail, _release_2_tracks
 
 cfg = test_web.cfg
@@ -72,6 +73,7 @@ def test_route_undo_after_rename_unlinks_sidecar(client, cfg, monkeypatch):
     preview = client.get(f"/confirm/{aid}/preview")
     response = client.post(f"/confirm/{aid}", data=test_web._confirmation_fields(preview.text))
     assert response.status_code == 200
+    finish_writes(client.app)
     events = activity_store.album_history(release["id"])
     anchor = next(e.id for e in events if e.message.startswith("Matched"))
     files = [

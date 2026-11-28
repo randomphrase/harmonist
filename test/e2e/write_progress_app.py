@@ -1,4 +1,5 @@
-"""Pause real demo writes at each track so browser progress is observable."""
+"""Pause real demo writes at each track so browser progress is observable, or
+fail them (`arm/fail`) so a failed write's report is."""
 
 import threading
 
@@ -36,6 +37,10 @@ def pause(kind):
 
 
 def write_tags(*args, **kwargs):
+    # A write that fails before changing anything: it publishes no new scan,
+    # so only the write's own end can tell the page to redraw (#1053).
+    if _kind == "fail":
+        raise OSError("disk full")
     pause("tags")
     return _write_tags(*args, **kwargs)
 

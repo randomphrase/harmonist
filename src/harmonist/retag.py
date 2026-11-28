@@ -37,7 +37,7 @@ from . import (
 from . import config as config_mod
 from . import sidecar as sidecar_mod
 from . import tagger as tagger_mod
-from .models import Release, Sidecar
+from .models import IncludedPregap, Release, Sidecar
 from .tagger import Tagger
 from .transforms import NO_CHOICES, TaggingChoices, album_title
 from .url_recovery import album_slug
@@ -161,6 +161,81 @@ def _accepted_after_tagging(
     return tagged if accept or accepted == requested else None
 
 
+def check_review(
+    album_path: Path,
+    mbid: str,
+    cfg: config_mod.Config,
+    *,
+    paths: Sequence[Path],
+    expected_release: str,
+    assignment_draft: track_assignment.Draft | None,
+) -> None:
+    """Refuse a reviewed confirmation whose review no longer holds, with the
+    error `tag_with_release` would raise, while the review is still open to
+    show it (#1053).
+
+    The write itself happens later, on another thread, once the request has
+    answered and the review has closed. It makes these same checks again, so
+    anything that changes in between is still refused, but by then all it can
+    do is report the refusal. The answer that belongs in the review (the release
+    or the files changed since it was shown) is given here. Spends no
+    MusicBrainz request: a review is checked against its stored snapshot.
+    """
+    _, _, assignment, _ = _inputs(
+        album_path,
+        mbid,
+        cfg,
+        paths=paths,
+        expected_release=expected_release,
+        assignment_draft=assignment_draft,
+    )
+    if assignment is not None:
+        tagger_mod.refuse_unassigned_track_ids(
+            [path for path in album_files.for_paths(paths) if path not in assignment]
+        )
+
+
+def _inputs(
+    album_path: Path,
+    mbid: str,
+    cfg: config_mod.Config,
+    *,
+    paths: Sequence[Path] | None,
+    expected_release: str | None,
+    assignment_draft: track_assignment.Draft | None,
+) -> tuple[Release, TaggingChoices, dict[Path, int] | None, tuple[IncludedPregap, ...] | None]:
+    """The release, spelling choices and track assignment a tagging writes,
+    refusing one whose review no longer holds before anything is written."""
+    # Reviewed actions apply what the user saw. Unreviewed tagging still asks
+    # fresh; the exception must not silently spread to automatic operations.
+    if expected_release is not None:
+        tagging = library_titles.choices(cfg.tagging.choices(), excluding=paths or [album_path])
+        release = reviewed_release(mbid, expected_release, tagging)
+    else:
+        release = mb_cache.fetch_release(mbid, max_age=mb_cache.FRESH)
+        tagging = library_titles.choices(cfg.tagging.choices(), excluding=paths or [album_path])
+    if assignment_draft is not None:
+        current_sidecar = sidecar_mod.read(album_path)
+        panel = track_assignment.panel(
+            album_files.for_paths(paths or [album_path]),
+            release,
+            assignment_draft,
+            confirmed=bool(current_sidecar and current_sidecar.mb_release_id == release["id"]),
+        )
+        return release, tagging, panel.mapping(), panel.pregap_decisions()
+    # Refuse before artwork lookup or any write, including callers that
+    # supply their own Tagger. The tagger itself enforces the same guard.
+    files = album_files.for_paths(paths or [album_path])
+    review = tagger_mod.assignment_review(release, [formats.read_tags(f) for f in files])
+    if review.required:
+        raise tagger_mod.TrackAssignmentRequired(
+            files=len(files),
+            tracks=len(match.mb_track_lengths(release)),
+            unassigned=review.unassigned,
+        )
+    return release, tagging, None, None
+
+
 def tag_with_release(
     album_path: Path,
     mbid: str,
@@ -227,37 +302,14 @@ def tag_with_release(
     `mistag_owned_url`) — otherwise the old (wrong-edition) URL matches no
     purchase and the album can never link, falling through to surrender.
     """
-    # Reviewed actions apply what the user saw. Unreviewed tagging still asks
-    # fresh; the exception must not silently spread to automatic operations.
-    if expected_release is not None:
-        tagging = library_titles.choices(cfg.tagging.choices(), excluding=paths or [album_path])
-        release = reviewed_release(mbid, expected_release, tagging)
-    else:
-        release = mb_cache.fetch_release(mbid, max_age=mb_cache.FRESH)
-        tagging = library_titles.choices(cfg.tagging.choices(), excluding=paths or [album_path])
-    assignment = None
-    pregap_decisions = None
-    if assignment_draft is not None:
-        current_sidecar = sidecar_mod.read(album_path)
-        panel = track_assignment.panel(
-            album_files.for_paths(paths or [album_path]),
-            release,
-            assignment_draft,
-            confirmed=bool(current_sidecar and current_sidecar.mb_release_id == release["id"]),
-        )
-        assignment = panel.mapping()
-        pregap_decisions = panel.pregap_decisions()
-    else:
-        # Refuse before artwork lookup or any write, including callers that
-        # supply their own Tagger. The tagger itself enforces the same guard.
-        files = album_files.for_paths(paths or [album_path])
-        review = tagger_mod.assignment_review(release, [formats.read_tags(f) for f in files])
-        if review.required:
-            raise tagger_mod.TrackAssignmentRequired(
-                files=len(files),
-                tracks=len(match.mb_track_lengths(release)),
-                unassigned=review.unassigned,
-            )
+    release, tagging, assignment, pregap_decisions = _inputs(
+        album_path,
+        mbid,
+        cfg,
+        paths=paths,
+        expected_release=expected_release,
+        assignment_draft=assignment_draft,
+    )
     # MusicBrainz REDIRECTS a merged MBID, so the release that comes back can
     # carry a different id from the one asked for. That difference IS the merge
     # notification — cheap, exact, and the only one there is (#268). Everything

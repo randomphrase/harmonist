@@ -168,7 +168,7 @@ def test_automatic_tagging_refreshes_without_watcher(tmp_path, monkeypatch, part
 
 
 def test_confirmation_updates_state_and_counts_without_full_scan(client, cfg, monkeypatch):
-    from test.helpers import write_track_totals
+    from test.helpers import finish_writes, write_track_totals
 
     album_dir = _make_tagged_album(cfg, "Incomplete", mbid="rel-1", tagged_at=datetime.now(UTC))
     write_track_totals(album_dir, track_total=2)
@@ -197,6 +197,7 @@ def test_confirmation_updates_state_and_counts_without_full_scan(client, cfg, mo
     monkeypatch.setattr(runner, "request_scan", lambda: requests.append(True))
     response = client.post(f"/confirm/{album_id}/accept", data=fields)
     assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
     assert runner.albums()[0].expected_track_count == 1
     assert live_counts.to_status()["incomplete"] == 0
     assert live_counts.to_status()["complete"] == 1

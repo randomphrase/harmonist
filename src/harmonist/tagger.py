@@ -923,6 +923,23 @@ def decide_artwork(
     )
 
 
+def refuse_unassigned_track_ids(unassigned: Sequence[Path]) -> None:
+    """Refuse a reviewed assignment that leaves out a file already carrying
+    MusicBrainz track ids: tagging the rest would leave it claiming a track of
+    this release that another file now holds.
+
+    Checked again before a confirmed review is handed to its background write
+    (#1053), so the refusal reaches the review, where the file can be paired.
+    """
+    for path in unassigned:
+        carried = formats.read_owned(path)
+        if carried.get(owned.Owned.MB_RELEASE_TRACK_ID) or carried.get(owned.Owned.MB_TRACK_ID):
+            raise ValueError(
+                f"{path.name}: unassigned file already has MusicBrainz track IDs. "
+                "Pair it with the correct track, or remove conflicting track IDs before confirming."
+            )
+
+
 def _prepare(
     album_dir: Path,
     release: Release,
@@ -1026,13 +1043,7 @@ def _prepare(
 
     if assignment is not None:
         left = [path for path in files if path not in assignment]
-        for path in left:
-            carried = formats.read_owned(path)
-            if carried.get(owned.Owned.MB_RELEASE_TRACK_ID) or carried.get(owned.Owned.MB_TRACK_ID):
-                raise ValueError(
-                    f"{path.name}: unassigned file already has MusicBrainz track IDs. "
-                    "Pair it with the correct track, or remove conflicting track IDs before confirming."
-                )
+        refuse_unassigned_track_ids(left)
 
     if archive is None and artwork_in_scope:
         archive = _archive_candidate(release)

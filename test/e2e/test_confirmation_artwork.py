@@ -372,6 +372,8 @@ def test_confirmation_applies_only_included_artwork(
         page.wait_for_url(f"{base}/album/demo-rel-thamesmen")
     else:
         pw.expect(page.get_by_role("dialog")).not_to_be_visible()
+        # Its card leaves the Inbox once the album is written (#1053).
+        pw.expect(page.locator(f"#task-{aid}")).to_have_count(0)
         page.goto(f"{base}/album/demo-rel-thamesmen")
     page.wait_for_selector("#album-artwork .art-row")
     page.wait_for_function("() => !document.querySelector('.htmx-request, .htmx-settling')")

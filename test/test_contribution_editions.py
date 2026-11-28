@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from harmonist import activity_store, mb_cache, mb_lookup
 from harmonist.config import Config, PathsConfig
 from harmonist.web.main import create_app
+from test.helpers import finish_writes
 from test.test_contributions import MBID, URL, make_files, release
 from test.test_gardener import _release
 from test.test_web import _confirmation_fields
@@ -224,16 +225,21 @@ def test_replacement_review_keeps_original_until_confirmed(library, monkeypatch,
             "harmonist.retag.tag_with_release", Mock(side_effect=OSError("disk full"))
         )
     response = client.post(f"/confirm/{aid}/accept?{query}", data=fields)
+    finish_writes(client.app)
     if outcome == "apply":
         assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
         assert sidecar.read(root / "Download").mb_release_id == "digital"
         assert 'id="contribution-editions-digital"' in client.get("/album/digital").text
         after = {p: p.read_bytes() for p in before}
         repeated = client.post(f"/confirm/{aid}/accept?{query}", data=fields)
+        finish_writes(client.app)
         assert "confirmation-applied" not in repeated.headers.get("HX-Trigger", "")
         assert after == {p: p.read_bytes() for p in after}
     elif outcome == "failure":
-        assert "disk full" in response.text
+        # The review had closed by the time the write failed (#1053), so the
+        # failure is reported where the album's history is.
+        assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
+        assert any(e.message == "Tagging failed — disk full" for e in activity_store.recent())
         assert before == {p: p.read_bytes() for p in before}
     else:
         assert response.status_code == 200 and "album&#39;s release changed" in response.text
@@ -435,6 +441,7 @@ def test_sibling_artwork_is_release_specific_through_confirmation(
     monkeypatch.setattr(cover_art, "check_front", forbidden)
     monkeypatch.setattr(cover_art, "fetch_image", forbidden)
     response = client.post(f"/confirm/{MBID}/accept?{query}", data=fields)
+    finish_writes(client.app)
     if outcome == "changed":
         assert "Artwork changed since the review" in response.text
         assert sidecar.read(folder).mb_release_id == MBID

@@ -5,7 +5,7 @@ import re
 from urllib.parse import parse_qs
 
 import pytest
-from test.e2e.conftest import open_review
+from test.e2e.conftest import open_review, wait_written
 
 pytestmark = pytest.mark.skipif(os.environ.get("RUN_E2E") != "1", reason="e2e disabled")
 pw = pytest.importorskip("playwright.sync_api")
@@ -122,6 +122,9 @@ def test_suggested_release_link_follows_review_and_confirmation(
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
     if on_album:
         page.wait_for_url(f"{base}/album/demo-rel-folksmen")
+    else:
+        # Its card leaves the Inbox once the album is written (#1053).
+        pw.expect(host).to_have_count(0)
     page.goto(f"{base}/album/demo-rel-folksmen")
     # The page's own release link, by its id: History now links the release
     # it was tagged to as well (#801), so a match on the URL alone finds two.
@@ -368,6 +371,8 @@ def test_partial_confirmation_can_be_applied_and_reviewed(browser_factory, reset
     with page.expect_response(lambda r: f"/confirm/{aid}/accept" in r.url) as applied:
         review.get_by_role("button", name="Confirm suggestion", exact=True).click()
     assert "confirmation-applied" in applied.value.headers.get("hx-trigger", "")
+    # Its card leaves the Inbox once the album is written (#1053).
+    pw.expect(page.locator(f"#task-{aid}")).to_have_count(0)
     with page.expect_response(lambda r: "/library/demo-rel-folksmen/compare" in r.url):
         page.goto(f"{base}/album/demo-rel-folksmen")
     pw.expect(page.locator("main")).to_contain_text("Tracks unassigned")
@@ -599,6 +604,7 @@ def test_unassigned_files_are_proposed_and_remain_editable_until_acceptance(
         f"{base}/confirm/{aid}", headers={"HX-Request": "true"}, form=fields
     )
     assert accepted.ok
+    wait_written(page, aid)
     page.goto(f"{base}/album/{fields['candidate_mbid']}")
     editor = page.locator("#album-track-editor")
     pw.expect(editor.locator("[data-proposed-pair]")).to_have_count(3)

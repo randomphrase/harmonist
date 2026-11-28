@@ -379,9 +379,13 @@ def test_demo_confirm_tags_album_end_to_end(demo_client):
     # ambiguous; pick this one explicitly (order differs across platforms).
     albums = scan(demo_client.app.state.cfg.paths.music_dir)
     aid = next(a.id for a in albums if a.title == "Gimme Some Money")
+    from harmonist import activity
+    from test.helpers import finish_writes
+
     r = demo_client.post(f"/confirm/{aid}")
     assert r.status_code == 200, r.text
-    assert "Matched" in r.text
+    finish_writes(demo_client.app)
+    assert any(e.message.startswith("Matched") for e in activity.recent())
     # Album should now be in DONE state (hidden from inbox)
     tasks_after = demo_client.get("/tasks").text
     assert "Gimme Some Money" not in tasks_after

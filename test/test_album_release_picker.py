@@ -10,6 +10,7 @@ from harmonist import album_files, formats, mb_cache, mb_lookup, scanner
 from harmonist import sidecar as sc
 from harmonist.models import AlbumState
 from test import test_web
+from test.helpers import finish_writes
 from test.test_identity_grouping import DISC1, DISC2, REL_A, _part
 
 cfg = test_web.cfg
@@ -215,7 +216,10 @@ def test_multi_folder_confirmation_uses_reviewed_release_and_all_files(client, c
         mb_cache, "fetch_release", lambda *a, **k: pytest.fail("review must not fetch")
     )
     result = client.post(confirm["hx-post"], data=fields)
-    assert result.headers["HX-Redirect"] == "/album/new-release"
+    assert "confirmation-applied" in result.headers.get("HX-Trigger", "")
+    # The page waits out the write and then goes where the album is (#1053).
+    finish_writes(client.app)
+    assert client.get(f"/album/{album.id}/revision").json()["album_id"] == "new-release"
     assert calls == ["merged-old-id"]
     after = scanner.scan(cfg.paths.music_dir)
     assert len(after) == 1 and after[0].track_count == 4

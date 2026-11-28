@@ -17,6 +17,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import warnings
 from collections.abc import Generator, Iterator
@@ -244,6 +245,24 @@ def htmx_ready():
 def review_dialog(page):
     """The release review, open or opening in the page's modal mount (#933)."""
     return page.locator("dialog.review-dialog")
+
+
+def wait_written(page, album_id: str) -> None:
+    """Wait for a confirmed review's background write to end (#1053), for a
+    test that confirmed with no card or page in view to watch: the album's
+    revision stops saying it is being written. The album is held from before
+    the confirm answers until the write has read it again and recorded what it
+    did, so this can't pass early.
+
+    Polled from here, read-only, against a deadline: `wait_for_function` takes
+    an async predicate's promise as its answer, which is always truthy."""
+    origin = "{0.scheme}://{0.netloc}".format(urllib.parse.urlsplit(page.url))
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        revision = page.request.get(f"{origin}/album/{urllib.parse.quote(album_id)}/revision")
+        if revision.ok and not revision.json().get("writing"):
+            return
+    pytest.fail(f"the confirmed write into {album_id} did not end")
 
 
 def open_review(page, host, release: str | None = None):

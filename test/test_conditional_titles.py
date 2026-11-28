@@ -22,6 +22,7 @@ from harmonist.models import Sidecar
 from harmonist.transforms import TaggingChoices, TagTransform
 from harmonist.web.scan_runner import ScanRunner
 from test import test_web
+from test.helpers import finish_writes
 from test.test_gardener import _release, _tagged
 
 cfg = test_web.cfg
@@ -208,6 +209,7 @@ def test_library_change_invalidates_review_without_writing_or_fetching(
         _tagged(cfg.paths.music_dir, _edition("original", "original"), name="Original")
     calls.clear()
     response = client.post(f"/confirm/{aid}/accept", data=fields)
+    finish_writes(client.app)
     assert "title choice changed" in response.text
     assert {p: p.read_bytes() for p in root.iterdir() if p.is_file()} == before
     assert calls == []
@@ -232,6 +234,7 @@ def test_review_and_confirmation_write_the_same_conditional_title(
         f"/confirm/{aid}/accept", data=test_web._confirmation_fields(review.text)
     )
     assert "confirmation-applied" in response.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
     assert {formats.read_album_title(p) for p in root.glob("*.m4a")} == {expected}
     assert calls == []
 

@@ -6,8 +6,10 @@ name — conftest is loaded by pytest, not importable as `conftest` from a test.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 # Provenance tags as real files carry them (#632), for `write_provenance_tags`.
 # As dBpoweramp writes them on a secure rip.
@@ -21,6 +23,12 @@ QOBUZ_TAGS = {"QBZ:TID": ("79173707",)}
 AMAZON_TAGS = {"comment": ("Amazon.com Song ID: 207119654",)}
 # Beatport's genre comment comes first; the purchase note is a second frame.
 BEATPORT_TAGS = {"comment": ("Techno - Techno", "Purchased at Beatport.com")}
+
+
+def finish_writes(app: Any) -> None:
+    """Wait for the writes `app` accepted in the background, such as a
+    confirmed review's (#1053), so a test can read what they did."""
+    asyncio.run(app.state.scan_runner.jobs.wait_idle())
 
 
 def keep_one(data: bytes, *, mime: str | None = None) -> str | None:

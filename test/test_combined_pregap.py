@@ -19,7 +19,7 @@ from harmonist import (
 from harmonist.models import AlbumState, IncludedPregap, Sidecar
 from harmonist.transforms import TaggingChoices
 from test import test_web
-from test.helpers import write_track_totals
+from test.helpers import finish_writes, write_track_totals
 from test.test_pregap import pregap_release
 from test.test_pregap_web import confirmed_album
 
@@ -140,6 +140,7 @@ def test_accept_and_reverse_only_changes_completeness(client, cfg, combined_albu
     editor = client.get(f"/assignments/{aid}?album_tracks=true&on_album_page=true")
     data = test_web._confirmation_fields(editor.text) | {"included_pregaps": "rt-pregap"}
     assert client.post(f"/confirm/{aid}/accept", data=data).status_code == 200
+    finish_writes(client.app)
     assert scanner.scan(cfg.paths.music_dir)[0].state == AlbumState.COMPLETE
     assert scanner.scan(cfg.paths.music_dir)[0].expected_track_count == 3
     assert [f.read_bytes() for f in files] == before
@@ -167,11 +168,13 @@ def test_accept_and_reverse_only_changes_completeness(client, cfg, combined_albu
     saved = (root / ".harmonist.json").read_text()
     data = test_web._confirmation_fields(editor.text) | {"included_pregaps": "rt-pregap"}
     client.post(f"/confirm/{aid}/accept", data=data)
+    finish_writes(client.app)
     assert (root / ".harmonist.json").read_text() == saved
     editor = client.get(f"/assignments/{aid}?album_tracks=true&on_album_page=true")
     data = test_web._confirmation_fields(editor.text)
     data.pop("included_pregaps", None)
     client.post(f"/confirm/{aid}/accept", data=data)
+    finish_writes(client.app)
     assert scanner.scan(cfg.paths.music_dir)[0].state == AlbumState.INCOMPLETE
     assert "included_pregaps" not in json.loads((root / ".harmonist.json").read_text())
     assert [c for c in calls if c[0] == "mb"] == [("mb", "rel-new-confirm")]
@@ -307,6 +310,7 @@ def test_draft_moves_preserve_choice_but_incompatible_apply_is_rejected(
     before = (root / ".harmonist.json").read_bytes()
     apply_data = test_web._confirmation_fields(moved.text) | {"included_pregaps": "rt-pregap"}
     refused = client.post(f"/confirm/{aid}/accept", data=apply_data)
+    finish_writes(client.app)
     assert "no longer matches" in refused.text
     assert (root / ".harmonist.json").read_bytes() == before
 

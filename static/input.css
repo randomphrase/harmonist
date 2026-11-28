@@ -315,7 +315,8 @@ button[disabled],
 .tagging-overlay {
   display: none;
 }
-.tagging-overlay.htmx-request {
+.tagging-overlay.htmx-request,
+.tagging-overlay[data-writing] {
   display: flex;
   opacity: 1;
   cursor: progress;

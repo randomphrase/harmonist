@@ -49,14 +49,16 @@
             if (m && m.id === 'modal') m.innerHTML = '';
         }, true);
 
-        // The Review dialog (#933) closes once Confirm or Dismiss has done its
-        // work. A failed confirm answers 200 with the error in the review, so
-        // the applied event, not the status, says it succeeded.
+        // The Review dialog (#933) closes once Confirm has been accepted or
+        // Dismiss has done its work. An accepted confirm's write runs in the
+        // background (#1053) and reports in the status bar and Activity. A
+        // refused one answers 200 with the reason in the review, so the
+        // applied event, not the status, says it was accepted.
         function harmonistCloseReview() {
             document.querySelector('#modal dialog.review-dialog[open]')?.close();
         }
         document.body.addEventListener('confirmation-applied', harmonistCloseReview);
-        // A write in flight keeps the review open: its answer, an error
+        // A request in flight keeps the review open: its answer, a refusal
         // included, needs somewhere to land.
         document.body.addEventListener('htmx:beforeRequest', function (e) {
             const d = e.detail.elt.closest('dialog.review-dialog');

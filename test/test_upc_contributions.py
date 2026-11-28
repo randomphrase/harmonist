@@ -16,7 +16,7 @@ from harmonist import activity_store, contributions, formats, mb_cache, mb_looku
 from harmonist.config import Config, PathsConfig
 from harmonist.models import Sidecar
 from harmonist.web.main import _library_page_vars, create_app
-from test.helpers import BEATPORT_TAGS, QOBUZ_TAGS, write_provenance_tags
+from test.helpers import BEATPORT_TAGS, QOBUZ_TAGS, finish_writes, write_provenance_tags
 from test.test_contributions import MBID, before_dismissal, harmony_link, release
 from test.test_formats import FIXTURES, _tagset
 from test.test_gardener import _release
@@ -397,6 +397,7 @@ def test_reviewed_replacement_and_undo_preserve_original_upc(upc_library, monkey
     fetch.side_effect = AssertionError("reviewed writes and undo must not fetch")
     applied = client.post(f"/confirm/{MBID}/accept?{query}", data=fields)
     assert "confirmation-applied" in applied.headers.get("HX-Trigger", "")
+    finish_writes(client.app)
     path = root / "Download" / "01.m4a"
     assert formats.read_owned(path)["barcode"] is None
     assert formats.read_scan_fields(path).provenance.upcs == (UPC,)
@@ -404,6 +405,7 @@ def test_reviewed_replacement_and_undo_preserve_original_upc(upc_library, monkey
     assert page.select_one("#contribution-editions-digital") is not None
     after = {p: p.read_bytes() for p in before}
     repeated = client.post(f"/confirm/{MBID}/accept?{query}", data=fields)
+    finish_writes(client.app)
     assert "confirmation-applied" not in repeated.headers.get("HX-Trigger", "")
     assert after == {p: p.read_bytes() for p in before}
     anchor = next(
